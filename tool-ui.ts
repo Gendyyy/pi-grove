@@ -4,7 +4,6 @@ import { buildToolBlock, shellSummary, WidthAwareLines } from "./block-render.js
 import type { LiuovoMode } from "./config.js";
 import type { IconMode } from "./icons.js";
 import { NestedToolObserver } from "./nested-tools.js";
-import { setLiveTheme } from "./theme.js";
 
 interface ToolUiOptions {
   /** Tools whose behavior this extension composes. Codemode is always presentation-only. */
@@ -12,8 +11,6 @@ interface ToolUiOptions {
   mode: LiuovoMode;
   icons: boolean;
   iconMode: IconMode;
-  /** Calls kept visible in a running codemode card. */
-  collapsedCalls: number;
 }
 const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 
@@ -107,7 +104,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
   });
   const renderers = new Map<string, ToolRenderers>([
     ...[...options.tools].map(name => [name, basicRenderers(name)] as const),
-    ["codemode", nested.renderers(options.icons, options.iconMode, options.collapsedCalls)],
+    ["codemode", nested.renderers(options.icons, options.iconMode)],
   ]);
   for (const [name, renderer] of renderers) {
     const renderCall = renderer.renderCall!;
@@ -115,7 +112,6 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
     renderers.set(name, {
       ...renderer,
       renderCall(args, theme, context) {
-        setLiveTheme(theme);
         // Hydrating history and streaming arguments must never start clocks.
         if (context.isPartial && context.executionStarted && startedAt.has(context.toolCallId)) {
           if (listeners.size < 256 || listeners.has(context.toolCallId)) listeners.set(context.toolCallId, context.invalidate);
@@ -127,7 +123,6 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
         return renderCall(args, theme, context);
       },
       renderResult(result, options, theme, context) {
-        setLiveTheme(theme);
         if (!options.isPartial) unwatch(context.toolCallId);
         return renderResult(result, options, theme, context);
       },

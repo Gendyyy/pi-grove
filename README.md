@@ -117,11 +117,6 @@ inspect its startup state:
 /liuovo icons auto
 /liuovo icons nerd
 /liuovo icons ascii
-/liuovo calls 5
-/liuovo calls status
-/liuovo groups on
-/liuovo groups off
-/liuovo groups status
 ```
 
 ### Native codemode
@@ -363,18 +358,9 @@ with the same tool name and non-empty reasoning share one heading even when othe
 tools intervene. Groups follow first occurrence; calls within a group retain their
 original order. This is a grouped overview, not a chronological execution log. Each
 call keeps its own target/result row, including repeated reads of the same file.
-There is no bottom status widget and no separate screen that only lists calls. **Ctrl+O** expands
+There is no bottom status widget or separate `/liuovo calls` screen. **Ctrl+O** expands
 the whole card, including the children's bounded output/diff previews. Script
 source and script output appear last, only when expanded.
-
-While the script runs, the collapsed card follows the newest calls: it keeps the
-most recent **five** calls in view and reports the rest as `… N earlier calls`.
-The window cuts on group boundaries, so a shared heading is repeated rather than
-left dangling above rows it no longer introduces. Once the script settles, the
-collapsed card becomes the one-line heading plus `… N calls · Ctrl+O or click to expand`;
-the heading already carries the call count, duration and error count. Change the
-window with `/liuovo calls <1-32>` (`collapsedCalls` in `liuovo.json`);
-`/liuovo calls status` reports the current value.
 
 ```text
 codemode 修正配置并验证  ·  3 calls · 1 error · 8s
@@ -418,12 +404,11 @@ Usage stays owned by Pi and is never added a second time by the renderer.
 No synthetic messages or UI-only output are sent to the model. Nested `edit`/`write`
 results retain their per-call diff previews inside the codemode card.
 
-The observer retains at most **256 calls including parents** per batch. The running
-card shows the last five calls when collapsed (configurable, 1-32) and up to 256
-records when expanded. The window is applied to grouped rows, so a cut never
-splits a heading from the rows it introduces. Errors are never hidden silently:
-the settled heading counts them, and expanding shows every record. Shared headings
-do not change the call count. Reasoning,
+The observer retains at most **256 calls including parents** per batch. The card
+shows the first eight calls when collapsed and up to 256 records when expanded.
+The preview limit is applied before grouping, so later same-reason calls cannot
+push an earlier error or another tool out of the preview. Shared headings do not
+change the call count or this preview limit. Reasoning,
 targets and summaries are capped at 240 characters; each child output preview is
 capped at 2,048 characters/24 lines, with a 32,768-character preview budget per batch.
 Expanded script source and output each have an 8,192-character/80-line display cap. Omitted data is marked,
@@ -436,42 +421,6 @@ changes. Old native records remain readable; missing child output is labeled
 changes clear live state. Unfinished children become incomplete/cancelled, and
 late authoritative completion events replace inferred closure without accepting
 duplicate ends. RPC/JSON/print modes never open terminal widgets or overlays.
-
-### Turn groups
-
-By default the whole assistant turn folds into one card: reasoning, every tool
-call, and the answer stay in a single block instead of a stack of separate rows.
-The header reports what the turn did and how long it took:
-
-```text
-▸ Thought 4s · 6 calls · 1 error · 12.4s
-```
-
-While the turn runs, the card keeps the newest five calls in view (the same
-`collapsedCalls` window as codemode) and the header counts everything else. When
-the turn settles the card folds back to the header alone, because the header
-already carries the call count, the error count and the duration.
-
-Expansion has two levels:
-
-| Action | Shows |
-| --- | --- |
-| Click the header | Every call row of the turn, still compact |
-| `ctrl+o` | Full detail: each call's output, diff, script and script output |
-
-Reasoning stays inside the group. A message that continues with visible text (a
-final answer) is never absorbed, so answers stay readable at the top level. An
-absorbed reasoning block that later gains text moves back out of the group.
-
-`/liuovo groups off` restores Pi's native per-message transcript
-(`turnGroups` in `liuovo.json`). Turn grouping is cosmetic and fails safe: if the
-transcript shape is unexpected, messages render natively instead of being lost.
-
-Two limits come with the approach. Pi's `ctrl+t` reasoning toggle only reaches
-top-level transcript children, so absorbed reasoning is folded by the group, not
-by that toggle. And because grouping patches the transcript container, only one
-extension should do it — do not load `pi-cc-tools` grouping alongside
-`/liuovo groups on`.
 
 ### Structured results
 

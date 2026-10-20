@@ -88,35 +88,6 @@ export function saveLiuovoIconMode(mode: IconMode, configPath = defaultConfigPat
   return updateConfig({ iconMode: mode }, configPath);
 }
 
-/** Calls kept visible in a running codemode card; the settled card folds to its heading. */
-export const DEFAULT_COLLAPSED_CALLS = 5;
-/** Upper bound keeps a running card readable; the rest stays behind Ctrl+O. */
-export const MAX_COLLAPSED_CALLS = 32;
-
-/** Resolve the running-card call window; an out-of-range value keeps the default. */
-export function loadLiuovoCollapsedCalls(configPath = defaultConfigPath()): number {
-  try {
-    const value = JSON.parse(readFileSync(configPath, "utf8"))?.collapsedCalls;
-    if (typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_COLLAPSED_CALLS)
-      return value;
-  } catch {
-    // Missing and malformed config preserve the default window.
-  }
-  return DEFAULT_COLLAPSED_CALLS;
-}
-
-/** Resolve whether consecutive tool cards of one assistant turn share a card. */
-export function loadLiuovoTurnGroups(configPath = defaultConfigPath()): boolean {
-  try {
-    const parsed = JSON.parse(readFileSync(configPath, "utf8"));
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.turnGroups === false)
-      return false;
-  } catch {
-    // Missing and malformed config keep turn grouping enabled.
-  }
-  return true;
-}
-
 export function loadLiuovoMode(configPath = defaultConfigPath()): LiuovoMode {
   try {
     const mode = JSON.parse(readFileSync(configPath, "utf8"))?.mode;
@@ -163,28 +134,11 @@ export async function saveLiuovoEnabled(
   await updateConfig({ enabled }, configPath);
 }
 
-/** Persist the running-card call window after clamping it to the supported range. */
-export function saveLiuovoCollapsedCalls(
-  calls: number,
-  configPath = defaultConfigPath()
-): Promise<void> {
-  const clamped = Math.min(MAX_COLLAPSED_CALLS, Math.max(1, Math.trunc(calls)));
-  return updateConfig({ collapsedCalls: clamped }, configPath);
-}
-
 export async function saveLiuovoMode(
   mode: LiuovoMode,
   configPath = defaultConfigPath()
 ): Promise<void> {
   await updateConfig({ mode }, configPath);
-}
-
-/** Persist the turn-group switch; enabled stays the default. */
-export function saveLiuovoTurnGroups(
-  turnGroups: boolean,
-  configPath = defaultConfigPath()
-): Promise<void> {
-  return updateConfig({ turnGroups }, configPath);
 }
 
 export async function saveLiuovoIcons(
