@@ -49,3 +49,15 @@ export function paintSummary(name: string, summary: string, state: string, theme
   if (/^(done|applied|written|success)$/.test(summary)) return paint("success", summary);
   return paint("muted", summary);
 }
+
+let currentTheme: LiuovoTheme = plainTheme;
+
+/** Remember the host theme seen by the newest render so chrome-only components can style themselves. */
+export function setLiveTheme(theme: LiuovoTheme | undefined): void {
+  if (theme) currentTheme = theme;
+}
+
+/** Read the most recent host theme, falling back to unstyled text. */
+export function liveTheme(): LiuovoTheme {
+  return currentTheme;
+}

@@ -35,6 +35,8 @@
     "theme.ts",
     "icons.ts",
     "nested-tools.ts",
+    "turn-group.ts",
+    "turn-grouping.ts",
     "title-status.ts",
     "tool-composition.ts",
     "pi-fff/**/*.ts",
@@ -63,6 +65,9 @@
     "check": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test:collapse": "tsx tests/collapse.test.ts",
+    "test:turn-group": "tsx tests/turn-group.test.ts",
+    "test:real-cards": "tsx tests/real-cards.test.ts",
+    "test:ui": "tsx tests/collapse.test.ts && tsx tests/turn-group.test.ts && tsx tests/real-cards.test.ts",
     "test:coverage": "c8 npm test",
     "test:mutation": "stryker run",
     "test:host-smoke": "node scripts/host-smoke.mjs"
@@ -73,8 +78,8 @@
     "typebox": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@earendil-works/pi-tui": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@earendil-works/pi-tui": "1.3.0",
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/typescript-checker": "^9.6.1",
     "@types/node": "22.10.2",

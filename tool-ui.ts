@@ -4,6 +4,7 @@ import { buildToolBlock, shellSummary, WidthAwareLines } from "./block-render.js
 import type { LiuovoMode } from "./config.js";
 import type { IconMode } from "./icons.js";
 import { NestedToolObserver } from "./nested-tools.js";
+import { setLiveTheme } from "./theme.js";
 
 interface ToolUiOptions {
   /** Tools whose behavior this extension composes. Codemode is always presentation-only. */
@@ -114,6 +115,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
     renderers.set(name, {
       ...renderer,
       renderCall(args, theme, context) {
+        setLiveTheme(theme);
         // Hydrating history and streaming arguments must never start clocks.
         if (context.isPartial && context.executionStarted && startedAt.has(context.toolCallId)) {
           if (listeners.size < 256 || listeners.has(context.toolCallId)) listeners.set(context.toolCallId, context.invalidate);
@@ -125,6 +127,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
         return renderCall(args, theme, context);
       },
       renderResult(result, options, theme, context) {
+        setLiveTheme(theme);
         if (!options.isPartial) unwatch(context.toolCallId);
         return renderResult(result, options, theme, context);
       },

@@ -51,6 +51,8 @@ import {
   saveLiuovoCollapsedCalls,
   MAX_COLLAPSED_CALLS,
   loadLiuovoMode,
+  loadLiuovoTurnGroups,
+  saveLiuovoTurnGroups,
   loadLiuovoState,
   saveLiuovoEnabled,
   saveLiuovoIcons,
@@ -69,6 +71,7 @@ import {
   type PiFffIntegrationController,
 } from "./pi-fff/controller.js";
 import { runSetup } from "./setup.js";
+import { installTurnGrouping, settleTurnGroups } from "./turn-grouping.js";
 
 export { withReasoning } from "./tool-composition.js";
 
@@ -90,6 +93,9 @@ const LIUOVO_COMPLETIONS = [
   "calls 3",
   "calls 5",
   "calls 8",
+  "groups on",
+  "groups off",
+  "groups status",
   "icons on",
   "icons off",
   "icons status",
@@ -110,6 +116,8 @@ export interface LiuovoExtensionDependencies {
   saveIconMode?: typeof saveLiuovoIconMode;
   loadCollapsedCalls?: typeof loadLiuovoCollapsedCalls;
   saveCollapsedCalls?: typeof saveLiuovoCollapsedCalls;
+  loadTurnGroups?: typeof loadLiuovoTurnGroups;
+  saveTurnGroups?: typeof saveLiuovoTurnGroups;
   createIntegration?: (
     pi: ExtensionAPI,
     cwd: string
@@ -130,6 +138,8 @@ export function createLiuovoExtension(
     const persistIconMode = dependencies.saveIconMode ?? saveLiuovoIconMode;
     const liuovoCollapsedCalls = (dependencies.loadCollapsedCalls ?? loadLiuovoCollapsedCalls)();
     const persistCollapsedCalls = dependencies.saveCollapsedCalls ?? saveLiuovoCollapsedCalls;
+    const turnGroups = (dependencies.loadTurnGroups ?? loadLiuovoTurnGroups)();
+    const persistTurnGroups = dependencies.saveTurnGroups ?? saveLiuovoTurnGroups;
     const integration =
       dependencies.createIntegration?.(pi, cwd) ??
       createPiFffIntegrationController({ pi, cwd });
@@ -160,7 +170,7 @@ export function createLiuovoExtension(
                 : "default; no config file";
           const status = await integration.run("status", { enabled: liuovoState.enabled });
           ctx.ui.notify(
-            `liuovo is ${liuovoState.enabled ? "on" : "off"}, mode ${liuovoMode}, icons ${liuovoIcons ? "on" : "off"} (${detail}).\nIcon mode ${iconMode} (${resolvedIcons}).\nCollapsed calls ${liuovoCollapsedCalls}.\ncodemode: Pi-owned; ${pi.getActiveTools().includes("codemode") ? "active" : "inactive"} (configure defaultTools in Pi).\n${status.message}`,
+            `liuovo is ${liuovoState.enabled ? "on" : "off"}, mode ${liuovoMode}, icons ${liuovoIcons ? "on" : "off"} (${detail}).\nIcon mode ${iconMode} (${resolvedIcons}).\nCollapsed calls ${liuovoCollapsedCalls}.\nTurn groups ${turnGroups ? "on" : "off"}.\ncodemode: Pi-owned; ${pi.getActiveTools().includes("codemode") ? "active" : "inactive"} (configure defaultTools in Pi).\n${status.message}`,
             "info"
           );
           return;
@@ -238,6 +248,33 @@ export function createLiuovoExtension(
           await ctx.reload();
           return;
         }
+        if (action === "groups status") {
+          ctx.ui.notify(
+            "liuovo turn groups are " + (turnGroups ? "on" : "off") + "; one card collects each turn's tool calls and keeps the newest " + liuovoCollapsedCalls + " visible while it runs.",
+            "info"
+          );
+          return;
+        }
+        const groupsMatch = action.match(/^groups (on|off)$/);
+        if (groupsMatch) {
+          const wanted = groupsMatch[1] === "on";
+          if (wanted === turnGroups) {
+            ctx.ui.notify("liuovo turn groups are already " + (wanted ? "on" : "off") + ".", "info");
+            return;
+          }
+          try {
+            await persistTurnGroups(wanted);
+          } catch (error) {
+            ctx.ui.notify(
+              "Could not save " + CONFIG_PATH + ": " + (error instanceof Error ? error.message : String(error)),
+              "error"
+            );
+            return;
+          }
+          ctx.ui.notify("liuovo turn groups set to " + (wanted ? "on" : "off") + "; reloading.", "info");
+          await ctx.reload();
+          return;
+        }
         if (action === "calls status") {
           ctx.ui.notify(
             "liuovo keeps the newest " + liuovoCollapsedCalls + " calls visible while a codemode card runs; a finished card folds to its heading.",
@@ -274,7 +311,7 @@ export function createLiuovoExtension(
         }
         if (action !== "on" && action !== "off" && action !== "toggle") {
           ctx.ui.notify(
-            "Usage: /liuovo setup|status|teardown|on|off|toggle|mode default|reasoning|result|status|icons on|off|status|auto|nerd|ascii|calls 1-" + MAX_COLLAPSED_CALLS + "|calls status",
+            "Usage: /liuovo setup|status|teardown|on|off|toggle|mode default|reasoning|result|status|icons on|off|status|auto|nerd|ascii|calls 1-" + MAX_COLLAPSED_CALLS + "|calls status|groups on|off|status",
             "warning"
           );
           return;
@@ -345,6 +382,11 @@ export function createLiuovoExtension(
       tools: composedNames, mode: liuovoMode, icons: liuovoIcons, iconMode: resolvedIcons,
       collapsedCalls: liuovoCollapsedCalls,
     });
+
+    if (turnGroups) {
+      installTurnGrouping({ window: liuovoCollapsedCalls });
+      pi.on("agent_end", () => settleTurnGroups());
+    }
 
     pi.registerTool(buildGenerateImageTool());
   };

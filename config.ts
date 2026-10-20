@@ -105,6 +105,18 @@ export function loadLiuovoCollapsedCalls(configPath = defaultConfigPath()): numb
   return DEFAULT_COLLAPSED_CALLS;
 }
 
+/** Resolve whether consecutive tool cards of one assistant turn share a card. */
+export function loadLiuovoTurnGroups(configPath = defaultConfigPath()): boolean {
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.turnGroups === false)
+      return false;
+  } catch {
+    // Missing and malformed config keep turn grouping enabled.
+  }
+  return true;
+}
+
 export function loadLiuovoMode(configPath = defaultConfigPath()): LiuovoMode {
   try {
     const mode = JSON.parse(readFileSync(configPath, "utf8"))?.mode;
@@ -165,6 +177,14 @@ export async function saveLiuovoMode(
   configPath = defaultConfigPath()
 ): Promise<void> {
   await updateConfig({ mode }, configPath);
+}
+
+/** Persist the turn-group switch; enabled stays the default. */
+export function saveLiuovoTurnGroups(
+  turnGroups: boolean,
+  configPath = defaultConfigPath()
+): Promise<void> {
+  return updateConfig({ turnGroups }, configPath);
 }
 
 export async function saveLiuovoIcons(
