@@ -283,7 +283,7 @@ export function createLiuovoExtension(
       composedNames.add(source.name);
       return composeSourceTool(source, {
         mode: liuovoMode,
-        reasoningGuideline: `Always pass a "reasoning" phrase to ${source.name}: state the GOAL/intent, not the file or command (those are shown already). Write the reasoning in Chinese.`,
+        reasoningGuideline: `Always pass a "reasoning" phrase to ${source.name}: state the GOAL/intent, not the file or command (those are shown already). Write the reasoning in English.`,
       });
     };
     const sources = [

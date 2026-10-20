@@ -12,7 +12,7 @@ interface ToolUiOptions {
   icons: boolean;
   iconMode: IconMode;
 }
-const CODEMODE_GUIDANCE = "Start codemode scripts with a short Chinese goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
+const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 
 /** Own presentation and bounded result metadata, never codemode's tool definition or activation. */
 export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {

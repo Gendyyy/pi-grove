@@ -28,7 +28,7 @@ export function withReasoning(parameters: SourceToolDefinition["parameters"]): S
 	const reasoning = {
 		type: "string",
 		description:
-			"Short phrase (≤12 words, or ≤30 Chinese characters) stating the GOAL behind this call — the why-in-context, not the what. Do NOT restate the file, path, or command (those are already shown next to it); instead give the intent or what you expect to find/confirm. Present-tense, no period. E.g. \"confirm executionStarted is boolean\", \"fix the map leak from review\", \"retry match after previous miss\". Write the reasoning in Chinese.",
+			"Short phrase (≤12 English words) stating the GOAL behind this call — the why-in-context, not the what. Do NOT restate the file, path, or command (those are already shown next to it); instead give the intent or what you expect to find/confirm. Present-tense, no period. E.g. \"confirm executionStarted is boolean\", \"fix the map leak from review\", \"retry match after previous miss\". Write the reasoning in English.",
 	};
 	const properties = { reasoning, ...(parameters?.properties ?? {}) };
 	const required = Array.from(new Set(["reasoning", ...(parameters?.required ?? [])]));

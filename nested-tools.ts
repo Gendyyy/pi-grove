@@ -51,7 +51,7 @@ function goal(args: any): string {
   // Explicit annotation only; never infer intent from JavaScript. Keep native schema/grammar intact.
   const lines = typeof args?.code === "string" ? args.code.trimStart().split("\n", 3) : [];
   const line = lines[0]?.startsWith("// @options:") ? lines[1] : lines[0];
-  return brief(args?.reasoning) || brief(line?.match(/^\/\/\s*reasoning:\s*(.+)$/i)?.[1]) || "执行工具脚本";
+  return brief(args?.reasoning) || brief(line?.match(/^\/\/\s*reasoning:\s*(.+)$/i)?.[1]) || "Run tool script";
 }
 function elapsed(call: Call): number {
   if (call.status !== "running" || call.started === undefined) return call.duration ?? 0;
