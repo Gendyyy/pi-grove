@@ -1,0 +1,89 @@
+{
+  "name": "@liuovo/pi-tools-ui",
+  "version": "0.0.10",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "description": "Compact, reason-first tool output for pi with configurable layouts, live status, and diffs on demand.",
+  "license": "MIT",
+  "author": "Mikey O'Brien <m@mobrienv.dev>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liuc-c/pi-tools-ui.git"
+  },
+  "homepage": "https://github.com/liuc-c/pi-tools-ui#readme",
+  "bugs": "https://github.com/liuc-c/pi-tools-ui/issues",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "extension",
+    "developer-tools"
+  ],
+  "files": [
+    "index.ts",
+    "imagegen/**/*.ts",
+    "config.ts",
+    "tool-ui.ts",
+    "setup.ts",
+    "render.ts",
+    "block-render.ts",
+    "theme.ts",
+    "icons.ts",
+    "nested-tools.ts",
+    "title-status.ts",
+    "tool-composition.ts",
+    "pi-fff/**/*.ts",
+    "vendor/**/*.ts",
+    "README.md",
+    "LICENSE",
+    "docs/*.png",
+    "docs/pi-fff.md",
+    "docs/pi-1.1.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "release": "bumpp --git-check && npm publish",
+    "release:check": "npm run check && npm test && npm run test:pack",
+    "preversion": "npm run release:check",
+    "prepublishOnly": "npm run release:check",
+    "test": "node scripts/test.mjs",
+    "test:pack": "node scripts/test-pack.mjs",
+    "test:pi-fff-installed": "node scripts/pi-fff-installed-fixture.mjs",
+    "test:pi-fff-tui": "node scripts/pi-fff-tui-smoke.mjs",
+    "probe:pi-fff-installed": "node scripts/pi-fff-nonmutating-probe.mjs",
+    "check": "tsc --noEmit",
+    "test:coverage": "c8 npm test",
+    "test:mutation": "stryker run",
+    "test:host-smoke": "node scripts/host-smoke.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/typescript-checker": "^9.6.1",
+    "@types/node": "22.10.2",
+    "@types/semver": "^7.7.1",
+    "bumpp": "^12.3.0",
+    "c8": "^11.0.0",
+    "tsx": "^4.20.5",
+    "typebox": "1.1.38",
+    "typescript": "5.6.3"
+  },
+  "dependencies": {
+    "semver": "^7.8.5"
+  }
+}
