@@ -119,6 +119,9 @@ inspect its startup state:
 /liuovo icons ascii
 /liuovo calls 5
 /liuovo calls status
+/liuovo groups on
+/liuovo groups off
+/liuovo groups status
 ```
 
 ### Native codemode
@@ -433,6 +436,42 @@ changes. Old native records remain readable; missing child output is labeled
 changes clear live state. Unfinished children become incomplete/cancelled, and
 late authoritative completion events replace inferred closure without accepting
 duplicate ends. RPC/JSON/print modes never open terminal widgets or overlays.
+
+### Turn groups
+
+By default the whole assistant turn folds into one card: reasoning, every tool
+call, and the answer stay in a single block instead of a stack of separate rows.
+The header reports what the turn did and how long it took:
+
+```text
+▸ Thought 4s · 6 calls · 1 error · 12.4s
+```
+
+While the turn runs, the card keeps the newest five calls in view (the same
+`collapsedCalls` window as codemode) and the header counts everything else. When
+the turn settles the card folds back to the header alone, because the header
+already carries the call count, the error count and the duration.
+
+Expansion has two levels:
+
+| Action | Shows |
+| --- | --- |
+| Click the header | Every call row of the turn, still compact |
+| `ctrl+o` | Full detail: each call's output, diff, script and script output |
+
+Reasoning stays inside the group. A message that continues with visible text (a
+final answer) is never absorbed, so answers stay readable at the top level. An
+absorbed reasoning block that later gains text moves back out of the group.
+
+`/liuovo groups off` restores Pi's native per-message transcript
+(`turnGroups` in `liuovo.json`). Turn grouping is cosmetic and fails safe: if the
+transcript shape is unexpected, messages render natively instead of being lost.
+
+Two limits come with the approach. Pi's `ctrl+t` reasoning toggle only reaches
+top-level transcript children, so absorbed reasoning is folded by the group, not
+by that toggle. And because grouping patches the transcript container, only one
+extension should do it — do not load `pi-cc-tools` grouping alongside
+`/liuovo groups on`.
 
 ### Structured results
 
