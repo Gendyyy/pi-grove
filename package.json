@@ -61,6 +61,8 @@
     "test:pi-fff-tui": "node scripts/pi-fff-tui-smoke.mjs",
     "probe:pi-fff-installed": "node scripts/pi-fff-nonmutating-probe.mjs",
     "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test:collapse": "tsx tests/collapse.test.ts",
     "test:coverage": "c8 npm test",
     "test:mutation": "stryker run",
     "test:host-smoke": "node scripts/host-smoke.mjs"
