@@ -47,6 +47,9 @@ import {
   loadLiuovoIcons,
   loadLiuovoIconMode,
   saveLiuovoIconMode,
+  loadLiuovoCollapsedCalls,
+  saveLiuovoCollapsedCalls,
+  MAX_COLLAPSED_CALLS,
   loadLiuovoMode,
   loadLiuovoState,
   saveLiuovoEnabled,
@@ -83,6 +86,10 @@ const LIUOVO_COMPLETIONS = [
   "mode reasoning",
   "mode result",
   "mode status",
+  "calls status",
+  "calls 3",
+  "calls 5",
+  "calls 8",
   "icons on",
   "icons off",
   "icons status",
@@ -101,6 +108,8 @@ export interface LiuovoExtensionDependencies {
   saveIcons?: typeof saveLiuovoIcons;
   loadIconMode?: typeof loadLiuovoIconMode;
   saveIconMode?: typeof saveLiuovoIconMode;
+  loadCollapsedCalls?: typeof loadLiuovoCollapsedCalls;
+  saveCollapsedCalls?: typeof saveLiuovoCollapsedCalls;
   createIntegration?: (
     pi: ExtensionAPI,
     cwd: string
@@ -119,6 +128,8 @@ export function createLiuovoExtension(
     const iconMode = (dependencies.loadIconMode ?? loadLiuovoIconMode)();
     const resolvedIcons = resolveIconMode(iconMode);
     const persistIconMode = dependencies.saveIconMode ?? saveLiuovoIconMode;
+    const liuovoCollapsedCalls = (dependencies.loadCollapsedCalls ?? loadLiuovoCollapsedCalls)();
+    const persistCollapsedCalls = dependencies.saveCollapsedCalls ?? saveLiuovoCollapsedCalls;
     const integration =
       dependencies.createIntegration?.(pi, cwd) ??
       createPiFffIntegrationController({ pi, cwd });
@@ -149,7 +160,7 @@ export function createLiuovoExtension(
                 : "default; no config file";
           const status = await integration.run("status", { enabled: liuovoState.enabled });
           ctx.ui.notify(
-            `liuovo is ${liuovoState.enabled ? "on" : "off"}, mode ${liuovoMode}, icons ${liuovoIcons ? "on" : "off"} (${detail}).\nIcon mode ${iconMode} (${resolvedIcons}).\ncodemode: Pi-owned; ${pi.getActiveTools().includes("codemode") ? "active" : "inactive"} (configure defaultTools in Pi).\n${status.message}`,
+            `liuovo is ${liuovoState.enabled ? "on" : "off"}, mode ${liuovoMode}, icons ${liuovoIcons ? "on" : "off"} (${detail}).\nIcon mode ${iconMode} (${resolvedIcons}).\nCollapsed calls ${liuovoCollapsedCalls}.\ncodemode: Pi-owned; ${pi.getActiveTools().includes("codemode") ? "active" : "inactive"} (configure defaultTools in Pi).\n${status.message}`,
             "info"
           );
           return;
@@ -227,9 +238,43 @@ export function createLiuovoExtension(
           await ctx.reload();
           return;
         }
+        if (action === "calls status") {
+          ctx.ui.notify(
+            "liuovo keeps the newest " + liuovoCollapsedCalls + " calls visible while a codemode card runs; a finished card folds to its heading.",
+            "info"
+          );
+          return;
+        }
+        const callsMatch = action.match(/^calls (\d{1,2})$/);
+        if (callsMatch) {
+          const requested = Number(callsMatch[1]);
+          if (requested < 1 || requested > MAX_COLLAPSED_CALLS) {
+            ctx.ui.notify(
+              "liuovo calls must be between 1 and " + MAX_COLLAPSED_CALLS + ".",
+              "warning"
+            );
+            return;
+          }
+          if (requested === liuovoCollapsedCalls) {
+            ctx.ui.notify("liuovo already keeps " + requested + " calls visible.", "info");
+            return;
+          }
+          try {
+            await persistCollapsedCalls(requested);
+          } catch (error) {
+            ctx.ui.notify(
+              "Could not save " + CONFIG_PATH + ": " + (error instanceof Error ? error.message : String(error)),
+              "error"
+            );
+            return;
+          }
+          ctx.ui.notify("liuovo collapsed calls set to " + requested + "; reloading.", "info");
+          await ctx.reload();
+          return;
+        }
         if (action !== "on" && action !== "off" && action !== "toggle") {
           ctx.ui.notify(
-            "Usage: /liuovo setup|status|teardown|on|off|toggle|mode default|reasoning|result|status|icons on|off|status|auto|nerd|ascii",
+            "Usage: /liuovo setup|status|teardown|on|off|toggle|mode default|reasoning|result|status|icons on|off|status|auto|nerd|ascii|calls 1-" + MAX_COLLAPSED_CALLS + "|calls status",
             "warning"
           );
           return;
@@ -298,6 +343,7 @@ export function createLiuovoExtension(
     startupPlan.commit(compose);
     registerToolUi(pi, {
       tools: composedNames, mode: liuovoMode, icons: liuovoIcons, iconMode: resolvedIcons,
+      collapsedCalls: liuovoCollapsedCalls,
     });
 
     pi.registerTool(buildGenerateImageTool());

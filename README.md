@@ -117,6 +117,8 @@ inspect its startup state:
 /liuovo icons auto
 /liuovo icons nerd
 /liuovo icons ascii
+/liuovo calls 5
+/liuovo calls status
 ```
 
 ### Native codemode
@@ -358,9 +360,18 @@ with the same tool name and non-empty reasoning share one heading even when othe
 tools intervene. Groups follow first occurrence; calls within a group retain their
 original order. This is a grouped overview, not a chronological execution log. Each
 call keeps its own target/result row, including repeated reads of the same file.
-There is no bottom status widget or separate `/liuovo calls` screen. **Ctrl+O** expands
+There is no bottom status widget and no separate screen that only lists calls. **Ctrl+O** expands
 the whole card, including the children's bounded output/diff previews. Script
 source and script output appear last, only when expanded.
+
+While the script runs, the collapsed card follows the newest calls: it keeps the
+most recent **five** calls in view and reports the rest as `… N earlier calls`.
+The window cuts on group boundaries, so a shared heading is repeated rather than
+left dangling above rows it no longer introduces. Once the script settles, the
+collapsed card becomes the one-line heading plus `… N calls · Ctrl+O or click to expand`;
+the heading already carries the call count, duration and error count. Change the
+window with `/liuovo calls <1-32>` (`collapsedCalls` in `liuovo.json`);
+`/liuovo calls status` reports the current value.
 
 ```text
 codemode 修正配置并验证  ·  3 calls · 1 error · 8s
@@ -404,11 +415,12 @@ Usage stays owned by Pi and is never added a second time by the renderer.
 No synthetic messages or UI-only output are sent to the model. Nested `edit`/`write`
 results retain their per-call diff previews inside the codemode card.
 
-The observer retains at most **256 calls including parents** per batch. The card
-shows the first eight calls when collapsed and up to 256 records when expanded.
-The preview limit is applied before grouping, so later same-reason calls cannot
-push an earlier error or another tool out of the preview. Shared headings do not
-change the call count or this preview limit. Reasoning,
+The observer retains at most **256 calls including parents** per batch. The running
+card shows the last five calls when collapsed (configurable, 1-32) and up to 256
+records when expanded. The window is applied to grouped rows, so a cut never
+splits a heading from the rows it introduces. Errors are never hidden silently:
+the settled heading counts them, and expanding shows every record. Shared headings
+do not change the call count. Reasoning,
 targets and summaries are capped at 240 characters; each child output preview is
 capped at 2,048 characters/24 lines, with a 32,768-character preview budget per batch.
 Expanded script source and output each have an 8,192-character/80-line display cap. Omitted data is marked,

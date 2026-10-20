@@ -8,7 +8,7 @@ import type { ExtensionContext, ToolExecutionStartEvent, ToolRenderers } from "@
 const MAX_CALLS = 256;
 const PREVIEW_CHARS = 2048;
 const PREVIEW_TOTAL = 32768;
-const COLLAPSED_CALLS = 8;
+import { DEFAULT_COLLAPSED_CALLS, MAX_COLLAPSED_CALLS } from "./config.js";
 type Status = "running" | "success" | "error" | "incomplete" | "cancelled";
 interface Call {
   id: string;
@@ -79,8 +79,10 @@ function nativeCall(record: any, index: number): { call: Call; incomplete: boole
   } };
 }
 
+type Row = { call: Call; heading: boolean; depth: number };
+
 /** Presentation-only grouping: first-seen groups, original order within each group. */
-function groupedCalls(calls: Call[]): Array<{ call: Call; heading: boolean; depth: number }> {
+function groupedCalls(calls: Call[]): Row[] {
   const byId = new Map(calls.map(call => [call.id, call]));
   const children = new Map<Call, Call[]>();
   const roots: Call[] = [];
@@ -92,7 +94,7 @@ function groupedCalls(calls: Call[]): Array<{ call: Call; heading: boolean; dept
       children.set(parent, siblings);
     } else roots.push(call);
   }
-  const rows: Array<{ call: Call; heading: boolean; depth: number }> = [];
+  const rows: Row[] = [];
   const visited = new Set<Call>();
   const visit = (siblings: Call[], depth: number) => {
     const groups: Call[][] = [];
@@ -123,6 +125,32 @@ function groupedCalls(calls: Call[]): Array<{ call: Call; heading: boolean; dept
   // Malformed historic cycles must neither hang nor hide retained calls.
   for (const call of calls) if (!visited.has(call)) visit([call], 1);
   return rows;
+}
+
+/** Keep the newest rows only, cutting between groups and re-heading a partly kept group. */
+function recentRows(rows: Row[], limit: number): Row[] {
+  if (limit <= 0) return [];
+  const groups: Row[][] = [];
+  for (const row of rows) {
+    if (row.heading || groups.length === 0) groups.push([row]);
+    else groups[groups.length - 1]!.push(row);
+  }
+  const kept: Row[][] = [];
+  let taken = 0;
+  for (let index = groups.length - 1; index >= 0 && taken < limit; index--) {
+    const group = groups[index]!;
+    const room = limit - taken;
+    if (group.length <= room) {
+      kept.unshift(group);
+      taken += group.length;
+      continue;
+    }
+    const partial = group.slice(group.length - room);
+    partial[0] = { ...partial[0]!, heading: true };
+    kept.unshift(partial);
+    taken = limit;
+  }
+  return kept.flat();
 }
 
 /** Bounded UI projection. Snapshots live in result details, never model-facing content. */
@@ -292,7 +320,7 @@ export class NestedToolObserver {
     }
   }
 
-  private lines(id: string, args: any, result: any, options: any, theme: LiuovoTheme, icons: boolean, iconMode: IconMode, width: number): string[] {
+  private lines(id: string, args: any, result: any, options: any, theme: LiuovoTheme, icons: boolean, iconMode: IconMode, width: number, collapsedCalls: number): string[] {
     const partial = options.isPartial === true;
     const snapshot = partial ? this.snapshot(id) : this.recorded(result);
     const calls = snapshot.calls;
@@ -324,10 +352,15 @@ export class NestedToolObserver {
     const tight = visibleWidth(label + separator + summary) > width;
     const lines = [summaryLine(label, themeText(theme, "text", goal(args)), separator,
       tight && issues.length ? [...issues, ...active, total, ...time].join(dot) : summary, width)];
-    const shown = options.expanded ? calls : calls.slice(0, COLLAPSED_CALLS);
-    // Apply the call-count preview cap before grouping, never pull later calls
-    // forward at the expense of an earlier failure or a different tool.
-    for (const { call, heading, depth } of groupedCalls(shown)) {
+    // A running card keeps a live tail of the newest calls so the card follows the
+    // work. A settled card folds to its heading; Ctrl+O or a click reveals all of it.
+    // Earlier failures leave the rows but stay counted in the heading summary.
+    const rows = options.expanded
+      ? groupedCalls(calls)
+      : partial
+        ? recentRows(groupedCalls(calls), Math.min(collapsedCalls, MAX_COLLAPSED_CALLS))
+        : [];
+    for (const { call, heading, depth } of rows) {
       const indent = "  ".repeat(depth);
       const cost = call.model && call.cost !== undefined ? ` · ${costText(call.cost)}` : "";
       const summary = paintSummary(call.name, this.callSummary(call) + cost, call.status, theme);
@@ -345,7 +378,12 @@ export class NestedToolObserver {
         if (call.fullOutputPath) lines.push(`${indent}    ${themeText(theme, "muted", `Full output: ${call.fullOutputPath}`)}`);
       }
     }
-    if (shown.length < calls.length) lines.push(themeText(theme, "muted", `  … ${calls.length - shown.length} more calls · Ctrl+O to expand`));
+    if (!options.expanded && calls.length > rows.length) {
+      const hidden = calls.length - rows.length;
+      lines.push(themeText(theme, "muted", partial
+        ? "  … " + hidden + " earlier " + (hidden === 1 ? "call" : "calls") + " · Ctrl+O to expand"
+        : "  … " + calls.length + " " + (calls.length === 1 ? "call" : "calls") + " · Ctrl+O or click to expand"));
+    }
     if (snapshot.incomplete) lines.push(themeText(theme, "warning", "  Incomplete record; calls or arguments omitted"));
     if (options.expanded) {
       const appendSection = (label: string, value: string) => {
@@ -368,13 +406,13 @@ export class NestedToolObserver {
     return lines;
   }
 
-  renderers(icons: boolean, iconMode: IconMode = "auto"): ToolRenderers {
+  renderers(icons: boolean, iconMode: IconMode = "auto", collapsedCalls: number = DEFAULT_COLLAPSED_CALLS): ToolRenderers {
     return {
       renderShell: "self",
       renderCall: (args, theme, context) => {
         if (!context.isPartial) return new Container();
         return WidthAwareLines.reuse(context.lastComponent,
-          width => this.lines(context.toolCallId, args, {}, { isPartial: true, expanded: context.expanded }, theme, icons, iconMode, width),
+          width => this.lines(context.toolCallId, args, {}, { isPartial: true, expanded: context.expanded }, theme, icons, iconMode, width, collapsedCalls),
           text => theme.bg("toolPendingBg", text),
           false,
           context.outputPad,
@@ -384,7 +422,7 @@ export class NestedToolObserver {
         if (options.isPartial) return new Container();
         const isError = context.isError;
         return WidthAwareLines.reuse(context.lastComponent,
-          width => this.lines(context.toolCallId, context.args, result, { ...options, isError, durationMs: context.durationMs }, theme, icons, iconMode, width),
+          width => this.lines(context.toolCallId, context.args, result, { ...options, isError, durationMs: context.durationMs }, theme, icons, iconMode, width, collapsedCalls),
           text => theme.bg(isError ? "toolErrorBg" : "toolSuccessBg", text),
           true,
           context.outputPad,
