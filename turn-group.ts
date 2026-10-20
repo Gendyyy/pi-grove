@@ -11,6 +11,7 @@
 import {
   Container,
   truncateToWidth,
+  visibleWidth,
   type Component,
   type TuiMouseEvent,
   type TuiMouseEventResult,
@@ -326,8 +327,15 @@ export class TurnGroupComponent extends Container {
     }
     const elapsed = this.finished ? this.finishedAt - this.openedAt : Date.now() - this.openedAt;
     parts.push(themeText(theme, this.finished ? "dim" : "syntaxVariable", formatElapsed(elapsed)));
-    if (this.finished && !this.open()) parts.push(themeText(theme, "dim", "ctrl+o or click"));
     const marker = themeText(theme, "dim", this.open() ? "▾" : "▸");
-    return truncateToWidth(`${marker} ${parts.join(separator)}`, width);
+    const base = `${marker} ${parts.join(separator)}`;
+    if (this.finished && !this.open()) {
+      // Prefer the full hint, then a shorter one, so narrow terminals stay readable.
+      for (const hint of ["ctrl+o or click", "ctrl+o"]) {
+        const line = base + separator + themeText(theme, "dim", hint);
+        if (visibleWidth(line) <= width) return line;
+      }
+    }
+    return truncateToWidth(base, width);
   }
 }

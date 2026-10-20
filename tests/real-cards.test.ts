@@ -1,6 +1,6 @@
 // Regression test: the turn-group predicates and patch against the real host components.
 import assert from "node:assert/strict";
-import { Container, Spacer, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { Container, Spacer, visibleWidth, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { ToolExecutionComponent, AssistantMessageComponent, initTheme, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { installTurnGrouping, isTurnGroupingInstalled } from "../turn-grouping.ts";
 import { TurnGroupComponent, isToolCard, isAssistantCard, isThinkingOnlyCard } from "../turn-group.ts";
@@ -48,6 +48,12 @@ assert.equal(settled.length, 2, "a settled turn folds to one line");
 assert.match(settled[1], /ctrl\+o or click/, "the settled header carries the expand hint");
 assert.doesNotMatch(settled[1], /earlier/, "a settled header never claims hidden calls");
 
+const narrow = group.render(40)[1];
+assert.ok(visibleWidth(narrow) <= 40, "the settled header fits a narrow terminal");
+assert.match(narrow, /ctrl\+o/, "the narrow header keeps a complete hint");
+assert.doesNotMatch(narrow, /…/, "the hint is shortened, not truncated");
+
+group.render(120);
 assert.equal(group.handleMouse(click(1))?.render, true, "a header click is handled");
 assert.ok(group.render(120).length > 2, "a header click reveals the rows");
 
