@@ -99,7 +99,7 @@ export function paintGroup(
     const parts = [scope, ...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode)];
     if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
     parts.push(themeText(theme, "dim", formatElapsed(timing.elapsed)));
-    const headColor: Foreground = timing.running ? "warning" : errors > 0 ? "error" : "dim";
+    const headColor: Foreground = timing.running ? "warning" : "dim";
     const head = themeText(theme, headColor, glyphs.rail + " " + (reveal ? glyphs.open : glyphs.closed) + " ");
     lines.push(fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width));
     targets.set(0, GROUP_TARGET);
@@ -111,14 +111,10 @@ export function paintGroup(
       const guide = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
       const open = expandAll || state.expanded.has(node.id);
       const mark = stateMark(node, glyphs, Date.now());
+      // The guide is structure, not state: the dot and the row summary already carry the
+      // outcome, so a failed call keeps a neutral rail instead of repainting the line.
       const railColor: Foreground =
-        node.kind === "thinking"
-          ? "muted"
-          : node.status === "error"
-            ? "error"
-            : node.status === "running"
-              ? "accent"
-              : "dim";
+        node.kind === "thinking" ? "muted" : node.status === "running" ? "accent" : "dim";
       const label =
         node.kind === "thinking"
           ? themeText(theme, "muted", "thinking")
