@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
-import type { IconMode } from "./icons.js";
+import { markFor, type IconMode } from "./icons.js";
 import { metric, paintSummary, plainTheme, themeText, toolLabel, type GroveTheme } from "./theme.js";
 import type { ExtensionContext, ToolExecutionStartEvent, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { readDetail } from "./details.js";
@@ -317,10 +317,17 @@ export class NestedToolObserver {
     const total = metric(theme, calls.length, calls.length === 1 ? "call" : "calls");
     const active = running ? [themeText(theme, "syntaxVariable", `${running} running`)] : [];
     const issues: string[] = [];
-    if (options.isError) issues.push(themeText(theme, "error", "script failed"));
-    if (errors) issues.push(themeText(theme, "error", `${errors} error`));
-    if (cancelled) issues.push(themeText(theme, "warning", `${cancelled} cancelled`));
-    if (incomplete) issues.push(themeText(theme, "warning", `${incomplete} incomplete`));
+    // One glyph and a number in place of each outcome word, keeping its colour.
+    const mark = (word: string) => (icons ? markFor(word, iconMode) : undefined);
+    const issue = (word: string, role: "error" | "warning", count?: number) => {
+      const glyph = mark(word);
+      if (count === undefined) return themeText(theme, role, glyph === undefined ? "script failed" : glyph);
+      return themeText(theme, role, glyph === undefined ? count + " " + word : glyph + " " + count);
+    };
+    if (options.isError) issues.push(issue("failed", "error"));
+    if (errors) issues.push(issue("error", "error", errors));
+    if (cancelled) issues.push(issue("cancelled", "warning", cancelled));
+    if (incomplete) issues.push(issue("incomplete", "warning", incomplete));
     const time = duration === undefined ? [] : [themeText(theme, "syntaxVariable", formatElapsed(duration))];
     const dot = themeText(theme, "dim", " · ");
     const separator = ` ${dot} `;
@@ -336,7 +343,7 @@ export class NestedToolObserver {
     for (const { call, heading, depth } of groupedCalls(shown)) {
       const indent = "  ".repeat(depth);
       const cost = call.model && call.cost !== undefined ? ` · ${costText(call.cost)}` : "";
-      const summary = paintSummary(call.name, this.callSummary(call) + cost, call.status, theme);
+      const summary = paintSummary(call.name, this.callSummary(call) + cost, call.status, theme, icons, iconMode);
       if (heading) {
         lines.push(truncateToWidth(`${indent}${toolLabel(call.name, theme, icons, iconMode)} ${themeText(theme, "text", call.reasoning || call.target || "arguments unavailable")}`, width, "…"));
       }

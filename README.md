@@ -34,13 +34,46 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | --- | --- | --- | --- |
 | `enabled` | on / off | on | render grove at all |
 | `mode` | default / reasoning / result | reasoning | what a row leads with |
-| `icons` | on / off | on | draw tool icons |
-| `iconMode` | auto / nerd / ascii | auto | which glyph set the rows use |
+| `icons` | on / off | on | replace tool words with glyphs |
+| `iconMode` | auto / nerd / ascii | auto | whether the font can draw them |
 | `group` | prompt / turn / message / off | prompt | where one card ends |
 | `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
 | `groupRevealErrors` | on / off | on | keep failed steps visible while collapsed |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
+
+
+## Glyphs
+
+`icons` is what keeps the card short. With a Nerd Font one tool word becomes a single
+glyph in that tool's own colour, one outcome word becomes a single mark, and a count
+keeps its number. `auto` turns glyphs on only when the terminal can draw them; force
+`ascii` to keep every word.
+
+| Glyph | Means |
+| --- | --- |
+| `` | read a file |
+| `` | write a file |
+| `` | edit a file |
+| `` | run a command |
+| `` | search file contents |
+| `` | find files by name |
+| `` | list a directory |
+| `` | run a script |
+| `×3` | three of something |
+| `12 L` | twelve lines, matches or files |
+
+| Mark | Means |
+| --- | --- |
+| `` | done, applied, written |
+| `` | error, failed |
+| `` | cancelled |
+| `` | incomplete |
+| `` | running |
+
+A tool grove has no glyph for keeps its name beside the generic mark, so an MCP call still
+says which server ran. A plain terminal keeps every word and drops only the old bracket
+prefixes.
 
 `PI_GROVE=on|off` overrides `enabled` for one shell, and `PI_GROVE_CONFIG` points the
 config at another file.

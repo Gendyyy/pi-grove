@@ -214,9 +214,10 @@ function plainToolSummary(
 /** One presentation for standalone tools and bounded, persisted nested summaries. */
 export function summarizeToolResult(
   name: string, result: any, isError: boolean,
-  args: Record<string, unknown> = {}, elapsedMs?: number, theme?: GroveTheme
+  args: Record<string, unknown> = {}, elapsedMs?: number, theme?: GroveTheme,
+  icons = false, iconMode: IconMode = "auto",
 ): string {
-  return paintSummary(name, plainToolSummary(name, result, isError, args, elapsedMs), isError ? "error" : "success", theme);
+  return paintSummary(name, plainToolSummary(name, result, isError, args, elapsedMs), isError ? "error" : "success", theme, icons, iconMode);
 }
 
 /** Pull the first text block out of a tool result / partial (shape varies). */
@@ -372,7 +373,7 @@ export function buildToolBlock(
   const runningPrefix = isPartial ? `${themeText(theme, "dim", "·")} ` : "";
   const summary = isPartial
     ? themeText(theme, "syntaxVariable", executionStarted ? formatElapsed(elapsedMs ?? 0) : "preparing")
-    : summarizeToolResult(name, result, isError, rest, elapsedMs, theme);
+    : summarizeToolResult(name, result, isError, rest, elapsedMs, theme, icons, iconMode);
 
   const label = `${runningPrefix}${toolLabel(name, theme, icons, iconMode)}`;
   const arrow = ` ${themeText(theme, "dim", "→")} `;

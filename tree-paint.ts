@@ -11,6 +11,7 @@ import {
   GROUP_TARGET,
   PREVIEW_LINES,
   countErrors,
+  errorCell,
   counted,
   detailOf,
   groupTiming,
@@ -95,8 +96,8 @@ export function paintGroup(
           themeText(theme, "dim", " of ") +
           themeText(theme, "muted", String(total)) +
           themeText(theme, "muted", " calls");
-    const parts = [scope, ...toolBreakdown(tools, theme, glyphs)];
-    if (errors > 0) parts.push(themeText(theme, "error", errors + (errors === 1 ? " error" : " errors")));
+    const parts = [scope, ...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode)];
+    if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
     parts.push(themeText(theme, "dim", formatElapsed(timing.elapsed)));
     const headColor: Foreground = timing.running ? "warning" : errors > 0 ? "error" : "dim";
     const head = themeText(theme, headColor, glyphs.rail + " " + (reveal ? glyphs.open : glyphs.closed) + " ");
@@ -132,7 +133,7 @@ export function paintGroup(
       const tail =
         node.kind === "thinking"
           ? themeText(theme, "dim", formatElapsed(node.duration ?? (node.status === "running" ? Date.now() - node.started : 0)))
-          : rowTail(node, theme, glyphs);
+          : rowTail(node, theme, glyphs, state.settings.icons, state.settings.iconMode);
       const line = detail
         ? summaryLine(
             connector,

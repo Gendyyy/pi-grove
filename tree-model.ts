@@ -5,7 +5,7 @@
  */
 import { stripVTControlCharacters } from "node:util";
 import { formatElapsed, summaryLine, summarizeToolResult } from "./block-render.js";
-import { resolveIconMode, type IconMode } from "./icons.js";
+import { markFor, resolveIconMode, toolWord, type IconMode } from "./icons.js";
 import { metric, paintSummary, themeText, toolColor, type Foreground, type GroveTheme } from "./theme.js";
 /** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
 export type GroupMode = "prompt" | "turn" | "message" | "off";
@@ -186,12 +186,20 @@ export function toolCounts(nodes: TreeNode[], counts = new Map<string, number>()
 }
 
 /** Paint the mix of tools inside one group, busiest first, with a bounded long tail. */
-export function toolBreakdown(nodes: TreeNode[], theme: GroveTheme, glyphs: Glyphs, kinds = 4): string[] {
+export function toolBreakdown(
+  nodes: TreeNode[],
+  theme: GroveTheme,
+  glyphs: Glyphs,
+  kinds = 4,
+  icons = false,
+  iconMode: IconMode = "auto",
+): string[] {
   const counts = [...toolCounts(nodes)].sort(
     (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
   );
+  // Each part is one glyph and a count once the font can name the tool itself.
   const parts = counts.slice(0, kinds).map(([name, count]) =>
-    themeText(theme, toolColor(name), name) +
+    themeText(theme, toolColor(name), icons ? toolWord(name, iconMode) : name) +
     themeText(theme, "dim", " " + glyphs.times) +
     themeText(theme, "muted", String(count)),
   );
@@ -213,17 +221,31 @@ export function counted(theme: GroveTheme, value: number, singular: string, plur
   return metric(theme, value, value === 1 ? singular : plural);
 }
 
+/** Failures as one glyph and a number, or the plain words when glyphs are unavailable. */
+export function errorCell(count: number, theme: GroveTheme, icons = false, iconMode: IconMode = "auto"): string {
+  const mark = icons ? markFor("error", iconMode) : undefined;
+  if (mark !== undefined) return themeText(theme, "error", mark + " " + count);
+  return themeText(theme, "error", count + (count === 1 ? " error" : " errors"));
+}
+
 /** Build the metadata tail of one row: scope, failures, outcome, and time. */
-export function rowTail(node: TreeNode, theme: GroveTheme, glyphs: Glyphs): string {
+export function rowTail(
+  node: TreeNode,
+  theme: GroveTheme,
+  glyphs: Glyphs,
+  icons = false,
+  iconMode: IconMode = "auto",
+): string {
   const parts: string[] = [];
   // A branch row names the mix of steps it contains instead of a bare count.
-  if (node.children.length > 0) parts.push(...toolBreakdown(node.children, theme, glyphs));
+  if (node.children.length > 0) parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode));
   const errors = node.children.filter(child => child.status === "error").length;
-  if (errors > 0) parts.push(themeText(theme, "error", errors + (errors === 1 ? " error" : " errors")));
+  if (errors > 0) parts.push(errorCell(errors, theme, icons, iconMode));
   // A branch row is summarized by its steps; a leaf row carries its own outcome.
-  if (node.summary && node.children.length === 0) parts.push(paintSummary(node.name, node.summary, node.status, theme));
+  if (node.summary && node.children.length === 0)
+    parts.push(paintSummary(node.name, node.summary, node.status, theme, icons, iconMode));
   else if (node.children.length === 0)
-    parts.push(paintSummary(node.name, node.status === "running" ? "running" : node.status, node.status, theme));
+    parts.push(paintSummary(node.name, node.status === "running" ? "running" : node.status, node.status, theme, icons, iconMode));
   const elapsed = node.duration ?? (node.status === "running" ? Date.now() - node.started : 0);
   parts.push(themeText(theme, "dim", formatElapsed(elapsed)));
   return parts.join(themeText(theme, "dim", DOT));
