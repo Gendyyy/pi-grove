@@ -11,7 +11,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { stripReasoning } from "./render.js";
-import type { LiuovoMode } from "./config.js";
+import type { LiuovoMode } from "./settings.js";
 
 /** Heterogeneous native/FFF schemas share Pi's actual tool contract. */
 export type SourceToolDefinition = ToolDefinition<any, any>;

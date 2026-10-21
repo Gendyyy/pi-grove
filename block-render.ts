@@ -13,7 +13,7 @@ import {
   nonEmptyLineCount,
   stripReasoning,
 } from "./render.js";
-import type { LiuovoMode } from "./config.js";
+import type { LiuovoMode } from "./settings.js";
 import { metric, paintSummary, themeText, toolLabel, type LiuovoTheme } from "./theme.js";
 import type { IconMode } from "./icons.js";
 

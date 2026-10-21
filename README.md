@@ -177,11 +177,18 @@ inspect its startup state:
 /liuovo group off
 /liuovo group status
 /liuovo group window 4
+/liuovo group errors on
+/liuovo group errors off
 /liuovo thinking group
 /liuovo thinking inline
 /liuovo thinking off
 /liuovo thinking status
+/liuovo thinking label Check the plan
 ```
+
+Every option lives in one table (`settings.ts`): defaults, validation,
+the `/liuovo` grammar, completions and the help text are derived from it, so a
+new option is one entry rather than a new branch.
 
 ### Native codemode
 

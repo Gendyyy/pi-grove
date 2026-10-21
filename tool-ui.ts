@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { Container } from "@earendil-works/pi-tui";
 import { buildToolBlock, shellSummary, WidthAwareLines } from "./block-render.js";
-import type { LiuovoMode, LiuovoThinking } from "./config.js";
+import type { LiuovoMode, LiuovoThinking } from "./settings.js";
 import type { IconMode } from "./icons.js";
 import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
