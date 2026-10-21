@@ -1,5 +1,5 @@
 /**
- * settings.ts — the single table of liuovo options. Defaults, validation, persistence,
+ * settings.ts — the single table of grove options. Defaults, validation, persistence,
  * command words and completions are all derived from it, so a new option is one entry.
  */
 import { defaultConfigPath, parseEnabled, readRawConfig, updateConfig } from "./config.js";
@@ -12,33 +12,37 @@ export const GROUPS = ["prompt", "turn", "message", "off"] as const;
 export const THINKINGS = ["group", "inline", "off"] as const;
 
 /** What one tool row leads with. */
-export type LiuovoMode = (typeof MODES)[number];
+export type GroveMode = (typeof MODES)[number];
 /** Where one collapsed card ends. */
-export type LiuovoGroup = (typeof GROUPS)[number];
+export type GroveGroup = (typeof GROUPS)[number];
 /** Where reasoning appears: inside the card, as pi rows, or nowhere. */
-export type LiuovoThinking = (typeof THINKINGS)[number];
+export type GroveThinking = (typeof THINKINGS)[number];
 
-/** The validated settings liuovo actually runs with. */
-export interface LiuovoSettings {
+/** The validated settings grove actually runs with. */
+export interface GroveSettings {
   enabled: boolean;
-  mode: LiuovoMode;
+  mode: GroveMode;
   icons: boolean;
   iconMode: IconMode;
-  group: LiuovoGroup;
+  group: GroveGroup;
   groupWindow: number;
   groupRevealErrors: boolean;
-  thinking: LiuovoThinking;
+  thinking: GroveThinking;
   /** Absent leaves pi's own hidden-thinking label alone; empty hides those lines. */
   thinkingLabel: string | undefined;
 }
 
-export type SettingKey = keyof LiuovoSettings;
+export type SettingKey = keyof GroveSettings;
 export type SettingValue = boolean | number | string | undefined;
 export type SettingKind = "boolean" | "enum" | "number" | "text";
 
 /** One option: how to validate it, what it falls back to, and how to describe it. */
 export interface SettingSpec {
   key: SettingKey;
+  /** Human wording for the settings panel. */
+  label: string;
+  /** Values the panel cycles through when they differ from the enum list. */
+  choices?: readonly string[];
   kind: SettingKind;
   values?: readonly string[];
   min?: number;
@@ -51,16 +55,34 @@ export interface SettingSpec {
 const LABEL_MAX = 60;
 const WINDOW_MAX = 32;
 
+/** Window sizes the panel offers; typing any value is still allowed. */
+export const WINDOW_CHOICES = ["1", "2", "3", "4", "5", "6", "8", "10", "12", "16"] as const;
+
 export const SETTINGS: readonly SettingSpec[] = [
-  { key: "enabled", kind: "boolean", fallback: true, summary: "render liuovo at all; PI_LIUOVO overrides" },
-  { key: "mode", kind: "enum", values: MODES, fallback: "default", summary: "what a tool row leads with" },
-  { key: "icons", kind: "boolean", fallback: true, summary: "draw tool icons" },
-  { key: "iconMode", kind: "enum", values: ICON_MODES, fallback: "auto", summary: "which glyph set to use" },
-  { key: "group", kind: "enum", values: GROUPS, fallback: "prompt", summary: "where one collapsed card ends" },
-  { key: "groupWindow", kind: "number", min: 1, max: WINDOW_MAX, fallback: 4, summary: "how many recent calls stay visible" },
-  { key: "groupRevealErrors", kind: "boolean", fallback: true, summary: "keep failed steps visible while collapsed" },
-  { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", summary: "where reasoning appears" },
-  { key: "thinkingLabel", kind: "text", summary: "text pi prints for a hidden thinking run; empty hides it" },
+  { key: "enabled", kind: "boolean", fallback: true, label: "Enabled", summary: "render grove at all; PI_GROVE overrides" },
+  { key: "mode", kind: "enum", values: MODES, fallback: "default", label: "Row label", summary: "what a tool row leads with" },
+  { key: "icons", kind: "boolean", fallback: true, label: "Tool icons", summary: "draw a glyph before each tool name" },
+  { key: "iconMode", kind: "enum", values: ICON_MODES, fallback: "auto", label: "Icon set", summary: "which glyph set to use" },
+  { key: "group", kind: "enum", values: GROUPS, fallback: "prompt", label: "Grouping", summary: "where one collapsed card ends" },
+  {
+    key: "groupWindow",
+    kind: "number",
+    min: 1,
+    max: WINDOW_MAX,
+    fallback: 4,
+    label: "Visible calls",
+    choices: WINDOW_CHOICES,
+    summary: "how many recent calls stay visible",
+  },
+  {
+    key: "groupRevealErrors",
+    kind: "boolean",
+    fallback: true,
+    label: "Keep failures visible",
+    summary: "failed steps stay visible while collapsed",
+  },
+  { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", label: "Reasoning", summary: "where reasoning appears" },
+  { key: "thinkingLabel", kind: "text", label: "Thinking label", summary: "text pi prints for a hidden thinking run; empty hides it" },
 ];
 
 const BY_KEY = new Map(SETTINGS.map(spec => [spec.key, spec]));
@@ -68,7 +90,7 @@ const BY_KEY = new Map(SETTINGS.map(spec => [spec.key, spec]));
 /** Look up one option's spec; the table is the only source of truth. */
 export function settingSpec(key: SettingKey): SettingSpec {
   const spec = BY_KEY.get(key);
-  if (!spec) throw new Error("unknown liuovo setting: " + key);
+  if (!spec) throw new Error("unknown grove setting: " + key);
   return spec;
 }
 
@@ -121,11 +143,11 @@ function readChoice<T extends string>(spec: SettingSpec, raw: unknown, values: r
 }
 
 /** Read and validate every option once, so callers never re-read the file per key. */
-export function readSettings(configPath = defaultConfigPath()): LiuovoSettings {
+export function readSettings(configPath = defaultConfigPath()): GroveSettings {
   const raw = readRawConfig(configPath);
   return {
-    // A valid PI_LIUOVO value wins over the file, so a shell can pin liuovo on or off.
-    enabled: parseEnabled(process.env.PI_LIUOVO) ?? readFlag(settingSpec("enabled"), raw.enabled, true),
+    // A valid PI_GROVE value wins over the file, so a shell can pin grove on or off.
+    enabled: parseEnabled(process.env.PI_GROVE) ?? readFlag(settingSpec("enabled"), raw.enabled, true),
     mode: readChoice(settingSpec("mode"), raw.mode, MODES, "default"),
     icons: readFlag(settingSpec("icons"), raw.icons, true),
     iconMode: readChoice(settingSpec("iconMode"), raw.iconMode, ICON_MODES, "auto"),
@@ -142,9 +164,9 @@ export function readSettings(configPath = defaultConfigPath()): LiuovoSettings {
 
 export type SettingsSource = "environment" | "file" | "default";
 
-/** Where the enabled flag came from, so /liuovo status can explain a refusal to save. */
+/** Where the enabled flag came from, so /grove status can explain a refusal to save. */
 export function settingsSource(configPath = defaultConfigPath()): SettingsSource {
-  if (parseEnabled(process.env.PI_LIUOVO) !== undefined) return "environment";
+  if (parseEnabled(process.env.PI_GROVE) !== undefined) return "environment";
   return readRawConfig(configPath).enabled === undefined ? "default" : "file";
 }
 
@@ -248,26 +270,41 @@ export function describe(key: SettingKey, value: SettingValue): string {
 }
 
 /** The value a setting currently holds, for change detection and status output. */
-export function currentValue(settings: LiuovoSettings, key: SettingKey): SettingValue {
+export function currentValue(settings: GroveSettings, key: SettingKey): SettingValue {
   return settings[key];
 }
 
-/** One line per option; the default set is every option liuovo owns. */
+/** One line per option; the default set is every option grove owns. */
 export function statusLines(
-  settings: LiuovoSettings,
+  settings: GroveSettings,
   keys: readonly SettingKey[] = SETTINGS.map(spec => spec.key)
 ): string[] {
   return keys.map(key => key + ": " + describe(key, currentValue(settings, key)));
 }
 
+/**
+ * Return a copy of the settings with one option replaced. The kind guard keeps a value that
+ * skipped validation (a stale file, a hand-edited panel row) from landing in a typed field.
+ */
+export function withSetting(settings: GroveSettings, key: SettingKey, value: SettingValue): GroveSettings {
+  const kind = settingSpec(key).kind;
+  const matches =
+    kind === "boolean"
+      ? typeof value === "boolean"
+      : kind === "number"
+        ? typeof value === "number"
+        : typeof value === "string" || value === undefined;
+  if (!matches) return settings;
+  return { ...settings, [key]: value } as GroveSettings;
+}
 /** Persist one option; the key names the JSON field, so nothing else needs editing. */
 export function saveSetting(key: SettingKey, value: SettingValue, configPath = defaultConfigPath()): Promise<void> {
   return updateConfig({ [key]: value }, configPath);
 }
 
-/** Every command form /liuovo offers, derived so a new option cannot be forgotten. */
+/** Every command form /grove offers, derived so a new option cannot be forgotten. */
 export function completions(): string[] {
-  const entries: string[] = [];
+  const entries: string[] = ["panel", "settings", "setup", "status", "teardown", "on", "off", "toggle"];
   for (const command of COMMANDS) {
     const words = command.words.join(" ");
     entries.push(words, words + " status");
@@ -285,5 +322,34 @@ export function completions(): string[] {
 /** Usage text built from the same table, so it cannot drift from the parser. */
 export function usageText(): string {
   const commands = COMMANDS.map(command => command.words.join(" ") + " " + command.keys.map(allowedText).join(" | "));
-  return "Usage: /liuovo setup|status|teardown|on|off|toggle, or " + commands.join(", ") + " (append status to read).";
+  return "Usage: /grove (settings panel), /grove setup|status|teardown|on|off|toggle, or " + commands.join(", ") + " (append status to read).";
+}
+
+/** One row of the settings panel. */
+export interface PanelRow {
+  key: SettingKey;
+  label: string;
+  description: string;
+  currentValue: string;
+  /** Values Enter cycles through; absent means the row opens an editor. */
+  choices?: readonly string[];
+}
+
+/** What the panel shows for one option, including how its value reads back. */
+function panelRow(settings: GroveSettings, spec: SettingSpec): PanelRow {
+  const row: PanelRow = {
+    key: spec.key,
+    label: spec.label,
+    description: spec.summary,
+    currentValue: describe(spec.key, currentValue(settings, spec.key)),
+  };
+  if (spec.kind === "boolean") row.choices = ["on", "off"];
+  else if (spec.kind === "enum") row.choices = spec.values ?? [];
+  else if (spec.kind === "number") row.choices = spec.choices ?? WINDOW_CHOICES;
+  return row;
+}
+
+/** Every panel row, in table order. */
+export function panelRows(settings: GroveSettings): PanelRow[] {
+  return SETTINGS.map(spec => panelRow(settings, spec));
 }

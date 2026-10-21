@@ -1,5 +1,5 @@
 /**
- * liuovo — compact, reason-first tool output for pi.
+ * grove — compact, reason-first tool output for pi.
  *
  * Model (per-tool 2-line block): each built-in tool renders its OWN compact
  * block inline in the transcript, in execution order, via the tool-renderer
@@ -33,13 +33,14 @@
  * Grouping stays inside pi's public renderer API: ToolTree collects the calls of
  * one prompt into a single clickable card, and a transcript replay rebuilds the
  * same card after /reload. Codemode remains Pi-owned; its nested steps arrive as
- * the details.piLiuovoNested snapshot, so foreign tools keep their own cards.
+ * the details.piGroveNested snapshot, so foreign tools keep their own cards.
  *
  * Usage:  pi -e ./index.ts     (or install as a pi package)
  */
 
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { resolveIconMode } from "./icons.js";
+import { showSettingsPanel } from "./panel.js";
 import { registerToolUi } from "./tool-ui.js";
 import { registerTitleStatus } from "./title-status.js";
 import { defaultConfigPath } from "./config.js";
@@ -79,9 +80,9 @@ export {
   buildToolBlock,
 } from "./block-render.js";
 
-export interface LiuovoExtensionDependencies {
+export interface GroveExtensionDependencies {
   cwd?: string;
-  /** Where liuovo.json lives; tests point this at a scratch file. */
+  /** Where grove.json lives; tests point this at a scratch file. */
   configPath?: string;
   readSettings?: typeof readSettings;
   saveSetting?: typeof saveSetting;
@@ -91,8 +92,8 @@ export interface LiuovoExtensionDependencies {
   ) => PiFffIntegrationController;
 }
 
-export function createLiuovoExtension(
-  dependencies: LiuovoExtensionDependencies = {}
+export function createGroveExtension(
+  dependencies: GroveExtensionDependencies = {}
 ) {
   return async (pi: ExtensionAPI): Promise<void> => {
     const cwd = dependencies.cwd ?? process.cwd();
@@ -117,7 +118,7 @@ export function createLiuovoExtension(
       }
       if (key === "enabled" && settingsSource(configPath) === "environment") {
         ctx.ui.notify(
-          "PI_LIUOVO overrides persistent settings; change or unset it first.",
+          "PI_GROVE overrides persistent settings; change or unset it first.",
           "warning"
         );
         return;
@@ -145,12 +146,12 @@ export function createLiuovoExtension(
       }
       const source = settingsSource(configPath);
       const origin =
-        source === "environment" ? "PI_LIUOVO override"
+        source === "environment" ? "PI_GROVE override"
           : source === "file" ? configPath
             : "default; no config file";
       const status = await integration.run("status", { enabled: settings.enabled });
       const detail = [
-        "liuovo is " + (settings.enabled ? "on" : "off") + " (" + origin + ").",
+        "grove is " + (settings.enabled ? "on" : "off") + " (" + origin + ").",
         ...lines,
         "iconMode " + settings.iconMode + " resolves to " + resolveIconMode(settings.iconMode) + ".",
         "codemode: pi-owned; " +
@@ -161,14 +162,14 @@ export function createLiuovoExtension(
       ctx.ui.notify(detail.join("\n"), "info");
     };
 
-    pi.registerCommand("liuovo", {
-      description: "Configure liuovo display and manage optional FFF execution",
+    pi.registerCommand("grove", {
+      description: "Configure grove display and manage optional FFF execution",
       getArgumentCompletions: (prefix) =>
         completions()
           .filter((value) => value.startsWith(prefix.trim().toLowerCase()))
           .map((value) => ({ value, label: value })),
       handler: async (args, ctx) => {
-        const words = args.trim().split(/s+/).filter((word) => word !== "");
+        const words = args.trim().split(/\s+/).filter((word) => word !== "");
         const verb = (words[0] ?? "").toLowerCase();
 
         if (verb === "setup" || verb === "teardown") {
@@ -189,6 +190,14 @@ export function createLiuovoExtension(
 
         if (verb === "status") {
           await report(ctx, SETTINGS.map((spec) => spec.key));
+          return;
+        }
+
+        if (verb === "" || verb === "panel" || verb === "settings") {
+          const written = await showSettingsPanel(ctx.ui, { settings });
+          if (!written) return;
+          ctx.ui.notify("grove settings saved; reloading to apply them.", "info");
+          ctx.reload();
           return;
         }
 
@@ -252,7 +261,7 @@ export function createLiuovoExtension(
       ...(["edit", "bash", "grep", "find", "ls"] as const).map(name => createNativeSource(name, cwd)),
     ];
     for (const source of sources) {
-      if (startupPlan.skipLiuovoTools.has(source.name as "read" | "grep" | "find")) continue;
+      if (startupPlan.skipGroveTools.has(source.name as "read" | "grep" | "find")) continue;
       pi.registerTool(compose(source));
     }
     startupPlan.commit(compose);
@@ -271,5 +280,5 @@ export function createLiuovoExtension(
   };
 }
 
-const extension = createLiuovoExtension();
+const extension = createGroveExtension();
 export default extension;
