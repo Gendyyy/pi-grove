@@ -15,7 +15,7 @@ import {
 } from "./render.js";
 import type { GroveMode } from "./settings.js";
 import { metric, paintSummary, themeText, toolLabel, type GroveTheme } from "./theme.js";
-import type { IconMode } from "./icons.js";
+import { labelGap, type IconMode } from "./icons.js";
 import { readDetail } from "./details.js";
 
 /** Hanging indent for detail and expanded continuation lines. */
@@ -375,7 +375,7 @@ export function buildToolBlock(
     ? themeText(theme, "syntaxVariable", executionStarted ? formatElapsed(elapsedMs ?? 0) : "preparing")
     : summarizeToolResult(name, result, isError, rest, elapsedMs, theme, icons, iconMode);
 
-  const label = `${runningPrefix}${toolLabel(name, theme, icons, iconMode)}`;
+  const label = `${runningPrefix}${toolLabel(name, theme, icons, iconMode)}${labelGap(name, icons, iconMode)}`;
   const arrow = ` ${themeText(theme, "dim", "→")} `;
   const headline = themeText(theme, "text", oneLine(reasoning || argDetail(name, rest)));
   const detail = argDetail(name, rest);

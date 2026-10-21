@@ -73,3 +73,8 @@ export function toolWord(name: string, mode: IconMode = "auto"): string {
   // saying which tool ran at all.
   return hasToolGlyph(name) ? iconFor(name, mode) : iconFor(name, mode) + "  " + name;
 }
+
+/** A patched glyph overhangs its cell, so words that follow one need an extra column. */
+export function labelGap(name: string, icons = true, mode: IconMode = "auto"): string {
+  return icons && glyphWords(mode) && hasToolGlyph(name) ? " " : "";
+}

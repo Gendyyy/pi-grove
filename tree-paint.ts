@@ -3,7 +3,7 @@
  * and records the click target of every line it paints.
  */
 import { colorizeDiff, fitToolLine, formatElapsed, summaryLine } from "./block-render.js";
-import type { IconMode } from "./icons.js";
+import { labelGap, type IconMode } from "./icons.js";
 import { plainTheme, themeText, toolLabel, type Foreground, type GroveTheme } from "./theme.js";
 import {
   DOT,
@@ -126,8 +126,10 @@ export function paintGroup(
       // The branch keeps its stem; the dot after it carries the call state, so a running
       // call blinks in place instead of the marker only saying open or closed.
       const stem = glyphs.rail + " " + guide + (last ? glyphs.end : glyphs.tee) + "─ ";
+      // A patched glyph overhangs its cell, so the words after it need that column back.
+      const gap = node.kind === "thinking" ? "" : labelGap(node.name, state.settings.icons, state.settings.iconMode);
       const connector =
-        themeText(theme, railColor, stem) + themeText(theme, mark.color, mark.glyph) + " " + label;
+        themeText(theme, railColor, stem) + themeText(theme, mark.color, mark.glyph) + " " + label + gap;
       // Reasoning stays a plain label until it is clicked; the text lives in the preview.
       const detail = node.kind === "thinking" ? "" : detailOf(node);
       const tail =

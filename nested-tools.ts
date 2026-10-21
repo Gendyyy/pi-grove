@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
-import { markFor, type IconMode } from "./icons.js";
+import { labelGap, markFor, type IconMode } from "./icons.js";
 import { metric, paintSummary, plainTheme, themeText, toolLabel, type GroveTheme } from "./theme.js";
 import type { ExtensionContext, ToolExecutionStartEvent, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { readDetail } from "./details.js";
@@ -345,7 +345,7 @@ export class NestedToolObserver {
       const cost = call.model && call.cost !== undefined ? ` · ${costText(call.cost)}` : "";
       const summary = paintSummary(call.name, this.callSummary(call) + cost, call.status, theme, icons, iconMode);
       if (heading) {
-        lines.push(truncateToWidth(`${indent}${toolLabel(call.name, theme, icons, iconMode)} ${themeText(theme, "text", call.reasoning || call.target || "arguments unavailable")}`, width, "…"));
+        lines.push(truncateToWidth(`${indent}${toolLabel(call.name, theme, icons, iconMode)}${labelGap(call.name, icons, iconMode)} ${themeText(theme, "text", call.reasoning || call.target || "arguments unavailable")}`, width, "…"));
       }
       lines.push(summaryLine(`${indent}  `, themeText(theme, "muted", call.target || "—"), ` ${themeText(theme, "dim", "→")} `, summary, width));
       if (options.expanded && call.status !== "running") {

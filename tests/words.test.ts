@@ -6,7 +6,7 @@ import test from "node:test";
 import type { Component } from "@earendil-works/pi-tui";
 import { errorCell, treeGlyphs, toolBreakdown, type TreeNode } from "../tree-model.js";
 import { ToolTree, type TreeSettings } from "../tool-tree.js";
-import { summarizeToolResult } from "../block-render.js";
+import { buildToolBlock, summarizeToolResult } from "../block-render.js";
 import { hasToolGlyph, markFor, toolWord } from "../icons.js";
 import { plainTheme } from "../theme.js";
 
@@ -92,4 +92,25 @@ test("the breakdown mixes glyphs and counts", () => {
   const glyphs = toolBreakdown(nodes, plainTheme, treeGlyphs("nerd"), 4, true, "nerd");
   const g = treeGlyphs("nerd");
   assert.deepEqual(glyphs, [READ + " " + g.times + "2", "\uf120 " + g.times + "1"]);
+});
+
+test("a glyph keeps a column of air before its text", () => {
+  const tree = new ToolTree(settings("nerd"));
+  tree.boundary("turn");
+  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
+  // A patched glyph overhangs its cell, so the row adds the column the font eats.
+  const row = lines(tree, "a")[1]!;
+  assert.ok(row.includes(READ + "  check the manifest"), "expected two spaces after the glyph: " + JSON.stringify(row));
+});
+
+test("a plain word keeps its single space", () => {
+  const tree = new ToolTree(settings("ascii"));
+  tree.boundary("turn");
+  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
+  assert.ok(lines(tree, "a")[1]!.includes("read check the manifest"));
+});
+
+test("the standalone card pads its label the same way", () => {
+  const block = buildToolBlock("read", { reasoning: "check the manifest" }, {}, { isError: false, isPartial: false, executionStarted: true, expanded: false, elapsedMs: 900, mode: "reasoning", icons: true, iconMode: "nerd", width: 96, theme: plainTheme });
+  assert.ok(block.some(line => line.includes(READ + "  check the manifest")), JSON.stringify(block));
 });
