@@ -60,7 +60,7 @@ export const WINDOW_CHOICES = ["1", "2", "3", "4", "5", "6", "8", "10", "12", "1
 
 export const SETTINGS: readonly SettingSpec[] = [
   { key: "enabled", kind: "boolean", fallback: true, label: "Enabled", summary: "render grove at all; PI_GROVE overrides" },
-  { key: "mode", kind: "enum", values: MODES, fallback: "default", label: "Row label", summary: "what a tool row leads with" },
+  { key: "mode", kind: "enum", values: MODES, fallback: "reasoning", label: "Row label", summary: "what a tool row leads with" },
   { key: "icons", kind: "boolean", fallback: true, label: "Tool icons", summary: "draw a glyph before each tool name" },
   { key: "iconMode", kind: "enum", values: ICON_MODES, fallback: "auto", label: "Icon set", summary: "which glyph set to use" },
   { key: "group", kind: "enum", values: GROUPS, fallback: "prompt", label: "Grouping", summary: "where one collapsed card ends" },
@@ -69,7 +69,7 @@ export const SETTINGS: readonly SettingSpec[] = [
     kind: "number",
     min: 1,
     max: WINDOW_MAX,
-    fallback: 4,
+    fallback: 5,
     label: "Visible calls",
     choices: WINDOW_CHOICES,
     summary: "how many recent calls stay visible",
@@ -82,7 +82,13 @@ export const SETTINGS: readonly SettingSpec[] = [
     summary: "failed steps stay visible while collapsed",
   },
   { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", label: "Reasoning", summary: "where reasoning appears" },
-  { key: "thinkingLabel", kind: "text", label: "Thinking label", summary: "text pi prints for a hidden thinking run; empty hides it" },
+  {
+    key: "thinkingLabel",
+    kind: "text",
+    fallback: "",
+    label: "Thinking label",
+    summary: "text pi prints for a hidden thinking run; empty hides it",
+  },
 ];
 
 const BY_KEY = new Map(SETTINGS.map(spec => [spec.key, spec]));
@@ -110,7 +116,9 @@ function coerce(spec: SettingSpec, raw: unknown): SettingValue {
       return typeof spec.fallback === "number" ? spec.fallback : undefined;
     }
     case "text": {
-      return typeof raw === "string" ? raw.slice(0, LABEL_MAX) : undefined;
+      if (typeof raw === "string") return raw.slice(0, LABEL_MAX);
+      // A text option still owns a fallback: the thinking label ships blank on purpose.
+      return typeof spec.fallback === "string" ? spec.fallback.slice(0, LABEL_MAX) : undefined;
     }
   }
 }

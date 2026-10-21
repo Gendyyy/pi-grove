@@ -15,8 +15,13 @@ Nothing opens by default, so a long turn still costs four lines until you ask fo
 ## Install
 
 ```sh
-pi install npm:pi-grove
+pi install npm:pi-grove        # published package
+pi install git:github.com/Gendyyy/pi-grove   # straight from the repository
 ```
+
+The defaults are deliberate, not placeholders: reasoning rows, five visible calls and a hidden
+thinking label are what this card looks like out of the box. A machine with no `grove.json` at all
+behaves exactly like the machine this was built on; the config file only records departures.
 
 Restart pi. Everything below is optional; the defaults are what the card above shows.
 
@@ -28,14 +33,14 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | Option | Values | Default | What it decides |
 | --- | --- | --- | --- |
 | `enabled` | on / off | on | render grove at all |
-| `mode` | default / reasoning / result | default | what a row leads with |
+| `mode` | default / reasoning / result | reasoning | what a row leads with |
 | `icons` | on / off | on | draw tool icons |
 | `iconMode` | auto / nerd / ascii | auto | which glyph set the rows use |
 | `group` | prompt / turn / message / off | prompt | where one card ends |
-| `groupWindow` | 1-32 | 4 | how many recent calls stay visible |
+| `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
 | `groupRevealErrors` | on / off | on | keep failed steps visible while collapsed |
 | `thinking` | group / inline / off | off | where reasoning appears |
-| `thinkingLabel` | text | pi default | label pi prints for a hidden thinking run |
+| `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
 `PI_GROVE=on|off` overrides `enabled` for one shell, and `PI_GROVE_CONFIG` points the
 config at another file.

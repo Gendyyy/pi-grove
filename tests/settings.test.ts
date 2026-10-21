@@ -41,14 +41,14 @@ test("missing settings fall back to the documented defaults", async () => {
   const path = await scratch({});
   const settings = readSettings(path);
   assert.equal(settings.enabled, true);
-  assert.equal(settings.mode, "default");
+  assert.equal(settings.mode, "reasoning");
   assert.equal(settings.icons, true);
   assert.equal(settings.iconMode, "auto");
   assert.equal(settings.group, "prompt");
-  assert.equal(settings.groupWindow, 4);
+  assert.equal(settings.groupWindow, 5);
   assert.equal(settings.groupRevealErrors, true);
   assert.equal(settings.thinking, "off");
-  assert.equal(settings.thinkingLabel, undefined);
+  assert.equal(settings.thinkingLabel, "");
 });
 
 test("stored junk never reaches the renderer", async () => {
@@ -64,7 +64,7 @@ test("stored junk never reaches the renderer", async () => {
   });
   const settings = readSettings(path);
   assert.equal(settings.enabled, true);
-  assert.equal(settings.mode, "default");
+  assert.equal(settings.mode, "reasoning");
   assert.equal(settings.icons, true);
   assert.equal(settings.iconMode, "auto");
   assert.equal(settings.group, "prompt");
@@ -135,7 +135,7 @@ test("labels, status lines and usage all come from the table", () => {
   assert.equal(describe("thinkingLabel", "hmm"), '"hmm"');
   const settings = readSettings("/nonexistent/grove.json");
   const lines = statusLines(settings, ["mode", "thinkingLabel"]);
-  assert.deepEqual(lines, ["mode: default", "thinkingLabel: pi default"]);
+  assert.deepEqual(lines, ["mode: reasoning", "thinkingLabel: hidden"]);
   assert.match(usageText(), /thinking label/);
   assert.ok(completions().includes("group window status"));
   assert.ok(completions().includes("thinking label "));
@@ -161,7 +161,7 @@ test("every option becomes one panel row with a label and a value to cycle", () 
 test("a value of the wrong kind never lands in the settings", () => {
   const settings = readSettings("/nonexistent/grove.json");
   assert.equal(withSetting(settings, "groupWindow", 8).groupWindow, 8);
-  assert.equal(withSetting(settings, "groupWindow", "8").groupWindow, 4);
+  assert.equal(withSetting(settings, "groupWindow", "8").groupWindow, 5);
   assert.equal(withSetting(settings, "icons", false).icons, false);
   assert.equal(withSetting(settings, "icons", "off").icons, true);
   assert.equal(withSetting(settings, "thinkingLabel", "").thinkingLabel, "");
