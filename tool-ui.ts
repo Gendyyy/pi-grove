@@ -7,7 +7,7 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
-import { ToolTree, type GroupMode } from "./tool-tree.js";
+import { ToolTree, type GroupMode, type TreeRow } from "./tool-tree.js";
 
 interface ToolUiOptions {
   /** Tools whose behavior this extension composes. Codemode is always presentation-only. */

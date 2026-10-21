@@ -1,449 +1,41 @@
 /**
- * tool-tree.ts — one clickable, drill-down card per assistant turn: every tool call,
- * its nested codemode steps, and bounded output, expandable at each level by clicking.
+ * tool-tree.ts — the state machine: it collects the calls of one prompt, closes a
+ * card at the right boundary, restores cards from a transcript, and re-exports the
+ * public surface so importers keep one entry point.
  */
-import { stripVTControlCharacters } from "node:util";
-import {
-  Container,
-  type Component,
-  type TuiMouseEvent,
-  type TuiMouseEventResult,
-} from "@earendil-works/pi-tui";
+import { Container, type Component } from "@earendil-works/pi-tui";
 import type { ToolExecutionEndEvent, ToolExecutionStartEvent } from "@earendil-works/pi-coding-agent";
-import { colorizeDiff, fitToolLine, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
-import { resolveIconMode, type IconMode } from "./icons.js";
+import { stripVTControlCharacters } from "node:util";
+import { summarizeToolResult, WidthAwareLines } from "./block-render.js";
 import { readNested, type ReplayCall } from "./replay.js";
 import { thinkingGoal, thinkingPreview, thinkingSummary } from "./thinking.js";
-import { metric, paintSummary, plainTheme, themeText, toolColor, toolLabel, type Foreground, type LiuovoTheme } from "./theme.js";
-
-/** How much transcript one group card covers. */
-/** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
-export type GroupMode = "prompt" | "turn" | "message" | "off";
-
-/** pi mounts two rows per call: the streaming call row and the finished result row. */
-export type PaintPhase = "call" | "result";
-
-/** Presentation settings owned by liuovo.json and resolved once at startup. */
-export interface TreeSettings {
-  mode: GroupMode;
-  /** Keep failed nested steps visible while their parent card is collapsed. */
-  revealErrors: boolean;
-  icons: boolean;
-  iconMode: IconMode;
-  /** How many recent calls the collapsed card keeps visible. */
-  window: number;
-}
-
-/** Lifecycle state of one tool call in the tree. */
-export type TreeStatus = "running" | "success" | "error" | "incomplete" | "cancelled";
-
-/** One tool call: the goal it pursued, what it touched, and its bounded output. */
-export interface TreeNode {
-  readonly id: string;
-  readonly parent?: string;
-  name: string;
-  goal: string;
-  target: string;
-  status: TreeStatus;
-  started: number;
-  duration?: number;
-  writeLines?: number;
-  summary?: string;
-  preview?: string[];
-  previewDiff?: boolean;
-  previewTruncated?: boolean;
-  children: TreeNode[];
-  /** Repaint hook of the row currently drawing this node, used when leadership moves. */
-  invalidate?: () => void;
-  /** Repaint hooks of both pi rows for this call, so the idle one can be blanked. */
-  slots?: Map<PaintPhase, () => void>;
-  /** True once a result row exists, so the live call row steps aside for it. */
-  hasResult?: boolean;
-  /** True for a node rebuilt from the transcript: its rows are history, not live calls. */
-  restored?: boolean;
-  /** True once a row of this node has actually painted the card. */
-  painted?: boolean;
-  /** Creation order, so a newer call wins leadership over an older one. */
-  seq: number;
-  /** Set on a reasoning row: it narrates the card but is not a tool call. */
-  kind?: "thinking";
-  /** Raw reasoning text, kept so a streaming repaint can be told from a real update. */
-  text?: string;
-}
-
-/** One turn or message boundary: the calls that share a card. */
-export interface TreeGroup {
-  key: string;
-  rows: TreeNode[];
-  nodes: Map<string, TreeNode>;
-  leaderId?: string;
-  started: number;
-  budget: number;
-  openAll: boolean;
-  invalidate?: () => void;
-}
-
-/** Click target that toggles every level of a group; node ids are tool call ids. */
-export const GROUP_TARGET = "@group";
-
-const MAX_ROWS = 64;
-const MAX_CHILDREN = 32;
-/** Groups that keep bounded output previews; older ones stay renderable without them. */
-const MAX_GROUPS = 24;
-/** Hard ceiling so a marathon session cannot grow the tree forever. */
-const MAX_GROUPS_TOTAL = 2000;
-const PREVIEW_LINES = 8;
-const PREVIEW_CHARS = 1200;
-const PREVIEW_TOTAL = 24000;
-const MAX_ID = 512;
-const DOT = " · ";
-const ELLIPSIS = "…";
-
-interface Glyphs {
-  rail: string;
-  tee: string;
-  end: string;
-  pipe: string;
-  open: string;
-  closed: string;
-  times: string;
-  dot: string;
-  hollow: string;
-}
-
-const UNICODE_GLYPHS: Glyphs = { rail: "▌", tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○" };
-const ASCII_GLYPHS: Glyphs = { rail: "|", tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o" };
-
-/** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
-export function treeGlyphs(mode: IconMode): Glyphs {
-  return resolveIconMode(mode) === "ascii" ? ASCII_GLYPHS : UNICODE_GLYPHS;
-}
-
-/** Strip terminal escapes from tool output before it is measured or stored. */
-function clean(value: unknown): string {
-  return typeof value === "string"
-    ? stripVTControlCharacters(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "")
-    : "";
-}
-
-/** Bound any single-line text so one card cannot dominate the transcript. */
-function brief(value: unknown, limit = 240): string {
-  const text = clean(value).replace(/\s+/g, " ").trim();
-  return text.length > limit ? text.slice(0, limit - 1) + ELLIPSIS : text;
-}
-
-/** Recover the stated goal: the injected reasoning param, else a codemode goal comment. */
-function goalOf(args: Record<string, unknown> | undefined): string {
-  const direct = args?.reasoning;
-  if (typeof direct === "string" && direct.trim()) return brief(direct, 200);
-  const code = args?.code ?? args?.script;
-  if (typeof code === "string") {
-    const match = code.match(/^\s*(?:\/\/|#)\s*reasoning:\s*(.+)$/im);
-    if (match) return brief(match[1], 200);
-  }
-  return "";
-}
-
-const TARGET_KEYS = ["path", "file_path", "filePath", "pattern", "query", "command", "cmd", "url", "name", "prompt"];
-
-/** Name the single value a call acts on, so a closed row still reads clearly. */
-function targetOf(args: Record<string, unknown> | undefined): string {
-  for (const key of TARGET_KEYS) {
-    const value = args?.[key];
-    if (typeof value === "string" && value.trim()) return brief(value, 120);
-  }
-  return "";
-}
-
-/** Compose the row's human detail: goal first, then the value it acted on when short. */
-function detailOf(node: TreeNode): string {
-  const goal = node.goal;
-  const target = node.target;
-  if (goal && target && target !== goal && !goal.includes(target) && target.length <= 28)
-    return goal + " (" + target + ")";
-  return goal || target || "";
-}
-
-/** Sum the wall clock of every top-level call in one group. */
-function groupTiming(rows: TreeNode[]): { elapsed: number; running: boolean } {
-  let start = Number.POSITIVE_INFINITY;
-  let end = 0;
-  let running = false;
-  for (const row of rows) {
-    start = Math.min(start, row.started);
-    if (row.status === "running") {
-      running = true;
-      end = Math.max(end, Date.now());
-    } else {
-      end = Math.max(end, row.started + (row.duration ?? 0));
-    }
-  }
-  if (!Number.isFinite(start)) return { elapsed: 0, running: false };
-  return { elapsed: Math.max(0, end - start), running: running };
-}
-
-/** Count every call by tool name, nested steps included, so the header can name them. */
-function toolCounts(nodes: TreeNode[], counts = new Map<string, number>()): Map<string, number> {
-  for (const node of nodes) {
-    if (node.kind === "thinking") continue;
-    counts.set(node.name, (counts.get(node.name) ?? 0) + 1);
-    toolCounts(node.children, counts);
-  }
-  return counts;
-}
-
-/** Paint the mix of tools inside one group, busiest first, with a bounded long tail. */
-function toolBreakdown(nodes: TreeNode[], theme: LiuovoTheme, glyphs: Glyphs, kinds = 4): string[] {
-  const counts = [...toolCounts(nodes)].sort(
-    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
-  );
-  const parts = counts.slice(0, kinds).map(([name, count]) =>
-    themeText(theme, toolColor(name), name) +
-    themeText(theme, "dim", " " + glyphs.times) +
-    themeText(theme, "muted", String(count)),
-  );
-  if (counts.length > kinds) parts.push(themeText(theme, "dim", "+" + (counts.length - kinds)));
-  return parts;
-}
-
-/** Count failures anywhere in the subtree. */
-function countErrors(nodes: TreeNode[]): number {
-  return nodes.reduce(
-    (total, node) =>
-      node.kind === "thinking" ? total : total + (node.status === "error" ? 1 : 0) + countErrors(node.children),
-    0,
-  );
-}
-
-/** Pluralize a counted noun without a plural dictionary. */
-function counted(theme: LiuovoTheme, value: number, singular: string, plural: string): string {
-  return metric(theme, value, value === 1 ? singular : plural);
-}
-
-/** Build the metadata tail of one row: scope, failures, outcome, and time. */
-function rowTail(node: TreeNode, theme: LiuovoTheme, glyphs: Glyphs): string {
-  const parts: string[] = [];
-  // A branch row names the mix of steps it contains instead of a bare count.
-  if (node.children.length > 0) parts.push(...toolBreakdown(node.children, theme, glyphs));
-  const errors = node.children.filter(child => child.status === "error").length;
-  if (errors > 0) parts.push(themeText(theme, "error", errors + (errors === 1 ? " error" : " errors")));
-  // A branch row is summarized by its steps; a leaf row carries its own outcome.
-  if (node.summary && node.children.length === 0) parts.push(paintSummary(node.name, node.summary, node.status, theme));
-  else if (node.children.length === 0)
-    parts.push(paintSummary(node.name, node.status === "running" ? "running" : node.status, node.status, theme));
-  const elapsed = node.duration ?? (node.status === "running" ? Date.now() - node.started : 0);
-  parts.push(themeText(theme, "dim", formatElapsed(elapsed)));
-  return parts.join(themeText(theme, "dim", DOT));
-}
-
-/** Render inputs shared by the painter and by tests. */
-export interface PaintState {
-  settings: TreeSettings;
-  expanded: ReadonlySet<string>;
-}
-
-/** How long one blink frame lasts; the watch timer repaints on the same cadence. */
-const BLINK_MS = 450;
-
-/** Colour and glyph of a row marker: the call state, not whether the row opens. */
-function stateMark(node: TreeNode, glyphs: Glyphs, now: number): { glyph: string; color: Foreground } {
-  if (node.kind === "thinking") return { glyph: glyphs.dot, color: "muted" };
-  switch (node.status) {
-    case "running":
-      // A running call pulses between the filled and the outline dot.
-      return { glyph: Math.floor(now / BLINK_MS) % 2 === 0 ? glyphs.dot : glyphs.hollow, color: "warning" };
-    case "error":
-      return { glyph: glyphs.dot, color: "error" };
-    case "success":
-      return { glyph: glyphs.dot, color: "success" };
-    case "cancelled":
-      return { glyph: glyphs.hollow, color: "muted" };
-    default:
-      return { glyph: glyphs.hollow, color: "warning" };
-  }
-}
-/**
- * Draw one group as a tree of rows. Returns ANSI text per line and, when a target map is
- * provided, records which node id owns each clickable line.
- */
-export function paintGroup(
-  state: PaintState,
-  group: TreeGroup,
-  width: number,
-  theme: LiuovoTheme = plainTheme,
-  piExpanded = false,
-  targets: Map<number, string> = new Map(),
-): string[] {
-  targets.clear();
-  const lines: string[] = [];
-  if (group.rows.length === 0) return lines;
-  const glyphs = treeGlyphs(state.settings.iconMode);
-  // Two different gestures: the header reveals every row of the group, while pi own
-  // expand-all (ctrl+o) opens every level. A revealed row still opens only by click.
-  const expandAll = piExpanded;
-  const reveal = piExpanded || group.openAll;
-  const limit = Math.max(1, state.settings.window);
-  // Reasoning rows narrate the card but are not calls, so the rolling window and the
-  // counts apply to tool rows only; reasoning from the window start onward stays in
-  // place, which keeps each thought directly above the action it led to.
-  const tools = group.rows.filter(row => row.kind !== "thinking");
-  const truncated = !reveal && tools.length > limit;
-  const visible = truncated ? tools.slice(-limit) : tools;
-  // Only a truncated card drops old narration: it belongs to rows that scrolled away.
-  const from = truncated && visible.length > 0 ? visible[0]!.seq : Number.NEGATIVE_INFINITY;
-  const kept = new Set(visible.map(row => row.id));
-  const rows = group.rows.filter(row => (row.kind === "thinking" ? row.seq >= from : kept.has(row.id)));
-
-  // The headline always leads the card, even for a single call: it is the frame that
-  // tells you what this turn did, and the rows below are its detail.
-  if (tools.length > 0) {
-    const timing = groupTiming(group.rows);
-    const errors = countErrors(tools);
-    const total = tools.length;
-    const scope =
-      visible.length === total
-        ? counted(theme, total, "call", "calls")
-        : themeText(theme, "accent", String(visible.length)) +
-          themeText(theme, "dim", " of ") +
-          themeText(theme, "muted", String(total)) +
-          themeText(theme, "muted", " calls");
-    const parts = [scope, ...toolBreakdown(tools, theme, glyphs)];
-    if (errors > 0) parts.push(themeText(theme, "error", errors + (errors === 1 ? " error" : " errors")));
-    parts.push(themeText(theme, "dim", formatElapsed(timing.elapsed)));
-    const headColor: Foreground = timing.running ? "warning" : errors > 0 ? "error" : "dim";
-    const head = themeText(theme, headColor, glyphs.rail + " " + (reveal ? glyphs.open : glyphs.closed) + " ");
-    lines.push(fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width));
-    targets.set(0, GROUP_TARGET);
-  }
-
-  const emit = (nodes: TreeNode[], ancestors: boolean[]): void => {
-    for (const [index, node] of nodes.entries()) {
-      const last = index === nodes.length - 1;
-      const guide = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
-      const open = expandAll || state.expanded.has(node.id);
-      const mark = stateMark(node, glyphs, Date.now());
-      const railColor: Foreground =
-        node.kind === "thinking"
-          ? "muted"
-          : node.status === "error"
-            ? "error"
-            : node.status === "running"
-              ? "accent"
-              : "dim";
-      const label =
-        node.kind === "thinking"
-          ? themeText(theme, "muted", "thinking")
-          : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode);
-      // The branch keeps its stem; the dot after it carries the call state, so a running
-      // call blinks in place instead of the marker only saying open or closed.
-      const stem = glyphs.rail + " " + guide + (last ? glyphs.end : glyphs.tee) + "─ ";
-      const connector =
-        themeText(theme, railColor, stem) + themeText(theme, mark.color, mark.glyph) + " " + label;
-      // Reasoning stays a plain label until it is clicked; the text lives in the preview.
-      const detail = node.kind === "thinking" ? "" : detailOf(node);
-      const tail =
-        node.kind === "thinking"
-          ? themeText(theme, "dim", formatElapsed(node.duration ?? (node.status === "running" ? Date.now() - node.started : 0)))
-          : rowTail(node, theme, glyphs);
-      const line = detail
-        ? summaryLine(
-            connector,
-            themeText(theme, node.status === "error" ? "error" : "muted", detail),
-            themeText(theme, "dim", DOT),
-            tail,
-            width,
-          )
-        : fitToolLine(connector + themeText(theme, "dim", DOT) + tail, width);
-      lines.push(line);
-      targets.set(lines.length - 1, node.id);
-
-      if (open) emit(node.children, [...ancestors, last]);
-      else if (state.settings.revealErrors)
-        emit(node.children.filter(child => child.status === "error"), [...ancestors, last]);
-
-      // Branch rows drill into their steps instead of dumping their own output.
-      const preview = node.children.length === 0 ? node.preview ?? [] : [];
-      if (open && preview.length > 0) {
-        const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
-        const prefix = themeText(theme, "dim", glyphs.rail + " " + childGuide + glyphs.pipe + " ");
-        const painted = node.previewDiff
-          ? colorizeDiff(preview.join("\n"), theme)
-          : preview.map(text => themeText(theme, "dim", text));
-        for (const text of painted.slice(0, PREVIEW_LINES)) {
-          lines.push(fitToolLine(prefix + text, width));
-          targets.set(lines.length - 1, node.id);
-        }
-        if (node.previewTruncated || painted.length > PREVIEW_LINES) {
-          lines.push(fitToolLine(prefix + themeText(theme, "dim", ELLIPSIS), width));
-          targets.set(lines.length - 1, node.id);
-        }
-      }
-    }
-  };
-
-  emit(rows, []);
-  return lines;
-}
-
-/** One tool row handed to the tree: its live component and the host's paint context. */
-/** The event kinds that can close a card. */
-export type PaintScope = "prompt" | "turn" | "message";
-
-export interface TreeRow {
-  toolCallId: string;
-  inner: Component;
-  theme?: LiuovoTheme;
-  expanded: boolean;
-  invalidate: () => void;
-  /** Which pi row this render call belongs to; defaults to the finished result row. */
-  phase?: PaintPhase;
-  background?: (text: string) => string;
-  outputPad?: number;
-}
-
-/** Renders and owns the click target of the single line that paints a group card. */
-class TreeBlock implements Component {
-  private painterWidth?: number;
-  private painter?: WidthAwareLines;
-
-  constructor(
-    private readonly tree: ToolTree,
-    private readonly group: TreeGroup,
-    private readonly theme: LiuovoTheme,
-    private readonly row: TreeRow,
-  ) {}
-
-  /** Paint the group, applying the host row background and inset padding. */
-  render(width: number): string[] {
-    const pad = this.row.outputPad ?? 1;
-    if (!this.painter || this.painterWidth !== width) {
-      this.painter = new WidthAwareLines(
-        innerWidth => this.tree.paint(this.group, innerWidth - pad * 2, this.theme, this.row.expanded),
-        this.row.background,
-        false,
-        pad,
-      );
-      this.painterWidth = width;
-    }
-    return this.painter.render(width);
-  }
-
-  invalidate(): void {
-    this.painter?.invalidate();
-  }
-
-  /** Toggle the clicked level; unknown rows fall through to pi's own expand. */
-  handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
-    if (event.type !== "click" || event.button !== "left") return undefined;
-    // Repaint from the click's own width so the hit map always matches these lines.
-    this.tree.paint(this.group, event.width - (this.row.outputPad ?? 1) * 2, this.theme, this.row.expanded);
-    const target = this.tree.targetAt(event.y);
-    if (target === undefined) return undefined;
-    this.tree.toggle(this.group, target);
-    return { handled: true };
-  }
-}
-
+import { plainTheme, type LiuovoTheme } from "./theme.js";
+import { TreeBlock, type TreeRow } from "./tree-block.js";
+import { BLINK_MS, paintGroup, type PaintState } from "./tree-paint.js";
+import {
+  DOT,
+  ELLIPSIS,
+  GROUP_TARGET,
+  MAX_CHILDREN,
+  MAX_GROUPS,
+  MAX_GROUPS_TOTAL,
+  MAX_ID,
+  MAX_ROWS,
+  PREVIEW_CHARS,
+  PREVIEW_LINES,
+  PREVIEW_TOTAL,
+  brief,
+  clean,
+  goalOf,
+  targetOf,
+  type GroupMode,
+  type PaintPhase,
+  type PaintScope,
+  type TreeGroup,
+  type TreeNode,
+  type TreeSettings,
+  type TreeStatus,
+} from "./tree-model.js";
 /**
  * Observes tool events, groups them by turn or message, and hands the first row of each
  * group a clickable tree that stands in for every row of that group.
@@ -916,3 +508,20 @@ export class ToolTree {
     return anyRunning(group.rows);
   }
 }
+
+
+// The public surface stays here: importers and tests never need to know the split.
+export { GROUP_TARGET, treeGlyphs } from "./tree-model.js";
+export type {
+  Glyphs,
+  GroupMode,
+  PaintPhase,
+  PaintScope,
+  TreeGroup,
+  TreeNode,
+  TreeSettings,
+  TreeStatus,
+} from "./tree-model.js";
+export { paintGroup } from "./tree-paint.js";
+export type { PaintState } from "./tree-paint.js";
+export type { TreeRow } from "./tree-block.js";
