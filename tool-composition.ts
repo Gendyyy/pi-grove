@@ -10,6 +10,7 @@ import {
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { stripReasoning } from "./render.js";
 import type { LiuovoMode } from "./config.js";
 
 /** Heterogeneous native/FFF schemas share Pi's actual tool contract. */
@@ -35,12 +36,6 @@ export function withReasoning(parameters: SourceToolDefinition["parameters"]): S
 	return { ...parameters, properties, required };
 }
 
-/** Remove only liuovo's injected field, retaining all other argument identities. */
-export function stripReasoning(params: Record<string, unknown>): { reasoning?: string; rest: Record<string, unknown> } {
-	const { reasoning, ...rest } = params;
-	if (!Object.hasOwn(params, "reasoning")) return { rest: params };
-	return { reasoning: typeof reasoning === "string" ? reasoning : undefined, rest };
-}
 
 /** Preserve source behavior and metadata; presentation is registered separately. */
 export function composeSourceTool<T extends SourceToolDefinition>(

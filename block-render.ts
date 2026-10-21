@@ -11,8 +11,8 @@ import {
   RESET,
   grepResultCounts,
   nonEmptyLineCount,
+  stripReasoning,
 } from "./render.js";
-import { stripReasoning } from "./tool-composition.js";
 import type { LiuovoMode } from "./config.js";
 import { metric, paintSummary, themeText, toolLabel, type LiuovoTheme } from "./theme.js";
 import type { IconMode } from "./icons.js";
@@ -179,7 +179,10 @@ function plainToolSummary(
     return `${status}${time}${shell?.truncated ? " · truncated" : ""}`;
   }
   if (isError) return text.split("\n")[0] || "error";
-  if (name === "read") return `${text.split("\n").length} lines`;
+  if (name === "read") {
+    const lines = text.split("\n").length;
+    return lines + (lines === 1 ? " line" : " lines");
+  }
   if (name === "write") {
     if (typeof args.content === "string" && !args.content.includes("\0")) {
       const lines = args.content.length === 0 ? 0 : (args.content.match(/\n/g)?.length ?? 0) + (args.content.endsWith("\n") ? 0 : 1);
@@ -202,7 +205,9 @@ function plainToolSummary(
     const { matches, files } = grepResultCounts(text);
     return `${matches} ${matches === 1 ? "match" : "matches"} in ${files} ${files === 1 ? "file" : "files"}`;
   }
-  return `${nonEmptyLineCount(text)} ${name === "find" ? "files" : name === "ls" ? "entries" : "results"}`;
+  const count = nonEmptyLineCount(text);
+  const noun = name === "find" ? (count === 1 ? "file" : "files") : name === "ls" ? (count === 1 ? "entry" : "entries") : (count === 1 ? "result" : "results");
+  return count + " " + noun;
 }
 
 /** One presentation for standalone tools and bounded, persisted nested summaries. */

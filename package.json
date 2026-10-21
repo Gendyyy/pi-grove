@@ -1,6 +1,6 @@
 {
   "name": "@liuovo/pi-tools-ui",
-  "version": "0.0.10",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
@@ -25,25 +25,29 @@
     "developer-tools"
   ],
   "files": [
-    "index.ts",
-    "imagegen/**/*.ts",
-    "config.ts",
-    "tool-ui.ts",
-    "setup.ts",
-    "render.ts",
+    "LICENSE",
+    "README.md",
     "block-render.ts",
-    "theme.ts",
+    "config.ts",
+    "docs/*.png",
+    "docs/pi-1.1.md",
+    "docs/pi-fff.md",
     "icons.ts",
+    "imagegen/**/*.ts",
+    "index.ts",
     "nested-tools.ts",
+    "pi-fff/**/*.ts",
+    "pi-patch.ts",
+    "render.ts",
+    "replay.ts",
+    "setup.ts",
+    "theme.ts",
+    "thinking.ts",
     "title-status.ts",
     "tool-composition.ts",
-    "pi-fff/**/*.ts",
-    "vendor/**/*.ts",
-    "README.md",
-    "LICENSE",
-    "docs/*.png",
-    "docs/pi-fff.md",
-    "docs/pi-1.1.md"
+    "tool-tree.ts",
+    "tool-ui.ts",
+    "vendor/**/*.ts"
   ],
   "pi": {
     "extensions": [
@@ -55,7 +59,7 @@
     "release:check": "npm run check && npm test && npm run test:pack",
     "preversion": "npm run release:check",
     "prepublishOnly": "npm run release:check",
-    "test": "node scripts/test.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:pack": "node scripts/test-pack.mjs",
     "test:pi-fff-installed": "node scripts/pi-fff-installed-fixture.mjs",
     "test:pi-fff-tui": "node scripts/pi-fff-tui-smoke.mjs",

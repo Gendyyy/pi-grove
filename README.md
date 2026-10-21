@@ -95,6 +95,60 @@ Collapsed blocks show the two-line summary. Expanding a tool (`ctrl+o`,
 - **bash** — the full (multi-line) command input, then its output
 - **read/grep/…** — the raw result text
 
+## Grouped tool cards
+
+Consecutive tool calls are drawn as one card instead of one block per call. The
+card stays anchored on the first call of the scope, keeps the newest rows
+visible, and hides the rows scrolled past the window. Every row is clickable:
+
+- the header toggles the whole card between the windowed and the full listing;
+  revealing rows never opens them, so the hierarchy stays collapsed
+- a tool row with nested calls drills into its children
+- a leaf row with output releases its preview
+
+Every row leads with a state dot instead of an expand arrow: filled green once
+the call succeeded, filled red when it failed, an outline dot while it is
+cancelled or unfinished, and a filled/outline pulse in the warning colour while
+it is still running, so a live card visibly breathes.
+
+```text
+ ▌ ▾ 4 of 11 calls · 14 steps · 1 error · 2m 04s
+ ▌ ├─ codemode build the profile card · 3 calls · 1 error
+ ▌ │  └─ bash run the typecheck · exit 1 · 4s
+ ▌ └─ read check the published entry · 1 line
+```
+
+The scope decides where a card ends:
+
+- prompt (default) — one card for everything a single user message caused, so
+  narration and thinking between turns no longer split the group
+- turn — one card per assistant turn
+- message — one card per assistant message
+- off — no grouping; each call keeps its own block
+
+The group window sets how many rows stay visible (1–32, default 4). Like the
+other settings, the value is saved to the liuovo.json file in the agent
+directory and reloads the extensions. Only tools this extension renders join a
+card; foreign tools keep their own blocks, and a failed row is never hidden by
+the window while groupRevealErrors is on.
+
+Reasoning is part of the card, not a separate block. Pi normally reserves a
+padded row per hidden thinking run, which leaves a gap under the card, so the
+extension tells pi's assistant renderer to skip thinking parts and paints each
+run as a thinking row in its real position instead:
+
+```text
+ ▌ ▾ 3 calls · read ×2 · bash ×1 · 4s
+ ▌ ├─ thinking check the manifest before touching the schema
+ ▌ ├─ read package.json · 24 lines · <1s
+ ▌ └─ bash run the typecheck · success · 4s
+```
+
+The session keeps its reasoning, so context, cost and provider requirements are
+unaffected; only the rendered assistant message is filtered. Set the behaviour
+with `/liuovo thinking group|inline|off`: group keeps reasoning inside the
+card, inline restores pi own rows, and off (default) hides reasoning entirely.
+
 ## Configure with `/liuovo`
 
 The extension is enabled by default. Use the management command to change or
@@ -117,6 +171,16 @@ inspect its startup state:
 /liuovo icons auto
 /liuovo icons nerd
 /liuovo icons ascii
+/liuovo group prompt
+/liuovo group turn
+/liuovo group message
+/liuovo group off
+/liuovo group status
+/liuovo group window 4
+/liuovo thinking group
+/liuovo thinking inline
+/liuovo thinking off
+/liuovo thinking status
 ```
 
 ### Native codemode

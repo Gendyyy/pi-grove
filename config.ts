@@ -2,6 +2,7 @@ import { promises as fs, readFileSync } from "node:fs";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
 import type { IconMode } from "./icons.js";
+import type { GroupMode } from "./tool-tree.js";
 
 export const CONFIG_PATH = join(getAgentDir(), "liuovo.json");
 
@@ -146,4 +147,89 @@ export async function saveLiuovoIcons(
   configPath = defaultConfigPath()
 ): Promise<void> {
   await updateConfig({ icons }, configPath);
+}
+
+/** Transcript scope for one collapsed card; owned by liuovo.json. */
+export type LiuovoGroup = GroupMode;
+
+export function loadLiuovoGroup(configPath = defaultConfigPath()): LiuovoGroup {
+  try {
+    const group = JSON.parse(readFileSync(configPath, "utf8"))?.group;
+    if (group === "prompt" || group === "turn" || group === "message" || group === "off") return group;
+  } catch {
+    // Missing and malformed config keep grouping on, which is the shipped default.
+  }
+  return "prompt";
+}
+
+/** Where reasoning appears: inside the tool card, as pi rows, or nowhere. */
+export type LiuovoThinking = "group" | "inline" | "off";
+
+/** Resolve where reasoning belongs; the card is the default because pi rows cost space. */
+export function loadLiuovoThinking(configPath = defaultConfigPath()): LiuovoThinking {
+  try {
+    const value = JSON.parse(readFileSync(configPath, "utf8"))?.thinking;
+    if (value === "group" || value === "inline" || value === "off") return value;
+  } catch {
+    // Missing and malformed config hide reasoning, which is pi own default.
+  }
+  return "off";
+}
+
+/** Persist where reasoning appears. */
+export async function saveLiuovoThinking(thinking: LiuovoThinking, configPath = defaultConfigPath()): Promise<void> {
+  await updateConfig({ thinking: thinking }, configPath);
+}
+
+/** How many recent calls the collapsed card keeps visible; bounded for sanity. */
+export function loadLiuovoGroupWindow(configPath = defaultConfigPath()): number {
+  try {
+    const value = JSON.parse(readFileSync(configPath, "utf8"))?.groupWindow;
+    if (typeof value === "number" && Number.isFinite(value)) return Math.min(32, Math.max(1, Math.round(value)));
+  } catch {
+    // Missing and malformed config keep the four-call window.
+  }
+  return 4;
+}
+
+/** Persist the visible window size; clamped to the loader bounds. */
+export async function saveLiuovoGroupWindow(window: number, configPath = defaultConfigPath()): Promise<void> {
+  await updateConfig({ groupWindow: Math.min(32, Math.max(1, Math.round(window))) }, configPath);
+}
+
+/**
+ * Text pi prints for a hidden thinking run. An empty string hides those lines
+ * entirely, because pi Text renders nothing for blank text. Undefined leaves pi alone.
+ */
+export function loadLiuovoThinkingLabel(configPath = defaultConfigPath()): string | undefined {
+  try {
+    const value = JSON.parse(readFileSync(configPath, "utf8"))?.thinkingLabel;
+    if (typeof value === "string") return value.slice(0, 60);
+  } catch {
+    // Missing and malformed config keep pi own label.
+  }
+  return undefined;
+}
+
+/** Persist the hidden-thinking label; an empty string hides it. */
+export async function saveLiuovoThinkingLabel(label: string, configPath = defaultConfigPath()): Promise<void> {
+  await updateConfig({ thinkingLabel: label.slice(0, 60) }, configPath);
+}
+
+/** Failed steps stay visible with their parent collapsed; default on. */
+export function loadLiuovoGroupRevealErrors(configPath = defaultConfigPath()): boolean {
+  try {
+    const value = JSON.parse(readFileSync(configPath, "utf8"))?.groupRevealErrors;
+    if (typeof value === "boolean") return value;
+  } catch {
+    // Missing and malformed config keep failures visible.
+  }
+  return true;
+}
+
+export async function saveLiuovoGroup(
+  group: LiuovoGroup,
+  configPath = defaultConfigPath()
+): Promise<void> {
+  await updateConfig({ group }, configPath);
 }

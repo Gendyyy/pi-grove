@@ -47,8 +47,19 @@ import {
   loadLiuovoIcons,
   loadLiuovoIconMode,
   saveLiuovoIconMode,
+  loadLiuovoGroup,
+  loadLiuovoGroupRevealErrors,
+  loadLiuovoGroupWindow,
+  loadLiuovoThinkingLabel,
   loadLiuovoMode,
   loadLiuovoState,
+  saveLiuovoGroup,
+  saveLiuovoGroupWindow,
+  saveLiuovoThinkingLabel,
+  loadLiuovoThinking,
+  saveLiuovoThinking,
+  type LiuovoGroup,
+  type LiuovoThinking,
   saveLiuovoEnabled,
   saveLiuovoIcons,
   saveLiuovoMode,
@@ -83,6 +94,17 @@ const LIUOVO_COMPLETIONS = [
   "mode reasoning",
   "mode result",
   "mode status",
+  "group prompt",
+  "group turn",
+  "group message",
+  "group off",
+  "group status",
+  "group window 4",
+  "thinking group",
+  "thinking inline",
+  "thinking off",
+  "thinking status",
+  "thinking label ",
   "icons on",
   "icons off",
   "icons status",
@@ -97,6 +119,12 @@ export interface LiuovoExtensionDependencies {
   cwd?: string;
   loadState?: typeof loadLiuovoState;
   loadMode?: typeof loadLiuovoMode;
+  loadGroup?: typeof loadLiuovoGroup;
+  saveGroup?: typeof saveLiuovoGroup;
+  loadThinking?: typeof loadLiuovoThinking;
+  saveThinking?: typeof saveLiuovoThinking;
+  loadThinkingLabel?: typeof loadLiuovoThinkingLabel;
+  saveThinkingLabel?: typeof saveLiuovoThinkingLabel;
   loadIcons?: typeof loadLiuovoIcons;
   saveIcons?: typeof saveLiuovoIcons;
   loadIconMode?: typeof loadLiuovoIconMode;
@@ -114,6 +142,14 @@ export function createLiuovoExtension(
     const cwd = dependencies.cwd ?? process.cwd();
     const liuovoState = (dependencies.loadState ?? loadLiuovoState)();
     const liuovoMode = (dependencies.loadMode ?? loadLiuovoMode)();
+    const liuovoGroup = (dependencies.loadGroup ?? loadLiuovoGroup)();
+    const groupRevealErrors = loadLiuovoGroupRevealErrors();
+    const groupWindow = loadLiuovoGroupWindow();
+    const liuovoThinking = (dependencies.loadThinking ?? loadLiuovoThinking)();
+    const persistThinking = dependencies.saveThinking ?? saveLiuovoThinking;
+    const thinkingLabel = (dependencies.loadThinkingLabel ?? loadLiuovoThinkingLabel)();
+    const persistGroup = dependencies.saveGroup ?? saveLiuovoGroup;
+    const persistThinkingLabel = dependencies.saveThinkingLabel ?? saveLiuovoThinkingLabel;
     const liuovoIcons = (dependencies.loadIcons ?? loadLiuovoIcons)();
     const persistIcons = dependencies.saveIcons ?? saveLiuovoIcons;
     const iconMode = (dependencies.loadIconMode ?? loadLiuovoIconMode)();
@@ -149,7 +185,7 @@ export function createLiuovoExtension(
                 : "default; no config file";
           const status = await integration.run("status", { enabled: liuovoState.enabled });
           ctx.ui.notify(
-            `liuovo is ${liuovoState.enabled ? "on" : "off"}, mode ${liuovoMode}, icons ${liuovoIcons ? "on" : "off"} (${detail}).\nIcon mode ${iconMode} (${resolvedIcons}).\ncodemode: Pi-owned; ${pi.getActiveTools().includes("codemode") ? "active" : "inactive"} (configure defaultTools in Pi).\n${status.message}`,
+            `liuovo is ${liuovoState.enabled ? "on" : "off"}, mode ${liuovoMode}, icons ${liuovoIcons ? "on" : "off"}, group ${liuovoGroup}, window ${groupWindow} (${detail}), reasoning ${liuovoThinking} (${liuovoThinking === "inline" ? "label " + (thinkingLabel === undefined ? "pi default" : JSON.stringify(thinkingLabel)) : "label unused"}).\nIcon mode ${iconMode} (${resolvedIcons}).\ncodemode: Pi-owned; ${pi.getActiveTools().includes("codemode") ? "active" : "inactive"} (configure defaultTools in Pi).\n${status.message}`,
             "info"
           );
           return;
@@ -204,6 +240,113 @@ export function createLiuovoExtension(
           await ctx.reload();
           return;
         }
+        if (action === "thinking status") {
+          ctx.ui.notify(
+            thinkingLabel === undefined
+              ? "liuovo leaves pi hidden-thinking label alone; /liuovo thinking off hides those lines."
+              : "liuovo hidden-thinking label is " + JSON.stringify(thinkingLabel) + ".",
+            "info"
+          );
+          return;
+        }
+        const thinkingModeMatch = action.match(/^thinking (group|inline|off)$/);
+        if (thinkingModeMatch) {
+          const thinking = thinkingModeMatch[1] as LiuovoThinking;
+          if (thinking === liuovoThinking) {
+            ctx.ui.notify("Reasoning is already " + thinking + ".", "info");
+            return;
+          }
+          try {
+            await persistThinking(thinking);
+          } catch (error) {
+            ctx.ui.notify(
+              "Could not save " + CONFIG_PATH + ": " + (error instanceof Error ? error.message : String(error)),
+              "error"
+            );
+            return;
+          }
+          ctx.ui.notify("Reasoning is now " + thinking + "; reloading.", "info");
+          await ctx.reload();
+          return;
+        }
+        if (action === "thinking status") {
+          ctx.ui.notify(
+            liuovoThinking === "group"
+              ? "Reasoning is a row inside the tool card."
+              : liuovoThinking === "inline"
+                ? "Reasoning stays in pi own lines; label " +
+                  (thinkingLabel === undefined ? "pi default" : JSON.stringify(thinkingLabel)) +
+                  "."
+                : "Reasoning is hidden entirely.",
+            "info"
+          );
+          return;
+        }
+        if (action.startsWith("thinking label")) {
+          const label = action.slice("thinking label".length).trim();
+          await persistThinkingLabel(label);
+          ctx.ui.notify(
+            label === "" ? "pi hidden-thinking label cleared; reloading." : "Hidden thinking label set; reloading.",
+            "info"
+          );
+          await ctx.reload();
+          return;
+        }
+        if (action.startsWith("thinking ")) {
+          const label = action.slice("thinking ".length).trim();
+          const nextLabel = label === "off" ? "" : action.slice("thinking ".length);
+          await persistThinkingLabel(nextLabel);
+          ctx.ui.notify(
+            nextLabel === "" ? "Hidden thinking lines are now hidden; reloading." : "Hidden thinking label set; reloading.",
+            "info"
+          );
+          await ctx.reload();
+          return;
+        }
+        if (action === "group status") {
+          ctx.ui.notify(
+            "liuovo groups tool calls per " + liuovoGroup + "; click a row or press ctrl+o to expand.",
+            "info"
+          );
+          return;
+        }
+        const windowMatch = action.match(/^group window (\d+)$/);
+        if (windowMatch) {
+          const window = Math.min(32, Math.max(1, Number(windowMatch[1])));
+          try {
+            await saveLiuovoGroupWindow(window);
+          } catch (error) {
+            ctx.ui.notify(
+              "Could not save " + CONFIG_PATH + ": " + (error instanceof Error ? error.message : String(error)),
+              "error"
+            );
+            return;
+          }
+          ctx.ui.notify("liuovo shows the last " + window + " calls; reloading.", "info");
+          await ctx.reload();
+          return;
+        }
+
+        const groupMatch = action.match(/^group (prompt|turn|message|off)$/);
+        if (groupMatch) {
+          const group = groupMatch[1] as LiuovoGroup;
+          if (group === liuovoGroup) {
+            ctx.ui.notify("liuovo grouping is already " + group + ".", "info");
+            return;
+          }
+          try {
+            await persistGroup(group);
+          } catch (error) {
+            ctx.ui.notify(
+              "Could not save " + CONFIG_PATH + ": " + (error instanceof Error ? error.message : String(error)),
+              "error"
+            );
+            return;
+          }
+          ctx.ui.notify("liuovo grouping set to " + group + "; reloading.", "info");
+          await ctx.reload();
+          return;
+        }
         const modeMatch = action.match(/^mode (default|reasoning|result)$/);
         if (modeMatch) {
           const mode = modeMatch[1] as LiuovoMode;
@@ -229,7 +372,7 @@ export function createLiuovoExtension(
         }
         if (action !== "on" && action !== "off" && action !== "toggle") {
           ctx.ui.notify(
-            "Usage: /liuovo setup|status|teardown|on|off|toggle|mode default|reasoning|result|status|icons on|off|status|auto|nerd|ascii",
+            "Usage: /liuovo setup|status|teardown|on|off|toggle|mode default|reasoning|result|status|group prompt|turn|message|off|status|group window 4|icons on|off|status|auto|nerd|ascii|thinking off|<label>|thinking status",
             "warning"
           );
           return;
@@ -277,6 +420,22 @@ export function createLiuovoExtension(
     }
     if (!liuovoState.enabled) return;
     registerTitleStatus(pi);
+    if (thinkingLabel !== undefined) {
+      // A blank label makes pi render no hidden-thinking line at all. pi restores its
+      // own wording in resetExtensionUI(), so every new message re-arms the label.
+      const label = thinkingLabel;
+      const applyThinkingLabel = (ctx: { ui: { setHiddenThinkingLabel(value?: string): void } }): void => {
+        try {
+          ctx.ui.setHiddenThinkingLabel(label);
+        } catch {
+          // Hosts without the label API keep pi own wording.
+        }
+      };
+      pi.on("session_start", (_event, ctx) => applyThinkingLabel(ctx));
+      pi.on("agent_start", (_event, ctx) => applyThinkingLabel(ctx));
+      pi.on("turn_start", (_event, ctx) => applyThinkingLabel(ctx));
+      pi.on("message_start", (_event, ctx) => applyThinkingLabel(ctx));
+    }
 
     const composedNames = new Set<string>();
     const compose = (source: SourceToolDefinition): SourceToolDefinition => {
@@ -298,6 +457,7 @@ export function createLiuovoExtension(
     startupPlan.commit(compose);
     registerToolUi(pi, {
       tools: composedNames, mode: liuovoMode, icons: liuovoIcons, iconMode: resolvedIcons,
+      group: liuovoGroup, groupRevealErrors, groupWindow, thinking: liuovoThinking,
     });
 
     pi.registerTool(buildGenerateImageTool());
