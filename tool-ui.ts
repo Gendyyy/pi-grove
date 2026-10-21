@@ -194,9 +194,13 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
       }), text => theme.bg(context.isError ? "toolErrorBg" : "toolSuccessBg", text), true, context.outputPad);
     },
   });
+  // With grouping on, the tree paints codemode like any other call; the rich card is
+  // only the fallback for group "off", so neither path is dead or double maintained.
+  const codemode =
+    options.group === "off" ? nested.renderers(options.icons, options.iconMode) : basicRenderers("codemode");
   const renderers = new Map<string, ToolRenderers>([
     ...[...options.tools].map(name => [name, basicRenderers(name)] as const),
-    ["codemode", nested.renderers(options.icons, options.iconMode)],
+    ["codemode", codemode],
   ]);
   for (const [name, renderer] of renderers) {
     const renderCall = renderer.renderCall!;
