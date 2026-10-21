@@ -19,7 +19,7 @@
 
 | Pi 变化 | 增量修改 |
 | --- | --- |
-| 1.1.0 `durationMs` | 基础/codemode 父卡片使用渲染上下文，子调用使用执行结束事件；不再写入自算的 `piLiuovoElapsedMs`，不从 codemode 文字解析时长 |
+| 1.1.0 `durationMs` | 基础/codemode 父卡片使用渲染上下文，子调用使用执行结束事件；不再写入自算的 `piGroveElapsedMs`，不从 codemode 文字解析时长 |
 | 1.1.0 `outputPad` | 两类卡片使用宿主双侧边距；组件复用时更新边距并失效缓存，覆盖零边距、窄屏和零宽 |
 | 1.1.0 `agent_settled.aborted` | 标题直接使用权威取消字段，修复重试等待期取消；删除旧信号缓存 |
 | 当前开发基线 | coding-agent/tui 开发依赖与验收脚本固定到 1.1.0；FFF 宿主门槛同步，FFF 自身仍是 0.11.0 |

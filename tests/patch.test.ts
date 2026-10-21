@@ -22,7 +22,7 @@ const COMPONENT = [
 
 /** Build a fake pi install whose only module sits at the given relative path. */
 function fakePi(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), "liuovo-pi-"));
+  const root = mkdtempSync(join(tmpdir(), "grove-pi-"));
   writeFileSync(join(root, "package.json"), JSON.stringify({ name: "@earendil-works/pi-coding-agent", version: "0.0.0" }));
   for (const [relative, content] of Object.entries(files)) {
     const path = join(root, relative);

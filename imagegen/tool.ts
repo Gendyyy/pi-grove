@@ -30,7 +30,7 @@ export interface GenerateImageDeps {
 
 function outputRoot(cwd: string, override?: string): string {
   if (override) return resolve(cwd, override);
-  return resolve(process.env.PI_LIUOVO_FLEET_DIR ?? cwd, ".fleet", "images", process.env.PI_LIUOVO_BOTS_NAME ?? "pi");
+  return resolve(process.env.PI_GROVE_FLEET_DIR ?? cwd, ".fleet", "images", process.env.PI_GROVE_BOTS_NAME ?? "pi");
 }
 function imageBytes(data: string, mimeType: string): Buffer {
   if (!EXTENSIONS[mimeType]) throw new Error(`Unsupported generated image MIME type: ${mimeType}`);
@@ -47,7 +47,7 @@ export function buildGenerateImageTool(deps: GenerateImageDeps = {}) {
   return {
     name: "generate_image",
     label: "generate_image",
-    description: "Generate images using Pi's image models and session credentials, then save them under .fleet/images/. Returns local paths, never base64. Defaults to OpenRouter google/gemini-2.5-flash-image; override provider/model or PI_LIUOVO_IMAGE_PROVIDER / PI_LIUOVO_IMAGE_MODEL. Discover models via codemode models.getAvailableOfType(\"image\"). For image references/editing use native models.generateImages().",
+    description: "Generate images using Pi's image models and session credentials, then save them under .fleet/images/. Returns local paths, never base64. Defaults to OpenRouter google/gemini-2.5-flash-image; override provider/model or PI_GROVE_IMAGE_PROVIDER / PI_GROVE_IMAGE_MODEL. Discover models via codemode models.getAvailableOfType(\"image\"). For image references/editing use native models.generateImages().",
     promptSnippet: "generate_image creates image files from a prompt using Pi's image models and returns their paths.",
     parameters,
     outputSchema: Type.Object({
@@ -56,8 +56,8 @@ export function buildGenerateImageTool(deps: GenerateImageDeps = {}) {
       error: Type.Optional(Type.Object({ code: Type.String(), message: Type.String() })),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
-      const provider = params.provider ?? deps.providerId ?? process.env.PI_LIUOVO_IMAGE_PROVIDER ?? DEFAULT_PROVIDER;
-      const modelId = params.model ?? deps.modelId ?? process.env.PI_LIUOVO_IMAGE_MODEL ?? DEFAULT_MODEL;
+      const provider = params.provider ?? deps.providerId ?? process.env.PI_GROVE_IMAGE_PROVIDER ?? DEFAULT_PROVIDER;
+      const modelId = params.model ?? deps.modelId ?? process.env.PI_GROVE_IMAGE_MODEL ?? DEFAULT_MODEL;
       let usage: ImagesResult["usage"];
       const written: SavedImage[] = [];
       const result = (error?: ImageOutput["error"]) => {

@@ -1,17 +1,17 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { iconPrefix, type IconMode } from "./icons.js";
 
-export type LiuovoTheme = Pick<Theme, "style">;
+export type GroveTheme = Pick<Theme, "style">;
 
 /** Explicit unstyled formatter for persisted summaries and text-only previews. */
-export const plainTheme: LiuovoTheme = { style: (text) => text };
+export const plainTheme: GroveTheme = { style: (text) => text };
 
 export type Foreground = "toolTitle" | "toolOutput" | "text" | "muted" | "dim"
   | "accent" | "success" | "error" | "warning"
   | "toolDiffAdded" | "toolDiffRemoved" | "toolDiffContext"
   | "syntaxVariable" | "syntaxFunction" | "syntaxKeyword";
 
-export function themeText(theme: LiuovoTheme = plainTheme, token: Foreground, text: string, bold = false): string {
+export function themeText(theme: GroveTheme = plainTheme, token: Foreground, text: string, bold = false): string {
   return theme.style(text, { fg: token, ...(bold ? { bold: true } : {}) });
 }
 
@@ -24,16 +24,16 @@ export function toolColor(name: string): Foreground {
   return "accent";
 }
 
-export function toolLabel(name: string, theme?: LiuovoTheme, icons = true, iconMode: IconMode = "auto"): string {
+export function toolLabel(name: string, theme?: GroveTheme, icons = true, iconMode: IconMode = "auto"): string {
   return themeText(theme, toolColor(name), `${icons ? iconPrefix(name, iconMode) : ""}${name}`, true);
 }
 
-export function metric(theme: LiuovoTheme | undefined, value: string | number, unit: string): string {
+export function metric(theme: GroveTheme | undefined, value: string | number, unit: string): string {
   return `${themeText(theme, "accent", String(value))} ${themeText(theme, "muted", unit)}`;
 }
 
 /** Recolor bounded plain summaries, including persisted cards, without storing ANSI. */
-export function paintSummary(name: string, summary: string, state: string, theme?: LiuovoTheme): string {
+export function paintSummary(name: string, summary: string, state: string, theme?: GroveTheme): string {
   const paint = (role: Foreground, text: string) => themeText(theme, role, text);
   if (state === "error") return paint("error", summary);
   if (state === "cancelled" || state === "incomplete") return paint("warning", summary);

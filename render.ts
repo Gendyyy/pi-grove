@@ -31,7 +31,7 @@ export function grepResultCounts(text: string): { matches: number; files: number
   return { matches: text.trim().split("\n").filter(Boolean).length, files: 0 };
 }
 
-/** Remove only liuovo's injected field, retaining all other argument identities. */
+/** Remove only grove's injected field, retaining all other argument identities. */
 export function stripReasoning(params: Record<string, unknown>): { reasoning?: string; rest: Record<string, unknown> } {
   const { reasoning, ...rest } = params;
   if (!Object.hasOwn(params, "reasoning")) return { rest: params };

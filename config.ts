@@ -1,5 +1,5 @@
 /**
- * config.ts — where liuovo keeps its settings on disk, and how those writes stay atomic.
+ * config.ts — where grove keeps its settings on disk, and how those writes stay atomic.
  * Validation and defaults live in settings.ts; this module owns only the file.
  */
 import { promises as fs, readFileSync } from "node:fs";
@@ -13,14 +13,14 @@ export function agentDir(): string {
   return join(homedir(), ".pi", "agent");
 }
 
-/** The file liuovo reads and merges; resolved per call so a redirected run is honoured. */
+/** The file grove reads and merges; resolved per call so a redirected run is honoured. */
 export function configPath(): string {
-  return join(agentDir(), "liuovo.json");
+  return join(agentDir(), "grove.json");
 }
 
 /** Config path redirect for hermetic tests and sandboxed runs; unset means the user path. */
 export function defaultConfigPath(): string {
-  return process.env.PI_LIUOVO_CONFIG ?? configPath();
+  return process.env.PI_GROVE_CONFIG ?? configPath();
 }
 
 /** Parse the documented boolean forms; unknown values do not override config. */

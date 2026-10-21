@@ -14,7 +14,7 @@ export async function runSetup(
   ctx: SetupContext,
 ): Promise<void> {
   if (action === "setup" && !ctx.enabled) {
-    ctx.notify("Run /liuovo on before setup.", "warning");
+    ctx.notify("Run /grove on before setup.", "warning");
     return;
   }
   if (!ctx.confirm) {
@@ -25,7 +25,7 @@ export async function runSetup(
     const result = await fff.run(action, {
       enabled: ctx.enabled,
       deferReload: true,
-      confirm: preview => ctx.confirm!(`liuovo FFF ${action}`, [
+      confirm: preview => ctx.confirm!(`grove FFF ${action}`, [
         ...preview.changes.map(change => {
           const before = JSON.stringify(change.before);
           const after = JSON.stringify(change.after);
@@ -33,7 +33,7 @@ export async function runSetup(
           return `FFF: ${change.settingsPath}\n${before} → ${after}${journalNote}`;
         }),
         "Only FFF package entries are managed. Codemode and defaultTools stay under Pi's control.",
-        "Run /liuovo teardown before removing managed FFF. Extensions will reload once.",
+        "Run /grove teardown before removing managed FFF. Extensions will reload once.",
       ].join("\n\n")),
     });
     if (result.code === "PIFFF_CONFIG_MISSING") {
@@ -43,7 +43,7 @@ export async function runSetup(
     ctx.notify(result.message, result.level);
     if (result.level === "error" || result.reload === "none") return;
   } catch (error) {
-    ctx.notify(`${error instanceof Error ? error.message : String(error)}\nIf any FFF settings were saved, reload and check /liuovo status; recovery journals are retained.`, "error");
+    ctx.notify(`${error instanceof Error ? error.message : String(error)}\nIf any FFF settings were saved, reload and check /grove status; recovery journals are retained.`, "error");
     return;
   }
   try { await ctx.reload(); }

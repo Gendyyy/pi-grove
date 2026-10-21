@@ -108,7 +108,7 @@ interface LocatedParticipant extends PiFffLifecycleParticipant {
 	journalPath: string;
 }
 
-const JOURNAL_NAME = "liuovo.pi-fff.json";
+const JOURNAL_NAME = "grove.pi-fff.json";
 const scopes: readonly PiFffLifecycleScope[] = ["project", "user"];
 
 const defaultFs: PiFffLifecycleFs = {
@@ -470,7 +470,7 @@ export function createPiFffLifecycle(options: CreatePiFffLifecycleOptions): PiFf
 				}
 			}
 			if (action === "setup") {
-				if (!command.enabled) return result("error", "Run /liuovo on before /liuovo setup.", { code: "PIFFF_SETUP_DISABLED" });
+				if (!command.enabled) return result("error", "Run /grove on before /grove setup.", { code: "PIFFF_SETUP_DISABLED" });
 				if (!command.reload && !command.deferReload && !command.previewOnly) return result("error", "Command reload capability is unavailable; setup was not changed.", { code: "PIFFF_RECOVERY_RELOAD_REQUIRED", reload: "required" });
 				try {
 					const existing = await loadJournalSet(fs, options.cwd, options.agentDir);

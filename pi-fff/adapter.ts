@@ -107,11 +107,11 @@ const REGISTRATION_METHODS: readonly RegistrationMethod[] = [
 	"registerTool", "registerCommand", "registerShortcut", "registerFlag",
 	"registerMessageRenderer", "registerEntryRenderer", "registerProvider", "unregisterProvider", "on",
 ];
-export const LIUOVO_PI_FFF_CONFLICTS: Readonly<PiFffConflictSet> = Object.freeze({
+export const GROVE_PI_FFF_CONFLICTS: Readonly<PiFffConflictSet> = Object.freeze({
 	// grep/find are intentional scoped substitution targets, so callers report
 	// only external target conflicts through BuildPiFffPlanOptions.conflicts.
 	tools: Object.freeze(["read", "write", "edit", "bash", "ls"]),
-	commands: Object.freeze(["liuovo"]),
+	commands: Object.freeze(["grove"]),
 });
 const REQUIRED_NONMUTATING_METHODS = ["getFlag"] as const;
 const MUTATING_METHODS = new Set([
@@ -170,10 +170,10 @@ function diagnostic(
 		PIFFF_BELOW_MINIMUM: "Upgrade the below-minimum component, then /reload; this version is outside the supported range, not necessarily broken.",
 		PIFFF_CAPABILITY_MISSING: "Upgrade or reinstall Pi so the named capability is available, then /reload.",
 		PIFFF_PI_ROOT_UNAVAILABLE: "Reinstall Pi through npm or the official installer so `pi -v` runs from a package root, then /reload.",
-		PIFFF_CONFIG_MISSING: `Install npm:${profile.identity}@${profile.version} in a managed Pi npm scope, then run /liuovo setup.`,
+		PIFFF_CONFIG_MISSING: `Install npm:${profile.identity}@${profile.version} in a managed Pi npm scope, then run /grove setup.`,
 		PIFFF_CONFIG_AMBIGUOUS: "Keep exactly one pi-fff package identity in each settings scope, then /reload.",
-		PIFFF_CONFIG_FILTER_REQUIRED: "Run /liuovo setup to set extensions: [], then /reload.",
-		PIFFF_SCOPE_SHADOWED_INVALID: "Fix or remove the selected project entry; liuovo will not fall back to user scope.",
+		PIFFF_CONFIG_FILTER_REQUIRED: "Run /grove setup to set extensions: [], then /reload.",
+		PIFFF_SCOPE_SHADOWED_INVALID: "Fix or remove the selected project entry; grove will not fall back to user scope.",
 		PIFFF_PACKAGE_MISSING: `Install npm:${profile.identity}@${profile.version} with extensions: [], then /reload.`,
 		PIFFF_PACKAGE_INVALID: "Reinstall the selected package through Pi, then /reload.",
 		PIFFF_INTEGRITY_UNVERIFIED: "Capability validation continues offline; verify registry integrity during release smoke.",
@@ -392,7 +392,7 @@ function stringArg(call: RecordedRegistration, index: number): string | undefine
 function validateTrace(trace: readonly RecordedRegistration[], conflicts: PiFffConflictSet | undefined): PiFffComposites {
 	const captures: Partial<Record<keyof PiFffComposites, SourceToolDefinition>> = {};
 	const conflictNames = (key: keyof PiFffConflictSet): string[] => [
-		...(LIUOVO_PI_FFF_CONFLICTS[key] ?? []), ...(conflicts?.[key] ?? []),
+		...(GROVE_PI_FFF_CONFLICTS[key] ?? []), ...(conflicts?.[key] ?? []),
 	];
 	const seen = {
 		tools: new Set(conflictNames("tools")), commands: new Set(conflictNames("commands")),
@@ -414,14 +414,14 @@ function validateTrace(trace: readonly RecordedRegistration[], conflicts: PiFffC
 			if (tool.name === "ffgrep" || tool.name === "fffind") {
 				const name = tool.name === "ffgrep" ? "grep" : "find";
 				if (captures[name]) throw new SurfaceFailure(`duplicate ${tool.name} capture`);
-				if (Object.hasOwn(tool.parameters.properties, "reasoning")) throw new SurfaceFailure(`${tool.name}.reasoning conflicts with liuovo-owned reasoning`);
+				if (Object.hasOwn(tool.parameters.properties, "reasoning")) throw new SurfaceFailure(`${tool.name}.reasoning conflicts with grove-owned reasoning`);
 				const failure = scopedSchemaFailure(tool, name);
 				if (failure) throw new SurfaceFailure(failure);
 				if (conflictNames("tools").includes(name)) throw new SurfaceFailure(`tool conflict ${name}`);
 				captures[name] = tool;
 				continue;
 			}
-			if (["grep", "find", "multi_grep"].includes(tool.name)) throw new SurfaceFailure(`override tool ${tool.name} conflicts with liuovo ownership`);
+			if (["grep", "find", "multi_grep"].includes(tool.name)) throw new SurfaceFailure(`override tool ${tool.name} conflicts with grove ownership`);
 			if (seen.tools.has(tool.name)) throw new SurfaceFailure(`tool conflict ${tool.name}`);
 			seen.tools.add(tool.name);
 			continue;
@@ -587,12 +587,12 @@ function guardedSource(plan: PiFffRegistrationPlan, source: SourceToolDefinition
 	};
 }
 
-/** Return guarded, publicly named sources for the host's liuovo decorator. */
+/** Return guarded, publicly named sources for the host's grove decorator. */
 export function createPiFffCompositeSources(plan: PiFffRegistrationPlan): PiFffComposites {
 	return { grep: guardedSource(plan, plan.captures.grep, "grep"), find: guardedSource(plan, plan.captures.find, "find") };
 }
 
-/** Apply liuovo's schema seam around captured execution without registering it. */
+/** Apply grove's schema seam around captured execution without registering it. */
 export function createPiFffComposites(plan: PiFffRegistrationPlan, options: SourceToolCompositionOptions): PiFffComposites {
 	const sources = createPiFffCompositeSources(plan);
 	return Object.fromEntries(Object.entries(sources).map(([name, source]) => [name, composeSourceTool(source, options)])) as PiFffComposites;

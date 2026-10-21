@@ -26,7 +26,7 @@ function assistant(timestamp: string, calls: Array<{ id: string; name: string; a
   });
 }
 
-/** A tool result entry, with the details liuovo stored for a codemode call. */
+/** A tool result entry, with the details grove stored for a codemode call. */
 function result(
   timestamp: string,
   toolCallId: string,
@@ -45,7 +45,7 @@ function result(
 }
 
 const NESTED = {
-  piLiuovoNested: {
+  piGroveNested: {
     version: 1,
     incomplete: false,
     calls: [

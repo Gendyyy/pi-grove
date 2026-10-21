@@ -1,5 +1,5 @@
 /**
- * block-render.ts — the tight tool-block renderer for liuovo.
+ * block-render.ts — the tight tool-block renderer for grove.
  *
  * Pure, stateless rendering kernel extracted from index.ts (issue 185):
  * builds the 2-line tool blocks and the width-aware
@@ -13,9 +13,10 @@ import {
   nonEmptyLineCount,
   stripReasoning,
 } from "./render.js";
-import type { LiuovoMode } from "./settings.js";
-import { metric, paintSummary, themeText, toolLabel, type LiuovoTheme } from "./theme.js";
+import type { GroveMode } from "./settings.js";
+import { metric, paintSummary, themeText, toolLabel, type GroveTheme } from "./theme.js";
 import type { IconMode } from "./icons.js";
+import { readDetail } from "./details.js";
 
 /** Hanging indent for detail and expanded continuation lines. */
 const INDENT = "  ";
@@ -171,7 +172,7 @@ function plainToolSummary(
 ): string {
   const text = textFromResult(result);
   if (name === "bash") {
-    const shell = shellSummary(result?.structuredContent) ?? shellSummary(result?.details?.piLiuovoShell);
+    const shell = shellSummary(result?.structuredContent) ?? shellSummary(readDetail(result?.details, "piGroveShell"));
     const exit = shell?.exit_code ?? Number(text.match(/exit code: (\d+)/)?.[1] ?? 0);
     const duration = elapsedMs ?? (shell?.wall_time_seconds === undefined ? undefined : shell.wall_time_seconds * 1000);
     const status = exit !== 0 ? `exit ${exit}` : isError ? "error" : "done";
@@ -213,7 +214,7 @@ function plainToolSummary(
 /** One presentation for standalone tools and bounded, persisted nested summaries. */
 export function summarizeToolResult(
   name: string, result: any, isError: boolean,
-  args: Record<string, unknown> = {}, elapsedMs?: number, theme?: LiuovoTheme
+  args: Record<string, unknown> = {}, elapsedMs?: number, theme?: GroveTheme
 ): string {
   return paintSummary(name, plainToolSummary(name, result, isError, args, elapsedMs), isError ? "error" : "success", theme);
 }
@@ -258,7 +259,7 @@ function expandDiffTabs(line: string): string {
 }
 
 /** Colorize a unified/line-numbered diff string (edit tool's details.diff). */
-export function colorizeDiff(diff: string, theme?: LiuovoTheme): string[] {
+export function colorizeDiff(diff: string, theme?: GroveTheme): string[] {
   return diff.split("\n").map((rawLine) => {
     const line = expandDiffTabs(rawLine);
     if (line.startsWith("+") && !line.startsWith("+++"))
@@ -280,7 +281,7 @@ export function colorizeDiff(diff: string, theme?: LiuovoTheme): string[] {
 function expandedLines(
   name: string,
   args: Record<string, unknown>,
-  result: any, theme?: LiuovoTheme
+  result: any, theme?: GroveTheme
 ): string[] {
   const out: string[] = [];
 
@@ -320,7 +321,7 @@ function expandedLines(
   }
 
   const shell = name === "bash"
-    ? shellSummary(result?.structuredContent) ?? shellSummary(result?.details?.piLiuovoShell)
+    ? shellSummary(result?.structuredContent) ?? shellSummary(readDetail(result?.details, "piGroveShell"))
     : undefined;
   if (shell?.full_output_path) out.push(`${INDENT}${themeText(theme, "muted", `Full output: ${shell.full_output_path}`)}`);
   const text = textFromResult(result).replace(/\s+$/, "");
@@ -345,11 +346,11 @@ export function buildToolBlock(
     executionStarted?: boolean;
     expanded?: boolean;
     elapsedMs?: number;
-    mode?: LiuovoMode;
+    mode?: GroveMode;
     icons?: boolean;
     iconMode?: IconMode;
     width?: number;
-    theme?: LiuovoTheme;
+    theme?: GroveTheme;
   } = {}
 ): string[] {
   const {

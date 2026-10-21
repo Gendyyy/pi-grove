@@ -4,6 +4,7 @@
  */
 import { thinkingRuns } from "./thinking.js";
 import type { GroupMode, TreeStatus } from "./tool-tree.js";
+import { readDetail } from "./details.js";
 
 /** One tool call recovered from the transcript, with the steps nested inside it. */
 export interface ReplayCall {
@@ -51,9 +52,9 @@ function previewLines(value: unknown): string[] | undefined {
   return undefined;
 }
 
-/** Recover the steps liuovo recorded inside one codemode result. */
+/** Recover the steps grove recorded inside one codemode result. */
 export function readNested(details: unknown): ReplayCall[] {
-  const snapshot = (details as { piLiuovoNested?: { calls?: unknown } } | undefined)?.piLiuovoNested;
+  const snapshot = readDetail<{ calls?: unknown }>(details, "piGroveNested");
   const calls = Array.isArray(snapshot?.calls) ? snapshot.calls : [];
   const nodes = new Map<string, ReplayCall>();
   const parents = new Map<string, string | undefined>();

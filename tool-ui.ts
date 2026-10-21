@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { Container } from "@earendil-works/pi-tui";
 import { buildToolBlock, shellSummary, WidthAwareLines } from "./block-render.js";
-import type { LiuovoMode, LiuovoThinking } from "./settings.js";
+import type { GroveMode, GroveThinking } from "./settings.js";
 import type { IconMode } from "./icons.js";
 import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
@@ -12,7 +12,7 @@ import { ToolTree, type GroupMode, type TreeRow } from "./tool-tree.js";
 interface ToolUiOptions {
   /** Tools whose behavior this extension composes. Codemode is always presentation-only. */
   tools: ReadonlySet<string>;
-  mode: LiuovoMode;
+  mode: GroveMode;
   icons: boolean;
   iconMode: IconMode;
   /** Transcript scope one card covers: a turn, one assistant message, or no grouping. */
@@ -22,7 +22,7 @@ interface ToolUiOptions {
   /** Recent calls kept visible in the collapsed card. */
   groupWindow: number;
   /** Where reasoning appears: a row of the card, pi own rows, or nowhere. */
-  thinking: LiuovoThinking;
+  thinking: GroveThinking;
 }
 const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 
@@ -82,8 +82,8 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
 
   pi.on("before_agent_start", (event) => {
     const prompt = event.systemPromptOptions;
-    if (prompt.selectedTools.includes("codemode")) prompt.sections.liuovo_tool_ui = CODEMODE_GUIDANCE;
-    else delete prompt.sections.liuovo_tool_ui;
+    if (prompt.selectedTools.includes("codemode")) prompt.sections.grove_tool_ui = CODEMODE_GUIDANCE;
+    else delete prompt.sections.grove_tool_ui;
   });
   pi.on("turn_start", () => tree.boundary("turn"));
   let reasoningMessage = 0;
@@ -116,7 +116,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
   pi.on("tool_execution_start", (event, ctx) => {
     if (observed(event.toolName)) startedAt.set(event.toolCallId, Date.now());
     nested.start(event, ctx);
-    // Only tools liuovo renders get a tree row; foreign tools keep their own cards.
+    // Only tools grove renders get a tree row; foreign tools keep their own cards.
     if (observed(event.toolName)) tree.start(event);
   });
   pi.on("tool_execution_update", (event) => {
@@ -134,8 +134,8 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
     return {
       details: {
         ...(event.details ?? {}),
-        ...(shell ? { piLiuovoShell: shell } : {}),
-        ...(isCodemode ? { piLiuovoNested: nested.snapshot(event.toolCallId) } : {}),
+        ...(shell ? { piGroveShell: shell } : {}),
+        ...(isCodemode ? { piGroveNested: nested.snapshot(event.toolCallId) } : {}),
       },
     };
   });
@@ -168,7 +168,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
     if (options.thinking === "inline") return;
     const status = await installThinkingFilter();
     if (!status.installed && options.thinking === "group")
-      ctx.ui.notify("liuovo could not hide pi own thinking rows: " + status.detail, "warning");
+      ctx.ui.notify("grove could not hide pi own thinking rows: " + status.detail, "warning");
   });
   pi.on("session_tree", restore);
   pi.on("session_shutdown", clear);

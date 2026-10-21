@@ -1,6 +1,6 @@
 /**
  * pi-patch.ts — stop pi from drawing its own hidden-thinking rows, so the tool card is
- * the only place reasoning appears. This is the one spot where liuovo touches pi
+ * the only place reasoning appears. This is the one spot where grove touches pi
  * internals, so it finds the class by capability instead of trusting one file path: the
  * bundled build, the modular build and any future chunk layout are all searched.
  */
@@ -35,13 +35,13 @@ const CHUNK_DIRECTORY = "dist/bundle/chunks";
 const CHUNK_HINT = "setHiddenThinkingLabel";
 /** Refuse to slurp an enormous file while looking for the class. */
 const CHUNK_MAX_BYTES = 8 * 1024 * 1024;
-const MARK = Symbol.for("liuovo.thinkingFilter");
+const MARK = Symbol.for("grove.thinkingFilter");
 /** How many directories to climb while looking for pi own package.json. */
 const CLIMB = 6;
 
 let last: ThinkingFilterStatus | undefined;
 
-/** Last install attempt, so /liuovo status can report what happened. */
+/** Last install attempt, so /grove status can report what happened. */
 export function thinkingFilterStatus(): ThinkingFilterStatus | undefined {
   return last;
 }

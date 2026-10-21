@@ -6,7 +6,7 @@
 import { Container, type Component } from "@earendil-works/pi-tui";
 import type { ToolExecutionEndEvent, ToolExecutionStartEvent } from "@earendil-works/pi-coding-agent";
 import type { ReplayCall } from "./replay.js";
-import { plainTheme, type LiuovoTheme } from "./theme.js";
+import { plainTheme, type GroveTheme } from "./theme.js";
 import { TreeBlock, type TreeRow } from "./tree-block.js";
 import { BLINK_MS, paintGroup } from "./tree-paint.js";
 import { GROUP_TARGET, type GroupMode, type PaintScope, type TreeGroup, type TreeNode, type TreeSettings, type TreeStatus } from "./tree-model.js";
@@ -151,7 +151,7 @@ export class ToolTree {
     return findGroup(this.state, id)?.nodes.has(id) === true;
   }
 
-  /** Report what the tree currently holds for /liuovo status. */
+  /** Report what the tree currently holds for /grove status. */
   summary(): { groups: number; rows: number; mode: GroupMode } {
     let rows = 0;
     for (const group of this.state.groups.values()) rows += group.rows.length;
@@ -185,7 +185,7 @@ export class ToolTree {
   }
 
   /** Paint through the shared helper so the click map and the lines stay in sync. */
-  paint(group: TreeGroup, width: number, theme: LiuovoTheme, piExpanded: boolean): string[] {
+  paint(group: TreeGroup, width: number, theme: GroveTheme, piExpanded: boolean): string[] {
     return paintGroup(
       { settings: this.settings, expanded: this.state.expanded },
       group,

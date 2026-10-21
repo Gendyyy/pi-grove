@@ -4,7 +4,7 @@
  */
 import { Container, type Component, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 import { fitToolLine, WidthAwareLines } from "./block-render.js";
-import type { LiuovoTheme } from "./theme.js";
+import type { GroveTheme } from "./theme.js";
 import type { PaintPhase, TreeGroup } from "./tree-model.js";
 import type { ToolTree } from "./tool-tree.js";
 
@@ -12,7 +12,7 @@ import type { ToolTree } from "./tool-tree.js";
 export interface TreeRow {
   toolCallId: string;
   inner: Component;
-  theme?: LiuovoTheme;
+  theme?: GroveTheme;
   expanded: boolean;
   invalidate: () => void;
   /** Which pi row this render call belongs to; defaults to the finished result row. */
@@ -29,7 +29,7 @@ export class TreeBlock implements Component {
   constructor(
     private readonly tree: ToolTree,
     private readonly group: TreeGroup,
-    private readonly theme: LiuovoTheme,
+    private readonly theme: GroveTheme,
     private readonly row: TreeRow,
   ) {}
 

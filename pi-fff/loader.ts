@@ -65,13 +65,13 @@ function piRootFromProcessEntry(): string | undefined {
 	return undefined;
 }
 
-/** Resolve aliases from the concrete Pi installation that loaded liuovo. */
+/** Resolve aliases from the concrete Pi installation that loaded grove. */
 export function resolveRunningPiAliases(options: ResolveRunningPiAliasesOptions = {}): { aliases: PiFffLoaderAliases; jitiEntry: string } {
 	let piRoot = piRootFromProcessEntry();
 	let resolvedCodingAgent: string | undefined;
 	if (!piRoot) {
 		// Tests and SDK hosts may not have Pi as argv[1]; use normal ESM identity.
-		// Bundled Pi runtimes (0.84.3+) resolve no bare specifier from liuovo's own directory.
+		// Bundled Pi runtimes (0.84.3+) resolve no bare specifier from grove's own directory.
 		try {
 			resolvedCodingAgent = fileURLToPath((options.resolveModule ?? defaultResolveModule)(PI_PACKAGE_NAME));
 			piRoot = piRootFromEntry(resolvedCodingAgent);

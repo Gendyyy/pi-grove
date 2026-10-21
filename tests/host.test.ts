@@ -37,9 +37,9 @@ function result(timestamp: string, toolCallId: string, toolName: string, details
   });
 }
 
-/** The snapshot liuovo stores for the steps that ran inside one codemode call. */
+/** The snapshot grove stores for the steps that ran inside one codemode call. */
 function snapshot(calls: Array<Record<string, unknown>>): unknown {
-  return { piLiuovoNested: { version: 1, incomplete: false, calls } };
+  return { piGroveNested: { version: 1, incomplete: false, calls } };
 }
 
 test("one card paints once even though pi mounts a row and a result row", () => {

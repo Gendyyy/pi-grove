@@ -2,8 +2,9 @@ import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
 import type { IconMode } from "./icons.js";
-import { metric, paintSummary, plainTheme, themeText, toolLabel, type LiuovoTheme } from "./theme.js";
+import { metric, paintSummary, plainTheme, themeText, toolLabel, type GroveTheme } from "./theme.js";
 import type { ExtensionContext, ToolExecutionStartEvent, ToolRenderers } from "@earendil-works/pi-coding-agent";
+import { readDetail } from "./details.js";
 
 const MAX_CALLS = 256;
 const PREVIEW_CHARS = 2048;
@@ -203,7 +204,9 @@ export class NestedToolObserver {
       call.diff = hasDiff;
       call.previewTruncated = preview.length < raw.length;
       this.previewRemaining -= preview.length;
-      const fullPath = result.structuredContent?.full_output_path ?? result.details?.piLiuovoShell?.full_output_path;
+      const fullPath =
+        result.structuredContent?.full_output_path ??
+        readDetail<{ full_output_path?: string }>(result.details, "piGroveShell")?.full_output_path;
       if (typeof fullPath === "string") call.fullOutputPath = brief(fullPath, 1024);
     }
     this.completeChildren(call.id, ctx);
@@ -253,7 +256,10 @@ export class NestedToolObserver {
 
   /** Native old results contain argument previews, never child output. Do not fabricate it. */
   private recorded(result: any): Snapshot {
-    const saved = result?.details?.piLiuovoNested;
+    const saved = readDetail<{ version?: number; calls?: Snapshot["calls"]; incomplete?: boolean }>(
+      result?.details,
+      "piGroveNested",
+    );
     const snapshot: Snapshot = { version: 1, calls: [], incomplete: false };
     if (saved?.version === 1 && Array.isArray(saved.calls)) {
       snapshot.calls = saved.calls.slice(0, MAX_CALLS);
@@ -292,7 +298,7 @@ export class NestedToolObserver {
     }
   }
 
-  private lines(id: string, args: any, result: any, options: any, theme: LiuovoTheme, icons: boolean, iconMode: IconMode, width: number): string[] {
+  private lines(id: string, args: any, result: any, options: any, theme: GroveTheme, icons: boolean, iconMode: IconMode, width: number): string[] {
     const partial = options.isPartial === true;
     const snapshot = partial ? this.snapshot(id) : this.recorded(result);
     const calls = snapshot.calls;

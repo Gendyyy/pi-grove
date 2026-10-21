@@ -4,7 +4,7 @@
  */
 import { colorizeDiff, fitToolLine, formatElapsed, summaryLine } from "./block-render.js";
 import type { IconMode } from "./icons.js";
-import { plainTheme, themeText, toolLabel, type Foreground, type LiuovoTheme } from "./theme.js";
+import { plainTheme, themeText, toolLabel, type Foreground, type GroveTheme } from "./theme.js";
 import {
   DOT,
   ELLIPSIS,
@@ -58,7 +58,7 @@ export function paintGroup(
   state: PaintState,
   group: TreeGroup,
   width: number,
-  theme: LiuovoTheme = plainTheme,
+  theme: GroveTheme = plainTheme,
   piExpanded = false,
   targets: Map<number, string> = new Map(),
 ): string[] {

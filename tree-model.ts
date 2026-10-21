@@ -6,7 +6,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { formatElapsed, summaryLine, summarizeToolResult } from "./block-render.js";
 import { resolveIconMode, type IconMode } from "./icons.js";
-import { metric, paintSummary, themeText, toolColor, type Foreground, type LiuovoTheme } from "./theme.js";
+import { metric, paintSummary, themeText, toolColor, type Foreground, type GroveTheme } from "./theme.js";
 /** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
 export type GroupMode = "prompt" | "turn" | "message" | "off";
 
@@ -16,7 +16,7 @@ export type PaintPhase = "call" | "result";
 /** The event kinds that can close a card. */
 export type PaintScope = "prompt" | "turn" | "message";
 
-/** Presentation settings owned by liuovo.json and resolved once at startup. */
+/** Presentation settings owned by grove.json and resolved once at startup. */
 export interface TreeSettings {
   mode: GroupMode;
   /** Keep failed nested steps visible while their parent card is collapsed. */
@@ -186,7 +186,7 @@ export function toolCounts(nodes: TreeNode[], counts = new Map<string, number>()
 }
 
 /** Paint the mix of tools inside one group, busiest first, with a bounded long tail. */
-export function toolBreakdown(nodes: TreeNode[], theme: LiuovoTheme, glyphs: Glyphs, kinds = 4): string[] {
+export function toolBreakdown(nodes: TreeNode[], theme: GroveTheme, glyphs: Glyphs, kinds = 4): string[] {
   const counts = [...toolCounts(nodes)].sort(
     (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
   );
@@ -209,12 +209,12 @@ export function countErrors(nodes: TreeNode[]): number {
 }
 
 /** Pluralize a counted noun without a plural dictionary. */
-export function counted(theme: LiuovoTheme, value: number, singular: string, plural: string): string {
+export function counted(theme: GroveTheme, value: number, singular: string, plural: string): string {
   return metric(theme, value, value === 1 ? singular : plural);
 }
 
 /** Build the metadata tail of one row: scope, failures, outcome, and time. */
-export function rowTail(node: TreeNode, theme: LiuovoTheme, glyphs: Glyphs): string {
+export function rowTail(node: TreeNode, theme: GroveTheme, glyphs: Glyphs): string {
   const parts: string[] = [];
   // A branch row names the mix of steps it contains instead of a bare count.
   if (node.children.length > 0) parts.push(...toolBreakdown(node.children, theme, glyphs));

@@ -26,7 +26,7 @@ export type PiFffRoutingState =
 
 export interface PiFffRoutingStatus {
 	readonly state: PiFffRoutingState;
-	readonly owner: "liuovo/native" | "native Pi" | "liuovo/native read + FFF-executed liuovo grep/find" | "native Pi + pi-fff tools" | "liuovo/native read; grep/find unavailable" | "unsafe partial registration; reload required";
+	readonly owner: "grove/native" | "native Pi" | "grove/native read + FFF-executed grove grep/find" | "native Pi + pi-fff tools" | "grove/native read; grep/find unavailable" | "unsafe partial registration; reload required";
 	readonly scopes: readonly ("project" | "user")[];
 	readonly packageIdentity?: PiFffPackageIdentity;
 	readonly profile?: PiFffCapabilityProfile;
@@ -40,7 +40,7 @@ export interface PiFffRoutingStatus {
 
 export interface PiFffStartupPlan {
 	readonly status: PiFffRoutingStatus;
-	readonly skipLiuovoTools: ReadonlySet<"read" | "grep" | "find">;
+	readonly skipGroveTools: ReadonlySet<"read" | "grep" | "find">;
 	readonly notice?: { readonly message: string; readonly level: "warning" | "error" };
 	commit(createComposite: (source: SourceToolDefinition) => SourceToolDefinition): void;
 }
@@ -128,15 +128,15 @@ function statusFromLifecycle(value: PiFffLifecycleResult, enabled: boolean): PiF
 	const active = selected(value.participants ?? []);
 	return {
 		state: recovery ? "recovery-pending" : enabled ? "managed-invalid" : "disabled",
-		owner: enabled ? "liuovo/native" : "native Pi",
+		owner: enabled ? "grove/native" : "native Pi",
 		scopes: value.participants?.map((item) => item.scope) ?? [], packageIdentity: active?.packageIdentity, profile: active?.profile,
 		tuple: "unavailable",
 		journal: recovery ? "reload pending" : value.code ? "unsafe/incomplete" : "none",
 		diagnostic: lifecycleDiagnostic(value),
-		action: recovery ? `${enabled ? "Native liuovo read/grep/find remain active; raw FFF names are hidden. " : ""}Run /reload once.`
-			: value.code === "PIFFF_CONFIG_AMBIGUOUS" ? "Keep one pi-fff package identity across project and user settings, then run /liuovo status or setup again."
-				: enabled ? "Native liuovo read/grep/find remain active; raw FFF names are hidden. Use /liuovo status for safe recovery paths."
-					: "Use /liuovo status for safe recovery paths.",
+		action: recovery ? `${enabled ? "Native grove read/grep/find remain active; raw FFF names are hidden. " : ""}Run /reload once.`
+			: value.code === "PIFFF_CONFIG_AMBIGUOUS" ? "Keep one pi-fff package identity across project and user settings, then run /grove status or setup again."
+				: enabled ? "Native grove read/grep/find remain active; raw FFF names are hidden. Use /grove status for safe recovery paths."
+					: "Use /grove status for safe recovery paths.",
 	};
 }
 
@@ -177,7 +177,7 @@ export function createPiFffIntegrationController(options: CreatePiFffControllerO
 	});
 	const createAbsentStatus = (): PiFffRoutingStatus => ({
 		state: "absent",
-		owner: "liuovo/native",
+		owner: "grove/native",
 		scopes: [],
 		tuple: "unavailable",
 		journal: "none",
@@ -199,7 +199,7 @@ export function createPiFffIntegrationController(options: CreatePiFffControllerO
 			const lifecycleFailure = startup.outcome !== "ready" ? startup : discovered?.outcome !== "status" ? discovered : undefined;
 			if (lifecycleFailure) {
 				current = statusFromLifecycle(lifecycleFailure, enabled);
-				return { status: current, skipLiuovoTools: NONE, notice: { message: `${lifecycleFailure.message}${lifecycleFailure.reload === "required" ? " Run /reload once." : ""}`, level: lifecycleFailure.outcome === "error" ? "error" : "warning" }, commit() {} };
+				return { status: current, skipGroveTools: NONE, notice: { message: `${lifecycleFailure.message}${lifecycleFailure.reload === "required" ? " Run /reload once." : ""}`, level: lifecycleFailure.outcome === "error" ? "error" : "warning" }, commit() {} };
 			}
 			const participants = startup.participants ?? discovered?.participants ?? [];
 			if (!enabled) {
@@ -210,20 +210,20 @@ export function createPiFffIntegrationController(options: CreatePiFffControllerO
 					state: "disabled", owner: standalone ? "native Pi + pi-fff tools" : "native Pi",
 					scopes: participants.map((item) => item.scope), packageIdentity: active?.packageIdentity, profile: active?.profile, tuple: "unavailable",
 					journal: managed ? "committed (inactive)" : "none",
-					action: managed ? "Enable liuovo, or run /liuovo teardown to restore standalone loading."
-						: standalone ? "Run /liuovo on, then /liuovo setup for liuovo presentation." : "Run /liuovo on to enable liuovo.",
+					action: managed ? "Enable grove, or run /grove teardown to restore standalone loading."
+						: standalone ? "Run /grove on, then /grove setup for grove presentation." : "Run /grove on to enable grove.",
 				};
-				return { status: current, skipLiuovoTools: NONE, commit() {} };
+				return { status: current, skipGroveTools: NONE, commit() {} };
 			}
 			if (!participants.length) {
 				current = createAbsentStatus();
-				return { status: current, skipLiuovoTools: NONE, commit() {} };
+				return { status: current, skipGroveTools: NONE, commit() {} };
 			}
 			const managed = (startup.participants?.length ?? 0) > 0;
 			if (!managed) {
 				const active = selected(participants)!;
 				const filtered = isFiltered(active.priorEntry);
-				const owner = filtered ? "liuovo/native" : "native Pi + pi-fff tools";
+				const owner = filtered ? "grove/native" : "native Pi + pi-fff tools";
 				current = {
 					state: filtered ? "filtered-unmanaged" : "standalone",
 					owner,
@@ -235,23 +235,23 @@ export function createPiFffIntegrationController(options: CreatePiFffControllerO
 					diagnostic: {
 						code: "PIFFF_SETUP_REQUIRED",
 						severity: "warning",
-						detail: "Explicit setup is required before liuovo can manage this package.",
+						detail: "Explicit setup is required before grove can manage this package.",
 					},
-					action: "Run /liuovo setup.",
+					action: "Run /grove setup.",
 				};
-				return { status: current, skipLiuovoTools: NONE, notice: { message: "pi-fff is not managed by liuovo; run /liuovo setup.", level: "warning" }, commit() {} };
+				return { status: current, skipGroveTools: NONE, notice: { message: "pi-fff is not managed by grove; run /grove setup.", level: "warning" }, commit() {} };
 			}
 			const built = await buildPlan({ cwd: options.cwd, agentDir, api: options.pi });
 			if (!built.ok) {
 				const active = selected(participants);
-				current = { state: "managed-invalid", owner: "liuovo/native", scopes: participants.map((item) => item.scope), packageIdentity: active?.packageIdentity, profile: active?.profile, piVersion: built.diagnostic.piVersion, piFffVersion: built.diagnostic.piFffVersion, tuple: "unavailable", journal: "committed", diagnostic: adapterDiagnostic(built.diagnostic), action: `Native liuovo read/grep/find remain active; raw FFF names are hidden. ${built.diagnostic.action} Or run /liuovo teardown.` };
-				return { status: current, skipLiuovoTools: NONE, notice: built.diagnostic.severity === "info" ? undefined : { message: `${built.diagnostic.summary} ${current.action}`, level: "error" }, commit() {} };
+				current = { state: "managed-invalid", owner: "grove/native", scopes: participants.map((item) => item.scope), packageIdentity: active?.packageIdentity, profile: active?.profile, piVersion: built.diagnostic.piVersion, piFffVersion: built.diagnostic.piFffVersion, tuple: "unavailable", journal: "committed", diagnostic: adapterDiagnostic(built.diagnostic), action: `Native grove read/grep/find remain active; raw FFF names are hidden. ${built.diagnostic.action} Or run /grove teardown.` };
+				return { status: current, skipGroveTools: NONE, notice: built.diagnostic.severity === "info" ? undefined : { message: `${built.diagnostic.summary} ${current.action}`, level: "error" }, commit() {} };
 			}
 			const plan = built.plan;
-			current = { state: "managed-compatible", owner: "liuovo/native read + FFF-executed liuovo grep/find", scopes: participants.map((item) => item.scope), packageIdentity: plan.packageIdentity, profile: plan.profile, piVersion: plan.piVersion, piFffVersion: plan.piFffVersion, tuple: plan.status, journal: "committed", diagnostic: plan.diagnostics[0] ? adapterDiagnostic(plan.diagnostics[0]) : undefined, action: "Native liuovo read remains; FFF executes liuovo-presented grep/find; raw ffgrep/fffind names are hidden. Use status or teardown." };
+			current = { state: "managed-compatible", owner: "grove/native read + FFF-executed grove grep/find", scopes: participants.map((item) => item.scope), packageIdentity: plan.packageIdentity, profile: plan.profile, piVersion: plan.piVersion, piFffVersion: plan.piFffVersion, tuple: plan.status, journal: "committed", diagnostic: plan.diagnostics[0] ? adapterDiagnostic(plan.diagnostics[0]) : undefined, action: "Native grove read remains; FFF executes grove-presented grep/find; raw ffgrep/fffind names are hidden. Use status or teardown." };
 			let committed = false;
 			return {
-				status: current, skipLiuovoTools: SKIP_SCOPED,
+				status: current, skipGroveTools: SKIP_SCOPED,
 				commit(createComposite) {
 					if (committed) return;
 					committed = true;
@@ -259,7 +259,7 @@ export function createPiFffIntegrationController(options: CreatePiFffControllerO
 						const diagnostic = safeCompositionDiagnostic(plan, error);
 						current = {
 							...current, state: "managed-invalid",
-							owner: "liuovo/native read; grep/find unavailable",
+							owner: "grove/native read; grep/find unavailable",
 							tuple: "unavailable", journal: "committed", diagnostic: adapterDiagnostic(diagnostic),
 							action: "FFF-backed tools were not registered; fix the diagnostic and /reload. Unaffected tools remain safe.",
 						};

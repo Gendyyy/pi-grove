@@ -306,7 +306,7 @@ test("paintGroup keeps the click map aligned with the painted lines", () => {
 test("a finished codemode call keeps the steps that ran inside it", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const details = {
-    piLiuovoNested: {
+    piGroveNested: {
       version: 1,
       incomplete: false,
       calls: [
@@ -343,7 +343,7 @@ test("a finished codemode call keeps the steps that ran inside it", () => {
 test("a codemode call does not duplicate the steps it already registered live", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const details = {
-    piLiuovoNested: {
+    piGroveNested: {
       version: 1,
       incomplete: false,
       calls: [
