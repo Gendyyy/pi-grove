@@ -89,7 +89,7 @@ export class ToolTree {
    */
   ensure(id: string, toolName: string, args: unknown): void {
     if (this.settings.mode === "off") return;
-    const group = registerCall(this.state, { id, toolName, args, now: Date.now() });
+    const group = registerCall(this.state, { id, toolName, args, now: Date.now(), streaming: true });
     if (group) this.defer(group.invalidate);
     this.watch();
   }

@@ -232,6 +232,29 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   assert.match(stripAnsi(nextTask[1]!), /12%/, "a new task gets its own estimate");
 });
 
+test("partial streamed annotations cannot clear the committed progress meter", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const intent = "Fix retry handling safely";
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 35 } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
+
+  tree.ensure("b", "codemode", { code: "// task-intent: Fix retry" });
+  tree.ensure("b", "codemode", { code: "// task-intent: Fix retry handling" });
+  let frame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  assert.match(stripAnsi(frame[0]!), /Fix retry handling safely/);
+  assert.match(stripAnsi(frame[1]!), /35%/, "partial title fragments leave the last committed estimate visible");
+
+  tree.start({
+    toolCallId: "b",
+    toolName: "codemode",
+    args: {
+      code: ["// task-intent: Fix retry handling safely", "// task-progress: 50"].join(String.fromCharCode(10)),
+    },
+  });
+  frame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  assert.match(stripAnsi(frame[1]!), /50%/, "the complete estimate replaces the prior value atomically");
+});
+
 test("100 waits for the declared final call and outstanding calls to succeed", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const intent = "Complete the retry fix";

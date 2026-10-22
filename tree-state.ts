@@ -111,6 +111,7 @@ function makeNode(
   args: unknown,
   started: number,
   parent?: TreeNode,
+  includeTaskMetadata = true,
 ): TreeNode {
   const record = (args ?? undefined) as Record<string, unknown> | undefined;
   const node: TreeNode = {
@@ -119,8 +120,8 @@ function makeNode(
     name: brief(toolName, 100),
     goal: goalOf(record),
     target: targetOf(record),
-    taskIntent: parent ? undefined : taskIntentOf(record) || undefined,
-    completesTask: !parent && taskProgressOf(record) === 100,
+    taskIntent: parent || !includeTaskMetadata ? undefined : taskIntentOf(record) || undefined,
+    completesTask: !parent && includeTaskMetadata && taskProgressOf(record) === 100,
     status: "running",
     started,
     seq: ++state.sequence,
@@ -157,6 +158,8 @@ export interface CallInput {
   args: unknown;
   parentId?: string;
   now: number;
+  /** Partial argument streams may register rows, but must not commit task metadata. */
+  streaming?: boolean;
 }
 
 /**
@@ -168,9 +171,10 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
   const group = currentGroup(state, input.now);
   const record = (input.args ?? undefined) as Record<string, unknown> | undefined;
   const parent = typeof input.parentId === "string" ? group.nodes.get(input.parentId) : undefined;
-  const statedIntent = parent ? "" : taskIntentOf(record);
-  const statedProgress = parent ? undefined : taskProgressOf(record);
-  const intentChanged = parent ? false : updateGroupIntent(group, statedIntent);
+  const streaming = input.streaming === true;
+  const statedIntent = parent || streaming ? "" : taskIntentOf(record);
+  const statedProgress = parent || streaming ? undefined : taskProgressOf(record);
+  const intentChanged = parent || streaming ? false : updateGroupIntent(group, statedIntent);
   const progressChanged = parent || statedProgress === 100
     ? false
     : updateGroupProgress(group, statedProgress);
@@ -195,7 +199,7 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
     return group;
   }
   if (parent ? parent.children.length >= MAX_CHILDREN : group.rows.length >= MAX_ROWS) return undefined;
-  const node = makeNode(state, input.id, input.toolName, input.args, input.now, parent);
+  const node = makeNode(state, input.id, input.toolName, input.args, input.now, parent, !streaming);
   group.nodes.set(input.id, node);
   (parent ? parent.children : group.rows).push(node);
   if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
