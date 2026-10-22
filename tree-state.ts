@@ -270,7 +270,6 @@ export interface EndInput {
   id: string;
   result: unknown;
   status: TreeStatus;
-  durationMs?: number;
   now: number;
 }
 
@@ -297,10 +296,7 @@ export function finishCall(state: TreeState, input: EndInput): TreeGroup | undef
   const group = findGroup(state, input.id);
   const node = group?.nodes.get(input.id);
   if (!group || !node || node.status !== "running") return undefined;
-  const durationMs =
-    typeof input.durationMs === "number" && Number.isFinite(input.durationMs) && input.durationMs >= 0
-      ? input.durationMs
-      : Math.max(0, input.now - node.started);
+  const durationMs = Math.max(0, input.now - node.started);
   finalizeNode(group, node, input.result, input.status, durationMs);
   // The codemode snapshot is the only record of the steps that ran inside the call.
   attachCalls(state, group, readNested((input.result as { details?: unknown } | undefined)?.details), node);

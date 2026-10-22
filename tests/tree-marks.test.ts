@@ -30,8 +30,9 @@ test("a settled call shows a filled dot in its status colour", () => {
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: true, durationMs: 800 } as never, undefined);
   const [head, ok, failed] = painted(tree) as [string, string, string];
-  assert.match(head!, /\[dim\]/);
-  assert.doesNotMatch(head!, /warning/);
+  const headerMarker = head!.split(" · ")[0]!;
+  assert.match(headerMarker, /\[dim\]/);
+  assert.doesNotMatch(headerMarker, /warning/);
   assert.match(ok!, /\[success\]\*/);
   assert.match(failed!, /\[error\]\*/);
   assert.doesNotMatch(ok!, /error/);

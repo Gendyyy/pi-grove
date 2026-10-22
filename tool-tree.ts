@@ -119,11 +119,11 @@ export class ToolTree {
       (event as { isError?: boolean }).isError || (event.result as { isError?: boolean } | undefined)?.isError,
     );
     const status: TreeStatus = ctx?.signal?.aborted ? "cancelled" : failed ? "error" : "success";
+    // Use Grove's full start-to-finish interval, not the host's execution-only duration.
     const group = finishCall(this.state, {
       id: event.toolCallId,
       result: event.result,
       status,
-      durationMs: event.durationMs,
       now: Date.now(),
     });
     if (group) this.refresh(group);

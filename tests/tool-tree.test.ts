@@ -540,21 +540,31 @@ test("a final failure is counted without a group status label", () => {
 });
 
 test("the rollup ends in height bars for call durations", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
-  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 150 });
-  tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the suite" } });
-  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 90_000 });
-  tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
-  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
-  const head = lines(tree.render(row("a")))[0]!;
-  const spark = head.split(" · ")[1];
-  assert.equal(spark, ".@-", `no ASCII duration bars in: ${head}`);
-  assert.equal(spark!.length, 3);
-  assert.doesNotMatch(spark!, /[\/\\]/);
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
+    now += 150;
+    tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+    tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the suite" } });
+    now += 90_000;
+    tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false });
+    tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
+    now += 900;
+    tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
+    const head = lines(tree.render(row("a")))[0]!;
+    const spark = head.split(" · ")[1];
+    assert.equal(spark, ".@-", `no ASCII duration bars in: ${head}`);
+    assert.equal(spark!.length, 3);
+    assert.doesNotMatch(spark!, /[\/\\]/);
+  } finally {
+    Date.now = realNow;
+  }
 });
 
-test("a finished call keeps elapsed time when the host omits durationMs", () => {
+test("a finished call uses elapsed time when the host omits durationMs", () => {
   const realNow = Date.now;
   let now = 10_000;
   Date.now = () => now;
@@ -571,7 +581,7 @@ test("a finished call keeps elapsed time when the host omits durationMs", () => 
   }
 });
 
-test("a host duration remains authoritative over Grove's elapsed fallback", () => {
+test("Grove elapsed time overrides a supplied host duration", () => {
   const realNow = Date.now;
   let now = 10_000;
   Date.now = () => now;
@@ -588,55 +598,80 @@ test("a host duration remains authoritative over Grove's elapsed fallback", () =
     });
     const callLine = lines(tree.render(row("a"))).find(line => line.includes("+─"));
     assert.ok(callLine, "the rendered card includes the call row");
-    assert.match(callLine, /<1s$/, `the supplied host duration should win: ${callLine}`);
+    assert.match(callLine, /2s$/, `the Grove elapsed interval should win over host timing: ${callLine}`);
   } finally {
     Date.now = realNow;
   }
 });
 
 test("duration bars transition from success through warning to error colors", () => {
-  const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
-  for (const [id, durationMs] of [["a", 100], ["b", 1_000], ["c", 10_000]] as const) {
-    tree.start({ toolCallId: id, toolName: "read", args: { reasoning: "read the log" } });
-    tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false, durationMs });
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+    for (const [id, elapsedMs] of [["a", 100], ["b", 1_000], ["c", 10_000]] as const) {
+      tree.start({ toolCallId: id, toolName: "read", args: { reasoning: "read the log" } });
+      now += elapsedMs;
+      tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
+    }
+    const rendered = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
+    assert.ok(rendered.includes("\u001b[32m▁"), "shortest duration is green/success");
+    assert.ok(rendered.includes("\u001b[33m▄"), "middle duration uses the warning color");
+    assert.ok(rendered.includes("\u001b[31m█"), "longest duration is red/error");
+  } finally {
+    Date.now = realNow;
   }
-  const rendered = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
-  assert.ok(rendered.includes("\u001b[32m▁"), "shortest duration is green/success");
-  assert.ok(rendered.includes("\u001b[33m▄"), "middle duration uses the warning color");
-  assert.ok(rendered.includes("\u001b[31m█"), "longest duration is red/error");
 });
 
 test("a running call keeps its own cell at the end of the sparkline", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
-  tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the suite" } });
-  tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false, durationMs: 2000 });
-  tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
-  const head = lines(tree.render(row("a")))[0]!;
-  const spark = head.split(" · ")[1]?.slice(0, 2);
-  assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
-  assert.equal(spark?.[0], "@");
-  assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");
-  const colored = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
-  assert.ok(colored.includes("\u001b[32m."), "the running bar color follows its short elapsed duration");
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the suite" } });
+    now += 2_000;
+    tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false });
+    tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
+    const head = lines(tree.render(row("a")))[0]!;
+    const spark = head.split(" · ")[1]?.slice(0, 2);
+    assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
+    assert.equal(spark?.[0], "@");
+    assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");
+    const colored = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
+    assert.ok(colored.includes("\u001b[32m."), "the running bar color follows its short elapsed duration");
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test("Unicode duration sparkline uses height bars", () => {
-  const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
-  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 150 });
-  tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the suite" } });
-  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 90_000 });
-  tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
-  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
-  const head = lines(tree.render(row("a")))[0]!;
-  const plot = head.split(" · ")[1];
-  assert.ok(plot?.includes("\uf080"), `no Nerd Font bar-chart cue in: ${head}`);
-  const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
-  assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);
-  assert.equal(spark[0], "▁", "the shortest call uses the lowest bar");
-  assert.equal(spark[1], "█", "the slowest call uses the tallest bar");
-  assert.ok(["▂", "▃", "▄", "▅", "▆", "▇"].includes(spark[2]!),
-    "the middle-duration call uses an intermediate bar");
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
+    now += 150;
+    tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+    tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the suite" } });
+    now += 90_000;
+    tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false });
+    tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
+    now += 1_500;
+    const head = lines(tree.render(row("a")))[0]!;
+    const plot = head.split(" · ")[1];
+    assert.ok(plot?.includes("\uf080"), `no Nerd Font bar-chart cue in: ${head}`);
+    const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
+    assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);
+    assert.equal(spark[0], "▁", "the shortest call uses the lowest bar");
+    assert.equal(spark[1], "█", "the slowest call uses the tallest bar");
+    assert.ok(["▂", "▃", "▄", "▅", "▆", "▇"].includes(spark[2]!),
+      "the middle-duration call uses an intermediate bar");
+  } finally {
+    Date.now = realNow;
+  }
 });
 test("the card shows call details without group-level prose", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));

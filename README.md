@@ -83,7 +83,8 @@ four-minute call from flattening everything beside it, and slower calls rise tow
 Unicode mode uses block heights, while ASCII mode uses increasing intensity characters.
 Bar colors follow relative duration through the theme's success, warning and error colors:
 shorter calls are green, longer calls are red, with intermediate durations transitioning
-between them. Exact times stay on each row.
+between them. Exact times stay on each row. Live call times use Grove's full start-to-finish
+elapsed interval, not the host-reported execution duration.
 
 ## Glyphs
 
