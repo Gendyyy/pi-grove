@@ -82,7 +82,8 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
 
   pi.on("before_agent_start", (event) => {
     const prompt = event.systemPromptOptions;
-    if (prompt.selectedTools.includes("codemode")) prompt.sections.grove_tool_ui = CODEMODE_GUIDANCE;
+    if (prompt.selectedTools.includes("codemode"))
+      prompt.sections.grove_tool_ui = CODEMODE_GUIDANCE;
     else delete prompt.sections.grove_tool_ui;
   });
   pi.on("turn_start", () => tree.boundary("turn"));
@@ -96,7 +97,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
   };
 
   pi.on("message_start", (event) => {
-    const message = (event as { message?: { role?: string } }).message;
+    const message = (event as { message?: { role?: string; content?: unknown } }).message;
     const role = message?.role;
     if (role === "assistant") {
       tree.boundary("message");
@@ -106,12 +107,14 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
     if (role === "user") tree.boundary("prompt");
   });
   pi.on("message_update", (event) => {
-    const message = (event as { message?: { role?: string } }).message;
-    if (message?.role === "assistant") feedReasoning(message, false);
+    const message = (event as { message?: { role?: string; content?: unknown } }).message;
+    if (message?.role !== "assistant") return;
+    feedReasoning(message, false);
   });
   pi.on("message_end", (event) => {
-    const message = (event as { message?: { role?: string } }).message;
-    if (message?.role === "assistant") feedReasoning(message, true);
+    const message = (event as { message?: { role?: string; content?: unknown } }).message;
+    if (message?.role !== "assistant") return;
+    feedReasoning(message, true);
   });
   pi.on("tool_execution_start", (event, ctx) => {
     if (observed(event.toolName)) startedAt.set(event.toolCallId, Date.now());

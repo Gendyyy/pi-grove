@@ -10,7 +10,7 @@ narration instead of a stack of boxes.
 ```
 
 Click the header to reveal every row, click a row to open one level, click again to close.
-Nothing opens by default, so a long turn still costs four lines until you ask for detail.
+Nothing opens by default; the headline stays compact above the tool details.
 
 ## Install
 
@@ -43,12 +43,49 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
 
+## Card shape
+
+One card per request: a headline and the tool rows under it. Nothing sits between them — no goal
+line, no phase line, no prose. The headline carries the outcome, the call count, the duration
+sparkline and the tool mix; each row carries one call's own words.
+
+```
+╭─ GROVE ────────────────────────────────────────────────────╮
+│ ▸ DONE · 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1          │
+│ ├─ ●   codemode · read the classify docs and run one · 1s  │
+│ └─ ●   bash · run the model tests (npm test) · 4s          │
+╰────────────────────────────────────────────────────────────╯
+```
+
+Grove does not create or retain a group-level goal or phase summary. The individual call rows
+show each tool's own intent without adding another prompt-level section.
+
+## Rollup
+
+The line under the frame answers three questions in order: how the turn ended (the chip),
+how much of the work is in view, and **where the time went**. The last item is a connected
+line sparkline, not a row of height bars. Nerd Font mode adds a chart-line icon as a cue;
+Braille dots still plot the actual durations, one segment per call, oldest first. A log scale
+keeps one four-minute call from flattening everything beside it, and slower calls rise toward
+the top. ASCII mode uses a point followed by slash, backslash, or dash segments to keep the
+trace readable. A running call keeps its segment coloured as running. Exact times stay on
+each row.
+
 ## Glyphs
 
-`icons` is what keeps the card short. With a Nerd Font one tool word becomes a single
-glyph in that tool's own colour, one outcome word becomes a single mark, and a count
-keeps its number. `auto` turns glyphs on only when the terminal can draw them; force
-`ascii` to keep every word.
+`icons` shortens the card without hiding what it says. With a Nerd Font a tool gets a glyph
+in its own colour beside its name, so the row still reads `  read`, `  codemode`, `  bash` with
+the two-cell gap a patched glyph needs so it never touches the word; one
+outcome word becomes a single mark, and a count keeps its number. The tool word is never
+dropped for its glyph, and the rollup names tools in words (`read ×2 · bash ×1`) so the mix
+is readable without the font. `auto` turns glyphs on only when the terminal can draw them;
+force `ascii` to keep every word.
+
+A live call spins. Its marker walks a frame ramp one frame per 100 ms — `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`
+in a Unicode terminal, `|/-\` in ASCII — and the same tick keeps the row's elapsed time
+honest, so a working card is visibly working while a settled one is still. Nothing else on the
+row moves: the tool word, the intent and the call's own colour stay put, so the motion says
+in-flight without redrawing what the row means.
 
 | Glyph | Means |
 | --- | --- |
@@ -69,7 +106,7 @@ keeps its number. `auto` turns glyphs on only when the terminal can draw them; f
 | `` | error, failed |
 | `` | cancelled |
 | `` | incomplete |
-| `` | running |
+| `` | ⠋⠙⠹… | running, spinning one frame per tick |
 
 A tool grove has no glyph for keeps its name beside the generic mark, so an MCP call still
 says which server ran. A plain terminal keeps every word and drops only the old bracket

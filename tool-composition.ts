@@ -36,25 +36,30 @@ export function withReasoning(parameters: SourceToolDefinition["parameters"]): S
 	return { ...parameters, properties, required };
 }
 
-
 /** Preserve source behavior and metadata; presentation is registered separately. */
 export function composeSourceTool<T extends SourceToolDefinition>(
 	source: T,
 	options: SourceToolCompositionOptions,
 ): ComposedSourceTool<T> {
 	const injectReasoning = options.mode !== "result";
-	if (injectReasoning && Object.hasOwn(source.parameters.properties ?? {}, "reasoning")) {
+	const properties = source.parameters.properties ?? {};
+	if (injectReasoning && Object.hasOwn(properties, "reasoning")) {
 		throw new Error(`${source.name} source schema reserves grove-owned reasoning`);
 	}
+	let parameters = source.parameters;
+	if (injectReasoning) parameters = withReasoning(parameters);
 	const composed: ComposedSourceTool<T> = {
 		...source,
-		parameters: injectReasoning ? withReasoning(source.parameters) : source.parameters,
+		parameters,
 		execute(id, params, signal, onUpdate, context) {
-			const sourceParams = injectReasoning ? stripReasoning(params as Record<string, unknown>).rest : params;
+			let sourceParams = params;
+			if (injectReasoning) sourceParams = stripReasoning(params as Record<string, unknown>).rest;
 			return source.execute.call(source, id, sourceParams, signal, onUpdate, context);
 		},
 	};
-	if (injectReasoning) composed.promptGuidelines = [...(source.promptGuidelines ?? []), options.reasoningGuideline];
+	const guidelines = [...(source.promptGuidelines ?? [])];
+	if (injectReasoning) guidelines.push(options.reasoningGuideline);
+	if (guidelines.length > 0) composed.promptGuidelines = guidelines;
 	return composed;
 }
 

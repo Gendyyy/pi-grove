@@ -66,15 +66,14 @@ export function markFor(word: string, mode: IconMode = "auto"): string | undefin
   return Object.hasOwn(marks, word) ? marks[word][0] : undefined;
 }
 
-/** The cell that names a tool: its glyph alone when the font has one, else its word. */
+/**
+ * The cell that names a tool: its glyph as a small indicator ahead of the word. The word
+ * always stays, because a lone glyph makes a row unreadable to anyone still learning the
+ * font, and the point of the row is to say which tool ran.
+ */
 export function toolWord(name: string, mode: IconMode = "auto"): string {
   if (!glyphWords(mode)) return name;
-  // An unknown tool keeps its name beside the generic glyph, or the row stops
-  // saying which tool ran at all.
-  return hasToolGlyph(name) ? iconFor(name, mode) : iconFor(name, mode) + "  " + name;
-}
-
-/** A patched glyph overhangs its cell, so words that follow one need an extra column. */
-export function labelGap(name: string, icons = true, mode: IconMode = "auto"): string {
-  return icons && glyphWords(mode) && hasToolGlyph(name) ? " " : "";
+  // A patched glyph overhangs its cell, so every glyph (known or not) keeps the wider gap
+  // iconPrefix uses; one space read as the glyph touching the tool name.
+  return (hasToolGlyph(name) ? "" : " ") + iconPrefix(name, mode) + name;
 }

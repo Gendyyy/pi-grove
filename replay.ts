@@ -31,6 +31,11 @@ export interface ReplayCall {
   previewDiff?: boolean;
 }
 
+/** One restored group of tool calls. */
+export interface ReplaySegment {
+  calls: ReplayCall[];
+}
+
 /** Only these statuses describe a finished call; anything else is treated as unfinished. */
 function normalizeStatus(value: unknown): TreeStatus {
   if (value === "error") return "error";
@@ -54,7 +59,7 @@ function previewLines(value: unknown): string[] | undefined {
 
 /** Recover the steps grove recorded inside one codemode result. */
 export function readNested(details: unknown): ReplayCall[] {
-  const snapshot = readDetail<{ calls?: unknown }>(details, "piGroveNested");
+  const snapshot = readDetail<{ calls?: unknown; version?: unknown }>(details, "piGroveNested");
   const calls = Array.isArray(snapshot?.calls) ? snapshot.calls : [];
   const nodes = new Map<string, ReplayCall>();
   const parents = new Map<string, string | undefined>();
@@ -78,7 +83,7 @@ export function readNested(details: unknown): ReplayCall[] {
     nodes.set(call.id, {
       id: call.id,
       name: call.name,
-      args: reasoning ? { reasoning: reasoning } : undefined,
+      args: reasoning ? { reasoning } : undefined,
       isError: call.status === "error",
       status: normalizeStatus(call.status),
       started: typeof call.started === "number" ? call.started : Date.now(),
@@ -106,16 +111,16 @@ export function readNested(details: unknown): ReplayCall[] {
  * Read a pi session transcript into one segment of top-level calls per card.
  * The mode names where a card breaks: a prompt, an assistant turn, or every message.
  */
-export function readTranscript(entries: unknown, mode: GroupMode, includeThinking = true): ReplayCall[][] {
+export function readTranscript(entries: unknown, mode: GroupMode, includeThinking = true): ReplaySegment[] {
   if (mode === "off" || !Array.isArray(entries)) return [];
-  const segments: ReplayCall[][] = [];
+  const segments: ReplaySegment[] = [];
   const index = new Map<string, ReplayCall>();
-  const openSegment = (): ReplayCall[] => {
-    const segment: ReplayCall[] = [];
+  const openSegment = (): ReplaySegment => {
+    const segment: ReplaySegment = { calls: [] };
     segments.push(segment);
     return segment;
   };
-  let current: ReplayCall[] = [];
+  let current: ReplaySegment | undefined;
 
   for (const raw of entries) {
     const entry = raw as { type?: unknown; timestamp?: unknown; message?: Record<string, unknown> };
@@ -126,13 +131,12 @@ export function readTranscript(entries: unknown, mode: GroupMode, includeThinkin
     const at = Number.isFinite(stamp) ? stamp : Date.now();
 
     if (role === "user") {
-      if (mode === "prompt") {
-        current = openSegment();
-      }
+      if (mode === "prompt") current = openSegment();
       continue;
     }
     if (role === "assistant") {
-      if (mode !== "prompt") current = openSegment();
+      if (mode !== "prompt" || !current) current = openSegment();
+      const segment = current;
       const parts = Array.isArray(message.content) ? message.content : [];
       // Reasoning is replayed in place, so a reloaded card narrates the same order the
       // live card did: thought, action, thought, action.
@@ -160,7 +164,7 @@ export function readTranscript(entries: unknown, mode: GroupMode, includeThinkin
             children: [],
           };
           index.set(thought.id, thought);
-          current.push(thought);
+          segment.calls.push(thought);
           continue;
         }
         inside = false;
@@ -175,7 +179,7 @@ export function readTranscript(entries: unknown, mode: GroupMode, includeThinkin
           children: [],
         };
         index.set(node.id, node);
-        current.push(node);
+        segment.calls.push(node);
       }
       continue;
     }
@@ -191,7 +195,8 @@ export function readTranscript(entries: unknown, mode: GroupMode, includeThinkin
     node.status = isError ? "error" : "success";
     node.children = readNested(message.details);
     for (const child of node.children) index.set(child.id, child);
+
   }
 
-  return segments.filter(segment => segment.length > 0);
+  return segments.filter(segment => segment.calls.length > 0);
 }

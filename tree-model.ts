@@ -1,6 +1,6 @@
 /**
  * tree-model.ts — the shapes and pure helpers of the tool card: what a node is,
- * how a call is summarised, and how counts and rail glyphs are derived.
+ * how a call is summarised, and how counts and glyphs are derived.
  * No state and no rendering: paint reads it, tool-tree.ts mutates it.
  */
 import { stripVTControlCharacters } from "node:util";
@@ -93,7 +93,6 @@ export const DOT = " · ";
 export const ELLIPSIS = "…";
 
 export interface Glyphs {
-  rail: string;
   tee: string;
   end: string;
   pipe: string;
@@ -102,10 +101,31 @@ export interface Glyphs {
   times: string;
   dot: string;
   hollow: string;
+  /** Frames of the running marker, drawn one per tick so a live call visibly spins. */
+  spin: string;
+  /** Frame corners and edges of the group card. */
+  tl: string;
+  tr: string;
+  bl: string;
+  br: string;
+  h: string;
+  v: string;
+  /** Rendering style for the duration line sparkline. */
+  spark: "braille" | "ascii";
+  /** Font Awesome line-chart cue, empty when only ASCII glyphs are available. */
+  chart: string;
 }
 
-const UNICODE_GLYPHS: Glyphs = { rail: "▌", tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○" };
-const ASCII_GLYPHS: Glyphs = { rail: "|", tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o" };
+const UNICODE_GLYPHS: Glyphs = {
+  tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
+  spin: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "braille", chart: "\uf201",
+};
+const ASCII_GLYPHS: Glyphs = {
+  tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
+  spin: "|/-\\",
+  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", spark: "ascii", chart: "",
+};
 
 /** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
 export function treeGlyphs(mode: IconMode): Glyphs {
@@ -199,7 +219,7 @@ export function toolBreakdown(
   );
   // Each part is one glyph and a count once the font can name the tool itself.
   const parts = counts.slice(0, kinds).map(([name, count]) =>
-    themeText(theme, toolColor(name), icons ? toolWord(name, iconMode) : name) +
+    themeText(theme, toolColor(name), name) +
     themeText(theme, "dim", " " + glyphs.times) +
     themeText(theme, "muted", String(count)),
   );

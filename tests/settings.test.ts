@@ -2,10 +2,10 @@
  * settings.test.ts — the option table validates, resolves and persists every grove setting.
  */
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { readRawConfig } from "../config.js";
 import {
   applyCommand,
@@ -22,9 +22,16 @@ import {
   withSetting,
 } from "../settings.js";
 
+const scratchDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(scratchDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
+});
+
 /** A scratch grove.json so tests never touch the real agent dir. */
 async function scratch(config: Record<string, unknown> = {}): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "grove-settings-"));
+  scratchDirs.push(dir);
   const path = join(dir, "grove.json");
   await writeFile(path, JSON.stringify(config), "utf8");
   return path;

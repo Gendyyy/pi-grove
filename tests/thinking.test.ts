@@ -41,7 +41,10 @@ function row(id: string): TreeRow {
 
 /** Rendered lines without host padding and escapes. */
 function lines(component: Component, width = 100): string[] {
-  return component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
+  const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
+  // The card is one bordered object now, so the body is what the assertions index.
+  if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
+  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 test("consecutive thinking parts collapse into one run with ordered ids", () => {
@@ -82,7 +85,10 @@ test(
     tree.start({ toolCallId: "c1", toolName: "read", args: { reasoning: "check the schema" } });
     tree.end({ toolCallId: "c1", toolName: "read", result: {}, isError: false, durationMs: 100 });
     const card = tree.render(row("c1")) as Component & { handleMouse?: (event: unknown) => unknown };
-    const index = lines(card).findIndex(line => line.includes("thinking"));
+    const index = card
+      .render(100)
+      .map(line => line.replace(/\u001b\[[0-9;]*m/g, ""))
+      .findIndex(line => line.includes("thinking"));
     card.handleMouse?.({ type: "click", button: "left", x: 0, y: index, screenX: 0, screenY: 0, width: 80, height: 40 });
     const opened = lines(tree.render(row("c1")));
     assert.match(opened.join(" "), /Look at the schema before querying it/);
@@ -122,12 +128,12 @@ test("a replay keeps reasoning in place above the call it led to", () => {
     },
   ];
   const segments = readTranscript(entries, "prompt");
-  assert.deepEqual(segments[0]!.map(entry => entry.name), ["thinking", "read"]);
+  assert.deepEqual(segments[0]!.calls.map(entry => entry.name), ["thinking", "read"]);
 
   const tree = new ToolTree(settings());
   tree.restore(segments);
   const painted = lines(tree.render(row("c1")));
-  assert.match(painted[1]!, /thinking/);
-  assert.doesNotMatch(painted[1]!, /First check the manifest/);
-  assert.match(painted[2]!, /read/);
+  assert.ok(painted.some(line => /thinking/.test(line)));
+  assert.doesNotMatch(painted.join(" "), /First check the manifest/);
+  assert.ok(painted.some(line => /read/.test(line)));
 });

@@ -27,18 +27,22 @@ function row(id: string): { toolCallId: string; inner: Component; theme: typeof 
 
 /** Painted lines with host padding trimmed. */
 function lines(tree: ToolTree, id: string): string[] {
-  return tree.render(row(id)).render(90).map(line => line.trim());
+  const painted = tree.render(row(id)).render(90).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
+  // The card is one bordered object now, so the body is what the assertions index.
+  if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
+  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
-test("a nerd font drops the tool word from the headline and the row", () => {
+test("a nerd font adds the tool glyph and still names the tool", () => {
   const tree = new ToolTree(settings("nerd"));
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
   const painted = lines(tree, "a");
-  assert.match(painted[0]!, new RegExp(READ));
+  // The glyph is an indicator, never a replacement: the row still says "read".
+  assert.match(painted[0]!, /read/);
   assert.match(painted[0]!, /1/);
-  assert.doesNotMatch(painted[0]!, /read/);
-  assert.doesNotMatch(painted[1]!, /read/);
+  assert.match(painted[1]!, new RegExp(READ));
+  assert.match(painted[1]!, /read/);
 });
 
 test("the same card keeps every word on a plain terminal", () => {
@@ -75,15 +79,15 @@ test("counts shorten to a unit letter only when glyphs are on", () => {
   assert.match(words, /12 lines/);
 });
 
-test("a tool without a glyph still says which tool ran", () => {
+test("a tool word always stays next to its glyph", () => {
   assert.equal(hasToolGlyph("read"), true);
   assert.equal(hasToolGlyph("mcp__db__lookup"), false);
   assert.match(toolWord("mcp__db__lookup", "nerd"), /mcp__db__lookup/);
-  assert.equal(toolWord("read", "nerd"), READ);
+  assert.equal(toolWord("read", "nerd"), READ + "  read");
   assert.equal(toolWord("read", "ascii"), "read");
 });
 
-test("the breakdown mixes glyphs and counts", () => {
+test("the breakdown names tools in words, like the mock", () => {
   const nodes: TreeNode[] = [
     { id: "1", seq: 1, name: "read", goal: "", target: "", status: "success", started: 0, children: [] },
     { id: "2", seq: 2, name: "read", goal: "", target: "", status: "success", started: 0, children: [] },
@@ -91,26 +95,25 @@ test("the breakdown mixes glyphs and counts", () => {
   ];
   const glyphs = toolBreakdown(nodes, plainTheme, treeGlyphs("nerd"), 4, true, "nerd");
   const g = treeGlyphs("nerd");
-  assert.deepEqual(glyphs, [READ + " " + g.times + "2", "\uf120 " + g.times + "1"]);
+  assert.deepEqual(glyphs, ["read " + g.times + "2", "bash " + g.times + "1"]);
 });
 
-test("a glyph keeps a column of air before its text", () => {
+test("the glyph keeps a gap ahead of the tool word", () => {
   const tree = new ToolTree(settings("nerd"));
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
-  // A patched glyph overhangs its cell, so the row adds the column the font eats.
   const row = lines(tree, "a")[1]!;
-  assert.ok(row.includes(READ + "  check the manifest"), "expected two spaces after the glyph: " + JSON.stringify(row));
+  assert.ok(row.includes(READ + "  read · check the manifest"), JSON.stringify(row));
 });
 
-test("a plain word keeps its single space", () => {
+test("a plain word keeps its single space before the dot", () => {
   const tree = new ToolTree(settings("ascii"));
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
-  assert.ok(lines(tree, "a")[1]!.includes("read check the manifest"));
+  assert.ok(lines(tree, "a")[1]!.includes("read · check the manifest"));
 });
 
 test("the standalone card pads its label the same way", () => {
   const block = buildToolBlock("read", { reasoning: "check the manifest" }, {}, { isError: false, isPartial: false, executionStarted: true, expanded: false, elapsedMs: 900, mode: "reasoning", icons: true, iconMode: "nerd", width: 96, theme: plainTheme });
-  assert.ok(block.some(line => line.includes(READ + "  check the manifest")), JSON.stringify(block));
+  assert.ok(block.some(line => line.includes(READ + "  read")), JSON.stringify(block));
 });

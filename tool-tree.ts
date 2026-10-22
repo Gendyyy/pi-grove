@@ -5,12 +5,13 @@
  */
 import { Container, type Component } from "@earendil-works/pi-tui";
 import type { ToolExecutionEndEvent, ToolExecutionStartEvent } from "@earendil-works/pi-coding-agent";
-import type { ReplayCall } from "./replay.js";
+import type { ReplaySegment } from "./replay.js";
 import { plainTheme, type GroveTheme } from "./theme.js";
 import { TreeBlock, type TreeRow } from "./tree-block.js";
-import { BLINK_MS, paintGroup } from "./tree-paint.js";
+import { paintGroup, SPIN_MS } from "./tree-paint.js";
 import { GROUP_TARGET, type GroupMode, type PaintScope, type TreeGroup, type TreeNode, type TreeSettings, type TreeStatus } from "./tree-model.js";
 import {
+  activeGroup,
   claimSlot,
   createState,
   findGroup,
@@ -133,7 +134,7 @@ export class ToolTree {
   }
 
   /** Rebuild cards from a replayed transcript, so a reload or resume keeps the grouping. */
-  restore(segments: ReplayCall[][]): void {
+  restore(segments: ReplaySegment[]): void {
     if (this.settings.mode === "off") return;
     restoreSegments(this.state, segments);
     this.stopWatch();
@@ -202,7 +203,7 @@ export class ToolTree {
     this.redraw();
   }
 
-  /** Keep running durations honest and animate the blink with one shared timer. */
+  /** Keep running durations honest and step the spinner with one shared timer. */
   private watch(): void {
     if (this.timer !== undefined) return;
     this.timer = setInterval(() => {
@@ -212,11 +213,11 @@ export class ToolTree {
         return;
       }
       group.invalidate?.();
-    }, BLINK_MS);
+    }, SPIN_MS);
     this.timer.unref?.();
   }
 
-  /** Stop the shared blink timer once nothing is running. */
+  /** Stop the shared frame timer once nothing is running. */
   private stopWatch(): void {
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;

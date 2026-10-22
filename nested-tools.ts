@@ -1,7 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
-import { labelGap, markFor, type IconMode } from "./icons.js";
+import { markFor, type IconMode } from "./icons.js";
 import { metric, paintSummary, plainTheme, themeText, toolLabel, type GroveTheme } from "./theme.js";
 import type { ExtensionContext, ToolExecutionStartEvent, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { readDetail } from "./details.js";
@@ -31,7 +31,7 @@ interface Call {
   cost?: number;
 }
 interface Snapshot {
-  version: 1;
+  version: 3;
   calls: Call[];
   incomplete: boolean;
 }
@@ -74,7 +74,8 @@ function nativeCall(record: any, index: number): { call: Call; incomplete: boole
     : record?.status === "cancelled" ? "cancelled" : record?.status === "running" ? "running" : "incomplete";
   return { incomplete, call: {
     id: brief(record?.id || `record-${index}`, 512), name: brief(record?.name, 100),
-    reasoning: model ? "" : brief(args?.reasoning), target: model ? brief(record?.args) : target(args),
+    reasoning: model ? "" : brief(args?.reasoning),
+    target: model ? brief(record?.args) : target(args),
     status, duration: finiteNonnegative(record?.durationMs), summary: brief(record?.error) || undefined,
     ...(model ? { model: true, cost: finiteNonnegative(record?.cost) } : {}),
   } };
@@ -154,7 +155,8 @@ export class NestedToolObserver {
     }
     this.calls.set(event.toolCallId, {
       id: event.toolCallId, parent: typeof event.parentToolCallId === "string" ? event.parentToolCallId.slice(0, 512) : undefined,
-      name: brief(event.toolName, 100), reasoning: brief(event.args?.reasoning), target: target(event.args),
+      name: brief(event.toolName, 100), reasoning: brief(event.args?.reasoning),
+      target: target(event.args),
       status: "running", started: Date.now(),
       ...writeDetails,
     });
@@ -242,7 +244,7 @@ export class NestedToolObserver {
   snapshot(id: string): Snapshot {
     const calls = [...this.calls.values()].filter(call => this.descendsFrom(call, id));
     return {
-      version: 1,
+      version: 3,
       calls: calls.map(call => ({ ...call, duration: call.status === "running" ? elapsed(call) : call.duration, started: undefined })),
       incomplete: this.incomplete || calls.some(call => call.inferredEnd),
     };
@@ -260,9 +262,20 @@ export class NestedToolObserver {
       result?.details,
       "piGroveNested",
     );
-    const snapshot: Snapshot = { version: 1, calls: [], incomplete: false };
-    if (saved?.version === 1 && Array.isArray(saved.calls)) {
-      snapshot.calls = saved.calls.slice(0, MAX_CALLS);
+    const snapshot: Snapshot = {
+      version: 3, calls: [], incomplete: false,
+    };
+    if ((saved?.version === 1 || saved?.version === 2 || saved?.version === 3) && Array.isArray(saved.calls)) {
+      snapshot.calls = saved.calls.slice(0, MAX_CALLS).map(call => {
+        const {
+          id, parent, name, reasoning, target, status, started, duration, inferredEnd, summary,
+          preview, previewTruncated, fullOutputPath, diff, writeLines, model, cost,
+        } = call;
+        return {
+          id, parent, name, reasoning, target, status, started, duration, inferredEnd, summary,
+          preview, previewTruncated, fullOutputPath, diff, writeLines, model, cost,
+        };
+      });
       snapshot.incomplete = !!saved.incomplete || saved.calls.length > MAX_CALLS;
     }
     const records = result?.details?.calls;
@@ -345,7 +358,7 @@ export class NestedToolObserver {
       const cost = call.model && call.cost !== undefined ? ` · ${costText(call.cost)}` : "";
       const summary = paintSummary(call.name, this.callSummary(call) + cost, call.status, theme, icons, iconMode);
       if (heading) {
-        lines.push(truncateToWidth(`${indent}${toolLabel(call.name, theme, icons, iconMode)}${labelGap(call.name, icons, iconMode)} ${themeText(theme, "text", call.reasoning || call.target || "arguments unavailable")}`, width, "…"));
+        lines.push(truncateToWidth(`${indent}${toolLabel(call.name, theme, icons, iconMode)} ${themeText(theme, "text", call.reasoning || call.target || "arguments unavailable")}`, width, "…"));
       }
       lines.push(summaryLine(`${indent}  `, themeText(theme, "muted", call.target || "—"), ` ${themeText(theme, "dim", "→")} `, summary, width));
       if (options.expanded && call.status !== "running") {

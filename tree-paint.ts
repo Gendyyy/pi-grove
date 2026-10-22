@@ -2,8 +2,9 @@
  * tree-paint.ts — turns one group into the lines of its collapsed or revealed card,
  * and records the click target of every line it paints.
  */
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, fitToolLine, formatElapsed, summaryLine } from "./block-render.js";
-import { labelGap, type IconMode } from "./icons.js";
+import type { IconMode } from "./icons.js";
 import { plainTheme, themeText, toolLabel, type Foreground, type GroveTheme } from "./theme.js";
 import {
   DOT,
@@ -31,16 +32,96 @@ export interface PaintState {
   expanded: ReadonlySet<string>;
 }
 
-/** How long one blink frame lasts; the watch timer repaints on the same cadence. */
-export const BLINK_MS = 450;
+/** Repaint cadence for running markers and live duration traces. */
+/** One spinner frame, and one honest duration refresh, per tick while a card is live. */
+export const SPIN_MS = 100;
+
+/** Widest sparkline the rollup carries; one cell per call, oldest call first. */
+const SPARK_CELLS = 8;
+
+/**
+ * How long each call took, as a connected line sparkline. Braille cells plot relative
+ * heights; the ASCII fallback draws the direction of each connecting segment.
+ */
+const BRAILLE_DOTS = [
+  [0x01, 0x08], // row 0: dots 1, 4
+  [0x02, 0x10], // row 1: dots 2, 5
+  [0x04, 0x20], // row 2: dots 3, 6
+  [0x40, 0x80], // row 3: dots 7, 8
+] as const;
+
+function brailleSegment(from: number, to: number): string {
+  let mask = 0;
+  if (from === to) {
+    mask = BRAILLE_DOTS[from]![0] | BRAILLE_DOTS[from]![1];
+  } else {
+    const distance = Math.abs(to - from);
+    const direction = Math.sign(to - from);
+    // Rasterize through the Braille rows, staying connected as the line moves across the cell.
+    for (let step = 0; step <= distance; step++) {
+      const row = from + direction * step;
+      const column = step === 0 ? 0 : step === distance ? 1 : Math.round(step / distance);
+      mask |= BRAILLE_DOTS[row]![column]!;
+    }
+  }
+  return String.fromCharCode(0x2800 + mask);
+}
+
+function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Glyphs): string {
+  const recent = tools.slice(-SPARK_CELLS);
+  if (recent.length === 0) return "";
+  const now = Date.now();
+  const took = recent.map(tool =>
+    tool.duration ?? (tool.status === "running" ? Math.max(0, now - tool.started) : 0),
+  );
+  if (took.every(value => value <= 0)) return "";
+
+  // A log scale keeps one four-minute call from flattening every other point.
+  const low = Math.log(Math.max(1, Math.min(...took)));
+  const high = Math.log(Math.max(1, Math.max(...took)));
+  const span = high - low;
+  const heights = took.map(value =>
+    span <= 0 ? 0.5 : (Math.log(Math.max(1, value)) - low) / span,
+  );
+
+  if (glyphs.spark === "ascii") {
+    return heights
+      .map((height, index) => {
+        if (index === 0) return ".";
+        const previous = heights[index - 1]!;
+        return height > previous ? "/" : height < previous ? "\\" : "-";
+      })
+      .map((segment, index) =>
+        themeText(theme, recent[index]!.status === "running" ? "warning" : "dim", segment),
+      )
+      .join("");
+  }
+
+  const rows = heights.map(height => 3 - Math.round(height * 3));
+  return rows
+    .map((row, index) => {
+      const next = rows[index + 1] ?? row;
+      const segment = brailleSegment(row, next);
+      return themeText(theme, recent[index]!.status === "running" ? "warning" : "dim", segment);
+    })
+    .join("");
+}
+
+/** The running marker at this instant: a frame of the ramp, wrap-around included. */
+export function spinGlyph(glyphs: Glyphs, now: number): string {
+  const frames = [...glyphs.spin];
+  if (frames.length === 0) return glyphs.dot;
+  return frames[Math.floor(now / SPIN_MS) % frames.length]!;
+}
 
 /** Colour and glyph of a row marker: the call state, not whether the row opens. */
 function stateMark(node: TreeNode, glyphs: Glyphs, now: number): { glyph: string; color: Foreground } {
   if (node.kind === "thinking") return { glyph: glyphs.dot, color: "muted" };
   switch (node.status) {
     case "running":
-      // A running call pulses between the filled and the outline dot.
-      return { glyph: Math.floor(now / BLINK_MS) % 2 === 0 ? glyphs.dot : glyphs.hollow, color: "warning" };
+      // A live call spins: the marker walks the frame ramp, one frame per tick, so the row
+      // reads as in flight instead of as a dot that sometimes blinks out.
+      return { glyph: spinGlyph(glyphs, now), color: "warning" };
     case "error":
       return { glyph: glyphs.dot, color: "error" };
     case "success":
@@ -85,9 +166,23 @@ export function paintGroup(
 
   // The headline always leads the card, even for a single call: it is the frame that
   // tells you what this turn did, and the rows below are its detail.
+  const timing = groupTiming(group.rows);
+  const errors = countErrors(tools);
+  // A failed probe is not a failed outcome. Only the call the group last settled on
+  // decides the chip, so a miss that was worked past stays a count instead of renaming
+  // the whole card FAILED while the turn is still succeeding.
+  const settled = tools.filter(node => node.status !== "running");
+  const failedNow = settled.length > 0 && settled[settled.length - 1]!.status === "error";
+  const outcome = timing.running ? "WORKING" : failedNow ? "FAILED" : "DONE";
+  const chipColor: Foreground = timing.running
+    ? "warning"
+    : failedNow
+      ? "error"
+      : errors > 0
+        ? "warning"
+        : "success";
+  let headerLine = "";
   if (tools.length > 0) {
-    const timing = groupTiming(group.rows);
-    const errors = countErrors(tools);
     const total = tools.length;
     const scope =
       visible.length === total
@@ -96,13 +191,28 @@ export function paintGroup(
           themeText(theme, "dim", " of ") +
           themeText(theme, "muted", String(total)) +
           themeText(theme, "muted", " calls");
-    const parts = [scope, ...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode)];
+    // Status leads the rollup the way a chip does: what the group is doing, then the mix.
+    // The chip is the only place the outcome is written: the frame names the card, not
+    // its state, so the word cannot appear twice on two adjacent lines.
+    const parts = [themeText(theme, chipColor, outcome, true), scope];
+    // The duration shape sits before the tool mix: a narrow card drops the trailing parts
+    // first, and "where did the time go" matters more than the fourth tool name.
+    const spark = durationSpark(tools, theme, glyphs);
+    if (spark) {
+      const chart = glyphs.chart ? themeText(theme, "accent", glyphs.chart + "  ") : "";
+      parts.push(chart + spark);
+    }
+    parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode));
     if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
-    parts.push(themeText(theme, "dim", formatElapsed(timing.elapsed)));
     const headColor: Foreground = timing.running ? "warning" : "dim";
-    const head = themeText(theme, headColor, glyphs.rail + " " + (reveal ? glyphs.open : glyphs.closed) + " ");
-    lines.push(fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width));
-    targets.set(0, GROUP_TARGET);
+    const head = themeText(theme, headColor, (reveal ? glyphs.open : glyphs.closed) + " ");
+    headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
+  }
+  // The rollup sits directly under the frame top: the card is the headline plus its rows,
+  // with no goal or phase prose between them.
+  if (headerLine) {
+    lines.push(headerLine);
+    targets.set(lines.length - 1, GROUP_TARGET);
   }
 
   const emit = (nodes: TreeNode[], ancestors: boolean[]): void => {
@@ -112,8 +222,8 @@ export function paintGroup(
       const open = expandAll || state.expanded.has(node.id);
       const mark = stateMark(node, glyphs, Date.now());
       // The guide is structure, not state: the dot and the row summary already carry the
-      // outcome, so a failed call keeps a neutral rail instead of repainting the line.
-      const railColor: Foreground =
+      // outcome, so a failed call keeps a neutral stem instead of repainting the line.
+      const stemColor: Foreground =
         node.kind === "thinking" ? "muted" : node.status === "running" ? "accent" : "dim";
       const label =
         node.kind === "thinking"
@@ -121,11 +231,9 @@ export function paintGroup(
           : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode);
       // The branch keeps its stem; the dot after it carries the call state, so a running
       // call blinks in place instead of the marker only saying open or closed.
-      const stem = glyphs.rail + " " + guide + (last ? glyphs.end : glyphs.tee) + "─ ";
-      // A patched glyph overhangs its cell, so the words after it need that column back.
-      const gap = node.kind === "thinking" ? "" : labelGap(node.name, state.settings.icons, state.settings.iconMode);
+      const stem = guide + (last ? glyphs.end : glyphs.tee) + "─ ";
       const connector =
-        themeText(theme, railColor, stem) + themeText(theme, mark.color, mark.glyph) + " " + label + gap;
+        themeText(theme, stemColor, stem) + themeText(theme, mark.color, mark.glyph) + " " + label;
       // Reasoning stays a plain label until it is clicked; the text lives in the preview.
       const detail = node.kind === "thinking" ? "" : detailOf(node);
       const tail =
@@ -135,7 +243,8 @@ export function paintGroup(
       const line = detail
         ? summaryLine(
             connector,
-            themeText(theme, node.status === "error" ? "error" : "muted", detail),
+            // The dot between the tool word and its intent keeps the two readable apart.
+            themeText(theme, node.status === "error" ? "error" : "muted", "· " + detail),
             themeText(theme, "dim", DOT),
             tail,
             width,
@@ -152,7 +261,7 @@ export function paintGroup(
       const preview = node.children.length === 0 ? node.preview ?? [] : [];
       if (open && preview.length > 0) {
         const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
-        const prefix = themeText(theme, "dim", glyphs.rail + " " + childGuide + glyphs.pipe + " ");
+        const prefix = themeText(theme, "dim", childGuide + glyphs.pipe + " ");
         const painted = node.previewDiff
           ? colorizeDiff(preview.join("\n"), theme)
           : preview.map(text => themeText(theme, "dim", text));
@@ -169,6 +278,33 @@ export function paintGroup(
   };
 
   emit(rows, []);
-  return lines;
+  if (lines.length === 0 || width < 24) return lines;
+
+  // One border around intent, rollup and calls: the group reads as a single object
+  // instead of loose lines, and the frame keeps its width whatever the content is.
+  const inner = Math.max(8, width - 4);
+  const border = (text: string) => themeText(theme, "dim", text);
+  const body = (line: string): string => {
+    const fitted = fitToolLine(line, inner);
+    return border(glyphs.v + " ") + fitted + " ".repeat(Math.max(0, inner - visibleWidth(fitted))) + border(" " + glyphs.v);
+  };
+  const topPlain = `${glyphs.tl}${glyphs.h} GROVE `;
+  const fill = Math.max(0, width - 1 - visibleWidth(topPlain));
+  const wrapped: string[] = [
+    border(glyphs.tl + glyphs.h + " ") +
+      themeText(theme, "accent", "GROVE", true) +
+      border(" " + glyphs.h.repeat(fill) + glyphs.tr),
+  ];
+  const remapped = new Map<number, string>();
+  for (const [index, line] of lines.entries()) {
+    wrapped.push(body(line));
+    const target = targets.get(index);
+    if (target !== undefined) remapped.set(wrapped.length - 1, target);
+  }
+  wrapped.push(border(glyphs.bl + glyphs.h.repeat(Math.max(0, width - 2)) + glyphs.br));
+  remapped.set(wrapped.length - 1, GROUP_TARGET);
+  targets.clear();
+  for (const [index, target] of remapped) targets.set(index, target);
+  return wrapped;
 }
 

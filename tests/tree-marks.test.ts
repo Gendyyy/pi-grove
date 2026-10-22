@@ -17,8 +17,10 @@ const card = (tree: ToolTree, id = "a") => tree.render(row(id)) as unknown as {
 
 /** Paint the group with every row revealed. */
 function painted(tree: ToolTree): string[] {
-  card(tree).handleMouse?.(click(0));
-  return card(tree).render(96).map(plain);
+  // The header is the first line inside the frame, so the raw frame index is 1.
+  card(tree).handleMouse?.(click(1));
+  // This theme tags text instead of emitting escapes, so the frame is sliced, not parsed.
+  return card(tree).render(96).map(plain).slice(1, -1);
 }
 
 test("a settled call shows a filled dot in its status colour", () => {
@@ -35,20 +37,27 @@ test("a settled call shows a filled dot in its status colour", () => {
   assert.doesNotMatch(ok!, /error/);
 });
 
-test("a running call pulses between the filled and the outline dot", () => {
+test("a running call spins through the frame ramp", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the schema" } });
     tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
     const base = 1_000_000;
-    Date.now = () => base;
-    const on = painted(tree)[2]!;
-    Date.now = () => base + 450;
-    const off = painted(tree)[2]!;
-    assert.match(on, /\[warning\]\*/);
-    assert.match(off, /\[warning\]o/);
-    assert.notEqual(on, off);
+    const marker = (offset: number): string => {
+      Date.now = () => base + offset;
+      const row = painted(tree)[2]!;
+      const found = /\[warning\]([^ ])/.exec(row);
+      assert.ok(found, `expected a spinner frame in ${JSON.stringify(row)}`);
+      return found[1]!;
+    };
+    // One frame per tick, each a single cell the terminal can rotate in place.
+    const frames = [0, 100, 200, 300].map(marker);
+    assert.deepEqual(frames, ["|", "/", "-", "\\"]);
+    // Halfway through the ramp the marker is a different cell, not a blink out.
+    assert.notEqual(marker(100), marker(0));
+    // The ramp wraps, so a long call keeps turning instead of stopping on the last frame.
+    assert.equal(marker(400), marker(0));
   } finally {
     Date.now = real;
   }

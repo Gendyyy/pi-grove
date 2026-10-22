@@ -4,7 +4,7 @@
  * hid inside render callbacks is reachable from a plain test.
  */
 import { summarizeToolResult } from "./block-render.js";
-import { readNested, type ReplayCall } from "./replay.js";
+import { readNested, type ReplayCall, type ReplaySegment } from "./replay.js";
 import { thinkingGoal, thinkingPreview, thinkingSummary } from "./thinking.js";
 import { plainTheme } from "./theme.js";
 import {
@@ -298,10 +298,11 @@ function restorePreview(group: TreeGroup, node: TreeNode, call: ReplayCall): voi
  * Rebuild cards from a replayed transcript, so a reload or a resumed session keeps the
  * grouping it had. Restored rows are history: they paint once and hold no live timer.
  */
-export function restoreSegments(state: TreeState, segments: ReplayCall[][]): void {
+export function restoreSegments(state: TreeState, segments: ReplaySegment[]): void {
   if (segments.length === 0) return;
   resetState(state);
-  for (const [index, calls] of segments.entries()) {
+  for (const [index, segment] of segments.entries()) {
+    const calls = segment.calls;
     const leader = calls[0];
     if (!leader) continue;
     const group: TreeGroup = {

@@ -46,7 +46,7 @@ function result(
 
 const NESTED = {
   piGroveNested: {
-    version: 1,
+    version: 3,
     incomplete: false,
     calls: [
       { id: "c1a", name: "bash", reasoning: "list files", status: "success", started: 1000, duration: 400, summary: "2 files", preview: "first file\nsecond file" },
@@ -68,15 +68,15 @@ test("a transcript becomes one segment per prompt with nested steps attached", (
   const segments = readTranscript(entries, "prompt");
   assert.equal(segments.length, 2);
   const [first, second] = segments;
-  assert.equal(first!.length, 1);
-  const call = first![0]!;
+  assert.equal(first!.calls.length, 1);
+  const call = first!.calls[0]!;
   assert.equal(call.name, "codemode");
   assert.equal(call.status, "success");
   assert.equal(call.durationMs, 2000);
   assert.equal(call.children.length, 3);
   assert.deepEqual(call.children.map(child => child.name), ["bash", "read", "grep"]);
   assert.equal(call.children[1]!.status, "error");
-  assert.equal(second![0]!.name, "read");
+  assert.equal(second!.calls[0]!.name, "read");
 });
 
 test("turn mode breaks a segment at every assistant message", () => {
@@ -88,7 +88,7 @@ test("turn mode breaks a segment at every assistant message", () => {
     result("2026-01-01T00:00:04.000Z", "a2", "bash"),
   ];
   const segments = readTranscript(entries, "turn");
-  assert.deepEqual(segments.map(segment => segment.map(call => call.name)), [["read"], ["bash"]]);
+  assert.deepEqual(segments.map(segment => segment.calls.map(call => call.name)), [["read"], ["bash"]]);
   assert.deepEqual(readTranscript(entries, "off"), []);
 });
 
@@ -98,8 +98,8 @@ test("a call with no stored result stays unfinished instead of disappearing", ()
     assistant("2026-01-01T00:00:01.000Z", [{ id: "a1", name: "bash", arguments: { reasoning: "run the tests" } }]),
   ];
   const segments = readTranscript(entries, "prompt");
-  assert.equal(segments[0]![0]!.status, "incomplete");
-  assert.equal(segments[0]![0]!.result, undefined);
+  assert.equal(segments[0]!.calls[0]!.status, "incomplete");
+  assert.equal(segments[0]!.calls[0]!.result, undefined);
 });
 
 /** Settings with ASCII glyphs so painted lines can be asserted literally. */
@@ -119,7 +119,18 @@ function row(id: string): TreeRow {
 
 /** Rendered lines, trimmed of host padding and escapes. */
 function lines(component: Component, width = 100): string[] {
-  return component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
+  const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
+  // The card is one bordered object now, so the body is what the assertions index.
+  if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
+  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+}
+
+/** Raw line index inside the frame, the coordinate the mouse reports. */
+function clickAt(component: Component, pattern: RegExp, width = 100): number {
+  return component
+    .render(width)
+    .map(line => line.replace(/\u001b\[[0-9;]*m/g, ""))
+    .findIndex(line => pattern.test(line));
 }
 
 /** A left click with coordinates local to the card. */
@@ -180,9 +191,9 @@ test("reasoning is replayed only when the card shows it", () => {
   ];
   const narrated = readTranscript(transcript, "prompt")[0]!;
   const quiet = readTranscript(transcript, "prompt", false)[0]!;
-  assert.equal(narrated.length, 2);
-  assert.equal(narrated[0]!.kind, "thinking");
-  assert.deepEqual(quiet.map(call => call.id), ["c1"]);
+  assert.equal(narrated.calls.length, 2);
+  assert.equal(narrated.calls[0]!.kind, "thinking");
+  assert.deepEqual(quiet.calls.map(call => call.id), ["c1"]);
 });
 
 test("a restored step still expands to the output its snapshot kept", () => {
@@ -194,13 +205,15 @@ test("a restored step still expands to the output its snapshot kept", () => {
   const tree = new ToolTree(settings());
   tree.restore(readTranscript(entries, "prompt"));
 
-  // Line 0 is the headline; the codemode row that opens the steps sits on line 1.
-  tree.render(row("c1")).handleMouse?.(click(1));
+  const before = lines(tree.render(row("c1")));
+  assert.ok(before.some(line => line.includes("build the card")), "the codemode row is present");
+  const card = tree.render(row("c1"));
+  card.handleMouse?.(click(clickAt(card, /─ .*build the card/)));
   const opened = lines(tree.render(row("c1")));
-  const step = opened.findIndex(line => line.includes("list files"));
-  assert.ok(step > 0, "the nested step must be listed");
+  assert.ok(opened.some(line => line.includes("list files")), "the nested step must be listed");
 
-  tree.render(row("c1")).handleMouse?.(click(step));
+  const drilled = tree.render(row("c1"));
+  drilled.handleMouse?.(click(clickAt(drilled, /─ .*list files/)));
   const expanded = lines(tree.render(row("c1")));
   assert.ok(expanded.some(line => /first file/.test(line)), "a reloaded step keeps its output");
 });

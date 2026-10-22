@@ -32,9 +32,20 @@ async function flush(): Promise<void> {
   await new Promise<void>(resolve => setImmediate(resolve));
 }
 
+/** Raw line index inside the frame, which is the coordinate the mouse reports. */
+function at(component: Component, pattern: RegExp, width = 80): number {
+  return component
+    .render(width)
+    .map(line => line.replace(/\u001b\[[0-9;]*m/g, ""))
+    .findIndex(line => pattern.test(line));
+}
+
 /** Rendered lines with the host padding trimmed. */
 function lines(component: Component, width = 80): string[] {
-  return component.render(width).map(line => line.trim());
+  const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
+  // The card is one bordered object now, so the body is what the assertions index.
+  if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
+  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 test("a single call still leads with the group headline", () => {
@@ -48,6 +59,91 @@ test("a single call still leads with the group headline", () => {
   assert.match(painted[0]!, /read x1/);
   assert.match(painted[1]!, /check the manifest/);
   assert.match(painted[1]!, /running/);
+});
+
+test("a failure the group worked past stays a count, not the outcome", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
+  tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 400 });
+  tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests again" } });
+  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 500 });
+  // The card paints on its leader row, which is the first call of the group.
+  const painted = lines(tree.render(row("a")));
+  // The card reports how the work ended; the miss is still named in the rollup.
+  assert.match(painted[0]!, /DONE/);
+  assert.doesNotMatch(painted[0]!, /FAILED/);
+  assert.match(painted[0]!, /1 error/);
+});
+
+test("a group that ends on a failure is still FAILED", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
+  tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 400 });
+  const painted = lines(tree.render(row("a")));
+  assert.match(painted[0]!, /FAILED/);
+});
+
+test("the rollup ends in a sparkline of how long each call took", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 150 });
+  tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the suite" } });
+  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 90_000 });
+  tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
+  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
+  const head = lines(tree.render(row("a")))[0]!;
+  const spark = head.split(" · ")[2];
+  assert.equal(spark, "./\\", `no ASCII line trace in: ${head}`);
+  // One segment per call: rising to the slow call, then falling again.
+  assert.equal(spark!.length, 3);
+  assert.doesNotMatch(spark!, /[_=+*#@]/);
+});
+
+test("a running call keeps its own cell at the end of the sparkline", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the suite" } });
+  tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false, durationMs: 2000 });
+  tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
+  const head = lines(tree.render(row("a")))[0]!;
+  const spark = head.split(" · ")[2]?.slice(0, 2);
+  assert.equal(spark?.length, 2, `no running line segment in: ${head}`);
+  assert.equal(spark?.[0], ".");
+  assert.ok(["/", "\\", "-"].includes(spark?.[1] ?? ""));
+});
+
+test("Unicode duration sparkline plots a connected Braille line, not bars", () => {
+  const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 150 });
+  tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the suite" } });
+  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 90_000 });
+  tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
+  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
+  const head = lines(tree.render(row("a")))[0]!;
+  const plot = head.split(" · ")[2];
+  assert.ok(plot?.includes("\uf201"), `no Nerd Font chart-line cue in: ${head}`);
+  const spark = [...(plot ?? "")].filter(cell => {
+    const code = cell.codePointAt(0)!;
+    return code >= 0x2800 && code <= 0x28ff;
+  });
+  assert.equal(spark.length, 3, `no Braille line sparkline in: ${head}`);
+  assert.doesNotMatch(spark.join(""), /[▁▂▃▄▅▆▇█▰▱]/);
+  const masks = spark.map(cell => cell.codePointAt(0)! - 0x2800);
+  // The first segment joins the low first call to the high middle call.
+  assert.ok(masks[0]! & 0x40);
+  assert.ok(masks[0]! & 0x08);
+  // The next segment starts at that same peak and heads back down.
+  assert.ok(masks[1]! & 0x01);
+  assert.ok(masks[1]! & 0x20);
+});
+test("the card shows call details without group-level prose", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "inspect the current behavior" } });
+  tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the regression tests" } });
+  const card = lines(tree.render(row("a"))).join(" ");
+  assert.doesNotMatch(card, /\bGoal\b|\bNow\b/);
+  assert.match(card, /inspect the current behavior/);
+  assert.match(card, /run the regression tests/);
 });
 
 test("the card stays on the first call and grows in place", () => {
@@ -134,8 +230,7 @@ test("clicking a codemode row reveals its nested steps", () => {
   assert.doesNotMatch(before.join(" "), /list files/);
 
   // The headline also names codemode, so match the row by its own goal text.
-  const y = before.findIndex(line => line.includes("build the card"));
-  card.handleMouse?.(click(y));
+  card.handleMouse?.(click(at(card, /─ .*build the card/)));
   const after = lines(tree.render(row("c")));
   assert.equal(after.length, 4);
   assert.match(after[2]!, /list files/);
@@ -148,7 +243,7 @@ test("the header reveals every row but opens no level", () => {
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
   tree.start({ toolCallId: "d", toolName: "bash", args: { reasoning: "run the tests" } });
   const card = tree.render(row("c"));
-  card.handleMouse?.(click(0));
+  card.handleMouse?.(click(at(card, /\d+ calls?\b/)));
   const revealed = lines(tree.render(row("c")));
   // Every call is listed, and each row still waits for its own click.
   assert.equal(revealed.length, 3);
@@ -156,9 +251,8 @@ test("the header reveals every row but opens no level", () => {
   assert.doesNotMatch(revealed.join(" "), /list files/);
 
   // The header also names codemode in its mix, so match the row by its own goal.
-  const y = revealed.findIndex(line => line.includes("build the card"));
   const card2 = tree.render(row("c"));
-  card2.handleMouse?.(click(y));
+  card2.handleMouse?.(click(at(card2, /─ .*build the card/)));
   const drilled = lines(tree.render(row("c")));
   assert.match(drilled.join(" "), /list files/);
 });
@@ -227,7 +321,7 @@ test("the collapsed card keeps only the newest calls and expands on click", () =
   assert.match(rolled[1]!, /step c/);
   assert.match(rolled[2]!, /step d/);
 
-  card.handleMouse?.(click(0));
+  card.handleMouse?.(click(at(card, /calls?\b/)));
   assert.equal(lines(tree.render(row("a"))).length, 5);
 });
 
@@ -252,8 +346,8 @@ test("clicking a finished call shows a bounded preview", () => {
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [{ type: "text", text: body }] }, isError: false, durationMs: 900 });
   const card = tree.render(row("a"));
   assert.equal(lines(card).length, 2);
-  // Line 0 is the headline, so the call row itself sits on line 1.
-  card.handleMouse?.(click(1));
+  // Clicks take framed coordinates, so resolve the row in the rendered frame.
+  card.handleMouse?.(click(at(card, /─ .*read the log/)));
   const painted = lines(tree.render(row("a")));
   assert.equal(painted.length, 11);
   assert.match(painted[2]!, /line 1/);
@@ -307,7 +401,7 @@ test("a finished codemode call keeps the steps that ran inside it", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const details = {
     piGroveNested: {
-      version: 1,
+      version: 2,
       incomplete: false,
       calls: [
         {
@@ -332,11 +426,11 @@ test("a finished codemode call keeps the steps that ran inside it", () => {
   assert.match(before[0]!, /1 call/);
   assert.match(before[1]!, /bash x1/);
 
-  tree.render(row("c")).handleMouse?.(click(1));
+  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /─ .*audit the suite/)));
   const opened = lines(tree.render(row("c")));
   assert.match(opened[2]!, /run the tests/);
 
-  tree.render(row("c")).handleMouse?.(click(2));
+  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /─ .*run the tests/)));
   const expanded = lines(tree.render(row("c")));
   assert.ok(expanded.some(line => /12 passed/.test(line)), "the step keeps its output");
 });
@@ -344,7 +438,7 @@ test("a codemode call does not duplicate the steps it already registered live", 
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const details = {
     piGroveNested: {
-      version: 1,
+      version: 2,
       incomplete: false,
       calls: [
         { id: "c:1", parent: "c", name: "bash", reasoning: "run the tests", status: "success", duration: 1200, summary: "12 passed", preview: "$ bun test\n12 passed" },
@@ -358,7 +452,7 @@ test("a codemode call does not duplicate the steps it already registered live", 
   tree.end({ toolCallId: "c:1", toolName: "bash", result: { content: [{ type: "text", text: "$ bun test\n12 passed" }] }, isError: false, durationMs: 1200 });
   tree.end({ toolCallId: "c", toolName: "codemode", result: { content: [{ type: "text", text: "done" }], details }, isError: false, durationMs: 1300 });
 
-  tree.render(row("c")).handleMouse?.(click(1));
+  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /─ .*audit the suite/)));
   const painted = lines(tree.render(row("c")));
   const steps = painted.filter(line => line.includes("bun test") || line.includes("read the entry"));
   assert.equal(steps.length, 2, painted.join(" | "));
