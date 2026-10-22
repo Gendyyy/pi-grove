@@ -47,30 +47,31 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 
 One card per request: a model-authored task description in the top border, then the rollup
 and tool rows. The required `taskIntent` identifies the atomic task cluster and stays fixed
-across its calls; the title does not change as tools or phases change. A new task starts a
-new title. The title is not per-call reasoning or a summary of the latest tool action.
+across its calls; progress appears on the rollup, so milestone updates never rewrite the
+headline. A new task starts a new title. The title is not per-call reasoning or a summary of
+the latest tool action.
 
 When grouping is enabled, Pi's codemode instruction makes `// task-intent:` and
 `// task-progress:` mandatory on every top-level call. Progress is the agent's best-judgment estimate
 of how much of the requested task is done and how much remains—not a tool-call count or a fixed
 formula. Repeat the integer estimate (0–100) on ordinary calls; update it at meaningful milestones,
 and lower it if scope grows. The final tool call intended to complete and verify the task passes 100;
-Grove shows 100 in green only after that call succeeds. Earlier estimates are red near the start and
-yellow while work remains. Both annotations are stored with calls so replay restores the same title
+Grove shows 100 only after that call succeeds. The metric colors move from red through yellow to green
+as the estimate advances. Both annotations are stored with calls so replay restores the same title
 and estimate.
 
 There are no Goal or Now sections and no group status chip. The rest of the headline carries
 the call count, duration sparkline and tool mix.
 
 ```
-╭─ Make payment retries safe  ▰▱▱▱▱▱▱▱▱▱ 6% ───────────╮
-│ ▸ 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1                 │
+╭─ Make payment retries safe ───────────────────────────╮
+│ ▸ ▰▱▱▱▱▱▱▱▱▱   6% · 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1 │
 │ ├─ ●   codemode · read the classify docs and run one · 1s  │
 │ └─ ●   bash · run the model tests (npm test) · 4s          │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
-The border title and its completion metric are the card's only group-level summary. Individual
+The border title and rollup completion metric are the card's only group-level summary. Individual
 call rows show each tool's own per-call intent; Grove adds no separate Goal or Now sections.
 
 ## Rollup

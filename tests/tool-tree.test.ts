@@ -180,39 +180,56 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   const intent = "Inspect payment retry safeguards";
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 6 } });
   const card = tree.render(row("a", false, PROGRESS_THEME));
-  const first = card.render(80)[0]!;
-  assert.match(stripAnsi(first), /Inspect payment retry safeguards.*▰▱{9} 6%/);
+  const initial = card.render(80);
+  const headline = initial[0]!;
+  const first = initial[1]!;
+  assert.match(stripAnsi(headline), /Inspect payment retry safeguards/);
+  assert.doesNotMatch(stripAnsi(headline), /[▰▱]|6%/);
+  assert.match(stripAnsi(first), /▰▱{9} +6%/);
   assert.equal(stylesFor(first, "▰")[0], "\u001b[31m", "early progress is red");
   assert.ok(stylesFor(first, "6%").every(style => style === "\u001b[31m"));
 
   tree.start({ toolCallId: "b", toolName: "grep", args: { taskIntent: intent, taskProgress: 6 } });
-  assert.equal(tree.render(row("a", false, PROGRESS_THEME)).render(80)[0], first, "repeating the same estimate is visually idempotent");
+  const repeated = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
+  const visibleMeter = (line: string) => stripAnsi(line).match(/▰▱{9} +6%/)?.[0];
+  assert.equal(visibleMeter(repeated), visibleMeter(first), "repeating the same estimate keeps the meter unchanged");
+  assert.deepEqual(stylesFor(repeated, "▰"), stylesFor(first, "▰"));
+  assert.deepEqual(stylesFor(repeated, "6%"), stylesFor(first, "6%"));
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 5 });
   tree.end({ toolCallId: "b", toolName: "grep", result: { content: [] }, isError: false, durationMs: 5 });
 
   tree.start({ toolCallId: "c", toolName: "bash", args: { taskIntent: intent, taskProgress: 50 } });
-  const middle = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
-  assert.match(stripAnsi(middle), /▰{5}▱{5} 50%/);
+  const middleFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  const middle = middleFrame[1]!;
+  assert.equal(middleFrame[0], headline, "milestone updates leave the headline byte-stable");
+  assert.match(stripAnsi(middle), /▰{5}▱{5} +50%/);
   assert.ok(stylesFor(middle, "50%").every(style => style === "\u001b[33m"), "midpoint is yellow");
   tree.end({ toolCallId: "c", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
 
   tree.start({ toolCallId: "d", toolName: "bash", args: { taskIntent: intent, taskProgress: 99 } });
-  const almost = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
-  assert.match(stripAnsi(almost), /▰{10} 99%/);
-  assert.ok(stylesFor(almost, "99%").every(style => style === "\u001b[33m"), "unfinished progress remains yellow");
+  const almostFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  const almost = almostFrame[1]!;
+  assert.equal(almostFrame[0], headline, "progress never rewrites the border title");
+  assert.match(stripAnsi(almost), /▰{10} +99%/);
+  assert.ok(stylesFor(almost, "99%").every(style => style === "\u001b[32m"), "high progress advances to green");
   tree.end({ toolCallId: "d", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
 
   tree.start({ toolCallId: "e", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
-  const pending = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  const pendingFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  const pending = pendingFrame[1]!;
+  assert.equal(pendingFrame[0], headline);
   assert.match(stripAnsi(pending), /99%/, "100 stays pending while the final call runs");
   tree.end({ toolCallId: "e", toolName: "bash", result: { content: [] }, isError: false, durationMs: 10 });
-  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
-  assert.match(stripAnsi(complete), /▰{10} 100%/);
+  const completeFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  const complete = completeFrame[1]!;
+  assert.equal(completeFrame[0], headline);
+  assert.match(stripAnsi(complete), /▰{10} +100%/);
   assert.ok(stylesFor(complete, "100%").every(style => style === "\u001b[32m"), "completed progress is green");
 
   tree.start({ toolCallId: "f", toolName: "read", args: { taskIntent: "Verify a different task", taskProgress: 12 } });
-  const nextTask = stripAnsi(tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!);
-  assert.match(nextTask, /Verify a different task.*12%/, "a new task gets its own estimate");
+  const nextTask = tree.render(row("a", false, PROGRESS_THEME)).render(80);
+  assert.match(stripAnsi(nextTask[0]!), /Verify a different task/);
+  assert.match(stripAnsi(nextTask[1]!), /12%/, "a new task gets its own estimate");
 });
 
 test("100 waits for the declared final call and outstanding calls to succeed", () => {
@@ -221,10 +238,10 @@ test("100 waits for the declared final call and outstanding calls to succeed", (
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 58 } });
   tree.start({ toolCallId: "b", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 10 });
-  const waiting = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  const waiting = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
   assert.match(stripAnsi(waiting), /58%/, "a still-running call prevents completion");
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
-  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
   assert.match(stripAnsi(complete), /100%/);
 });
 
@@ -235,7 +252,7 @@ test("a failed final call never paints 100 percent", () => {
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
   tree.start({ toolCallId: "b", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [{ type: "text", text: "failed" }] }, isError: true, durationMs: 10 });
-  const failed = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  const failed = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
   assert.match(stripAnsi(failed), /58%/);
   assert.doesNotMatch(stripAnsi(failed), /100%/);
   assert.ok(stylesFor(failed, "58%").every(style => style === "\u001b[33m"));
@@ -246,8 +263,10 @@ test("the progress metric stays visible when the title is clipped on narrow card
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "A very long title that should be clipped", taskProgress: 6 } });
   const frame = tree.render(row("a")).render(32);
   assert.ok(frame.every(line => visibleWidth(line) <= 32));
-  assert.match(stripAnsi(frame[0]!), /▰▱{9} 6%/);
-  assert.doesNotMatch(stripAnsi(frame[0]!), /A very long title/);
+  assert.doesNotMatch(stripAnsi(frame[0]!), /[▰▱]|6%/);
+  assert.match(stripAnsi(frame[1]!), /▰▱{9} +6%/);
+  assert.match(stripAnsi(frame[0]!), /A very long title…/, "the title is clipped with an ellipsis");
+  assert.doesNotMatch(stripAnsi(frame[0]!), /that should be clipped/);
 });
 
 test("the border title stays static while tool rows run", () => {
@@ -412,7 +431,8 @@ test("the border title stays on the task description despite legacy phase annota
   const title = card.render(80)[0]!;
   assert.match(title, /Inspect payment retry safeguards/);
   assert.doesNotMatch(title, /Trace when timeout|Add regression coverage/);
-  assert.match(stripAnsi(title), /▰▰▱{8} 20%/);
+  assert.doesNotMatch(stripAnsi(title), /[▰▱]|20%/);
+  assert.match(stripAnsi(card.render(80)[1]!), /▰▰▱{8} +20%/);
 
   tree.start({
     toolCallId: "nested",
@@ -421,7 +441,7 @@ test("the border title stays on the task description despite legacy phase annota
     args: { taskIntent: "Run the complete test suite", taskProgress: 100, groupPhase: "Verify behavior" },
   });
   assert.match(card.render(80)[0]!, /Inspect payment retry safeguards/, "nested work cannot replace the title");
-  assert.match(stripAnsi(card.render(80)[0]!), /20%/, "nested work cannot replace task progress");
+  assert.match(stripAnsi(card.render(80)[1]!), /20%/, "nested work cannot replace task progress");
 });
 
 test("codemode task metadata after @options becomes the border title", () => {

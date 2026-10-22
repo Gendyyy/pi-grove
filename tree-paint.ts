@@ -155,7 +155,7 @@ const PROGRESS_CELLS = 10;
 /** Keep progress green only at completion; a high estimate is still unfinished. */
 function progressColor(progress: number): Foreground {
   if (progress < 34) return "error";
-  if (progress < 100) return "warning";
+  if (progress < 67) return "warning";
   return "success";
 }
 
@@ -166,7 +166,7 @@ function taskProgressText(progress: number, theme: GroveTheme): string {
   const color = progressColor(value);
   return themeText(theme, color, "▰".repeat(filled)) +
     themeText(theme, "dim", "▱".repeat(PROGRESS_CELLS - filled)) +
-    themeText(theme, color, ` ${value}%`);
+    themeText(theme, color, ` ${String(value).padStart(3, " ")}%`);
 }
 
 /** Colour and glyph of a row marker: the call state, not whether the row opens. */
@@ -232,8 +232,10 @@ export function paintGroup(
           themeText(theme, "dim", " of ") +
           themeText(theme, "muted", String(total)) +
           themeText(theme, "muted", " calls");
-    // Keep the rollup factual: counts, duration shape and tool mix, with no group status label.
-    const parts = [scope];
+    // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
+    const parts: string[] = [];
+    if (group.progress !== undefined) parts.push(taskProgressText(group.progress, theme));
+    parts.push(scope);
     // The duration shape sits before the tool mix: a narrow card drops the trailing parts
     // first, and "where did the time go" matters more than the fourth tool name.
     const spark = durationSpark(tools, theme, glyphs);
@@ -338,18 +340,15 @@ export function paintGroup(
     return border(glyphs.v + " ") + fitted + " ".repeat(Math.max(0, inner - visibleWidth(fitted))) + border(" " + glyphs.v);
   };
   const titlePrefix = glyphs.tl + glyphs.h + " ";
-  const progress = group.progress === undefined ? "" : taskProgressText(group.progress, theme);
-  const titleGap = progress ? 2 : 1;
-  const titleBudget = Math.max(1, width - 10 - visibleWidth(progress) - (progress ? titleGap : 0));
+  const titleBudget = Math.max(1, width - 10);
   const title = fitToolLine(group.intent || "GROVE", titleBudget);
-  const topPlain = titlePrefix + title + (progress ? ` ${progress} ` : " ");
+  const topPlain = titlePrefix + title + " ";
   const fill = Math.max(0, width - 1 - visibleWidth(topPlain));
   const titleText = themeText(theme, "accent", title, true);
   const wrapped: string[] = [
     border(titlePrefix) +
       titleText +
-      (progress ? ` ${progress} ` : " ") +
-      border(glyphs.h.repeat(fill) + glyphs.tr),
+      border(" " + glyphs.h.repeat(fill) + glyphs.tr),
   ];
   const remapped = new Map<number, string>();
   for (const [index, line] of lines.entries()) {

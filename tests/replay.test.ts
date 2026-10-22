@@ -204,7 +204,7 @@ test("replay keeps the stable task title and ignores legacy phase annotations", 
   assert.match(frame[0]!, /Inspect payment retry safeguards/);
   assert.doesNotMatch(frame[0]!, /Add regression coverage for timeout retries/);
   assert.doesNotMatch(frame[0]!, /Trace where timeout handling resets retry count/);
-  assert.match(frame[0]!, /53%/, "replay keeps the latest repeated estimate");
+  assert.match(frame[1]!, /53%/, "replay keeps the latest repeated estimate");
 });
 
 test("replay commits 100 only for a successful final tool call", () => {
@@ -220,7 +220,7 @@ test("replay commits 100 only for a successful final tool call", () => {
     ];
     const tree = new ToolTree(settings());
     tree.restore(readTranscript(entries, "prompt"));
-    const frame = tree.render(row("p1")).render(100)[0]!;
+    const frame = tree.render(row("p1")).render(100)[1]!;
     assert.match(frame, isError ? /58%/ : /100%/);
   }
 });
