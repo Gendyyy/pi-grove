@@ -160,11 +160,12 @@ function progressColor(progress: number): Foreground {
 }
 
 /** Paint a static progress bar and percentage, leaving empty cells visually quiet. */
-function taskProgressText(progress: number, theme: GroveTheme): string {
+function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): string {
   const value = Math.max(0, Math.min(100, Math.round(progress)));
   const filled = Math.round((value / 100) * PROGRESS_CELLS);
   const color = progressColor(value);
-  return themeText(theme, color, "▰".repeat(filled)) +
+  const cue = glyphs.progress ? themeText(theme, "accent", glyphs.progress + "  ") : "";
+  return cue + themeText(theme, color, "▰".repeat(filled)) +
     themeText(theme, "dim", "▱".repeat(PROGRESS_CELLS - filled)) +
     themeText(theme, color, ` ${String(value).padStart(3, " ")}%`);
 }
@@ -234,7 +235,7 @@ export function paintGroup(
           themeText(theme, "muted", " calls");
     // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
     const parts: string[] = [];
-    if (group.progress !== undefined) parts.push(taskProgressText(group.progress, theme));
+    if (group.progress !== undefined) parts.push(taskProgressText(group.progress, theme, glyphs));
     parts.push(scope);
     // The duration shape sits before the tool mix: a narrow card drops the trailing parts
     // first, and "where did the time go" matters more than the fourth tool name.

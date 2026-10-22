@@ -14,6 +14,7 @@ const READ = "\uf15c";
 const CHECK = "\uf00c";
 const CROSS = "\uf00d";
 const STOP = "\uf05e";
+const PERCENT = "";
 
 /** Tree settings with the glyph style switched on. */
 function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> = {}): TreeSettings {
@@ -43,6 +44,19 @@ test("a nerd font adds the tool glyph and still names the tool", () => {
   assert.match(painted[0]!, /1/);
   assert.match(painted[1]!, new RegExp(READ));
   assert.match(painted[1]!, /read/);
+});
+
+test("a Nerd Font percent icon sits beside the progress meter", () => {
+  const nerd = new ToolTree(settings("nerd"));
+  nerd.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Finish the retry fix", taskProgress: 35 } });
+  const nerdRollup = lines(nerd, "a")[0]!;
+  assert.ok(nerdRollup.includes(PERCENT + "  ▰"), JSON.stringify(nerdRollup));
+
+  const ascii = new ToolTree(settings("ascii"));
+  ascii.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Finish the retry fix", taskProgress: 35 } });
+  const asciiRollup = lines(ascii, "a")[0]!;
+  assert.ok(asciiRollup.includes("▰"));
+  assert.ok(!asciiRollup.includes(PERCENT), JSON.stringify(asciiRollup));
 });
 
 test("the same card keeps every word on a plain terminal", () => {

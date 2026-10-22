@@ -65,7 +65,7 @@ the call count, duration sparkline and tool mix.
 
 ```
 ╭─ Make payment retries safe ───────────────────────────╮
-│ ▸ ▰▱▱▱▱▱▱▱▱▱   6% · 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1 │
+│ ▸   ▰▱▱▱▱▱▱▱▱▱   6% · 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1 │
 │ ├─ ●   codemode · read the classify docs and run one · 1s  │
 │ └─ ●   bash · run the model tests (npm test) · 4s          │
 ╰────────────────────────────────────────────────────────────╯
@@ -77,7 +77,8 @@ call rows show each tool's own per-call intent; Grove adds no separate Goal or N
 ## Rollup
 
 The line under the frame shows how much work is in view and **where the time went**.
-The last item is a connected line sparkline, not a row of height bars. Nerd Font mode adds a chart-line icon as a cue;
+Nerd Font mode adds a percent icon beside the progress meter and a chart-line cue beside the
+sparkline. The last item is a connected line sparkline, not a row of height bars;
 Braille dots still plot the actual durations, one segment per call, oldest first. A log scale
 keeps one four-minute call from flattening everything beside it, and slower calls rise toward
 the top. ASCII mode uses a point followed by slash, backslash, or dash segments to keep the

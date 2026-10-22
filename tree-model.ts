@@ -124,17 +124,19 @@ export interface Glyphs {
   spark: "braille" | "ascii";
   /** Font Awesome line-chart cue, empty when only ASCII glyphs are available. */
   chart: string;
+  /** Font Awesome percent cue beside the progress meter; empty in ASCII mode. */
+  progress: string;
 }
 
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
   spin: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "braille", chart: "\uf201",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "braille", chart: "\uf201", progress: "",
 };
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
   spin: "|/-\\",
-  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", spark: "ascii", chart: "",
+  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", spark: "ascii", chart: "", progress: "",
 };
 
 /** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
