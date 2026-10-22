@@ -120,9 +120,9 @@ export interface Glyphs {
   br: string;
   h: string;
   v: string;
-  /** Rendering style for the duration line sparkline. */
-  spark: "braille" | "ascii";
-  /** Font Awesome line-chart cue, empty when only ASCII glyphs are available. */
+  /** Glyph style used for duration bars. */
+  spark: "bars" | "ascii";
+  /** Font Awesome bar-chart cue, empty when only ASCII glyphs are available. */
   chart: string;
   /** Font Awesome percent cue beside the progress meter; empty in ASCII mode. */
   progress: string;
@@ -131,7 +131,7 @@ export interface Glyphs {
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
   spin: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "braille", chart: "\uf201", progress: "",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "bars", chart: "\uf080", progress: "",
 };
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",

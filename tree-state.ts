@@ -271,6 +271,7 @@ export interface EndInput {
   result: unknown;
   status: TreeStatus;
   durationMs?: number;
+  now: number;
 }
 
 /** Commit 100 only after the declared final call succeeds and all top-level calls settle. */
@@ -296,7 +297,11 @@ export function finishCall(state: TreeState, input: EndInput): TreeGroup | undef
   const group = findGroup(state, input.id);
   const node = group?.nodes.get(input.id);
   if (!group || !node || node.status !== "running") return undefined;
-  finalizeNode(group, node, input.result, input.status, input.durationMs);
+  const durationMs =
+    typeof input.durationMs === "number" && Number.isFinite(input.durationMs) && input.durationMs >= 0
+      ? input.durationMs
+      : Math.max(0, input.now - node.started);
+  finalizeNode(group, node, input.result, input.status, durationMs);
   // The codemode snapshot is the only record of the steps that ran inside the call.
   attachCalls(state, group, readNested((input.result as { details?: unknown } | undefined)?.details), node);
   finishPendingCompletion(group);

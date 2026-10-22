@@ -32,6 +32,14 @@ const ANSI_THEME: GroveTheme = {
   },
 };
 
+/** Capture semantic foreground roles while checking duration bar colors. */
+const DURATION_THEME: GroveTheme = {
+  style: (text, options) => {
+    const color = options.fg === "success" ? "32" : options.fg === "warning" ? "33" : options.fg === "error" ? "31" : "37";
+    return `\u001b[${color}m${text}\u001b[0m`;
+  },
+};
+
 const PROGRESS_THEME: GroveTheme = {
   style: (text, options) => {
     const color = options.fg === "error" ? "31" : options.fg === "warning" ? "33" : options.fg === "success" ? "32" : "2";
@@ -212,6 +220,11 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   assert.equal(almostFrame[0], headline, "progress never rewrites the border title");
   assert.match(stripAnsi(almost), /▰{10} +99%/);
   assert.ok(stylesFor(almost, "99%").every(style => style === "\u001b[32m"), "high progress advances to green");
+  assert.deepEqual(stylesFor(almost, "▰".repeat(10)), [
+    "\u001b[31m", "\u001b[31m", "\u001b[31m",
+    "\u001b[33m", "\u001b[33m", "\u001b[33m", "\u001b[33m",
+    "\u001b[32m", "\u001b[32m", "\u001b[32m",
+  ], "the filled meter keeps its red-to-yellow-to-green cell gradient");
   tree.end({ toolCallId: "d", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
 
   tree.start({ toolCallId: "e", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
@@ -230,6 +243,20 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   const nextTask = tree.render(row("a", false, PROGRESS_THEME)).render(80);
   assert.match(stripAnsi(nextTask[0]!), /Verify a different task/);
   assert.match(stripAnsi(nextTask[1]!), /12%/, "a new task gets its own estimate");
+});
+
+test("a 35 percent progress meter colors filled cells along the gradient", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Inspect retries", taskProgress: 35 } });
+  const line = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
+  assert.match(stripAnsi(line), /▰{4}▱{6} +35%/);
+  assert.deepEqual(stylesFor(line, "▰".repeat(4)), [
+    "\u001b[31m", "\u001b[31m", "\u001b[31m", "\u001b[33m",
+  ]);
+  assert.ok(stylesFor(line, "▱".repeat(6)).every(style => style === "\u001b[2m"),
+    "unfilled cells stay dim");
+  assert.ok(stylesFor(line, "35%").every(style => style === "\u001b[33m"),
+    "the percentage keeps its estimate-based color");
 });
 
 test("partial streamed annotations cannot clear the committed progress meter", () => {
@@ -284,7 +311,7 @@ test("a failed final call never paints 100 percent", () => {
 test("the progress metric stays visible when the title is clipped on narrow cards", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "A very long title that should be clipped", taskProgress: 6 } });
-  const frame = tree.render(row("a")).render(32);
+  const frame = tree.render(row("a", false, PROGRESS_THEME)).render(32);
   assert.ok(frame.every(line => visibleWidth(line) <= 32));
   assert.doesNotMatch(stripAnsi(frame[0]!), /[▰▱]|6%/);
   assert.match(stripAnsi(frame[1]!), /▰▱{9} +6%/);
@@ -512,7 +539,7 @@ test("a final failure is counted without a group status label", () => {
   assert.match(painted[0]!, /1 error/);
 });
 
-test("the rollup ends in a sparkline of how long each call took", () => {
+test("the rollup ends in height bars for call durations", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 150 });
@@ -522,10 +549,61 @@ test("the rollup ends in a sparkline of how long each call took", () => {
   tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
   const head = lines(tree.render(row("a")))[0]!;
   const spark = head.split(" · ")[1];
-  assert.equal(spark, "./\\", `no ASCII line trace in: ${head}`);
-  // One segment per call: rising to the slow call, then falling again.
+  assert.equal(spark, ".@-", `no ASCII duration bars in: ${head}`);
   assert.equal(spark!.length, 3);
-  assert.doesNotMatch(spark!, /[_=+*#@]/);
+  assert.doesNotMatch(spark!, /[\/\\]/);
+});
+
+test("a finished call keeps elapsed time when the host omits durationMs", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the log" } });
+    now += 2_450;
+    tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+    const callLine = lines(tree.render(row("a"))).find(line => line.includes("+─"));
+    assert.ok(callLine, "the rendered card includes the call row");
+    assert.match(callLine, /2s$/, `elapsed time was lost when the host omitted durationMs: ${callLine}`);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("a host duration remains authoritative over Grove's elapsed fallback", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the log" } });
+    now += 2_450;
+    tree.end({
+      toolCallId: "a",
+      toolName: "read",
+      result: { content: [] },
+      isError: false,
+      durationMs: 650,
+    });
+    const callLine = lines(tree.render(row("a"))).find(line => line.includes("+─"));
+    assert.ok(callLine, "the rendered card includes the call row");
+    assert.match(callLine, /<1s$/, `the supplied host duration should win: ${callLine}`);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("duration bars transition from success through warning to error colors", () => {
+  const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+  for (const [id, durationMs] of [["a", 100], ["b", 1_000], ["c", 10_000]] as const) {
+    tree.start({ toolCallId: id, toolName: "read", args: { reasoning: "read the log" } });
+    tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false, durationMs });
+  }
+  const rendered = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
+  assert.ok(rendered.includes("\u001b[32m▁"), "shortest duration is green/success");
+  assert.ok(rendered.includes("\u001b[33m▄"), "middle duration uses the warning color");
+  assert.ok(rendered.includes("\u001b[31m█"), "longest duration is red/error");
 });
 
 test("a running call keeps its own cell at the end of the sparkline", () => {
@@ -535,12 +613,14 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
   tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
   const head = lines(tree.render(row("a")))[0]!;
   const spark = head.split(" · ")[1]?.slice(0, 2);
-  assert.equal(spark?.length, 2, `no running line segment in: ${head}`);
-  assert.equal(spark?.[0], ".");
-  assert.ok(["/", "\\", "-"].includes(spark?.[1] ?? ""));
+  assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
+  assert.equal(spark?.[0], "@");
+  assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");
+  const colored = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
+  assert.ok(colored.includes("\u001b[32m."), "the running bar color follows its short elapsed duration");
 });
 
-test("Unicode duration sparkline plots a connected Braille line, not bars", () => {
+test("Unicode duration sparkline uses height bars", () => {
   const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 150 });
@@ -550,20 +630,13 @@ test("Unicode duration sparkline plots a connected Braille line, not bars", () =
   tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
   const head = lines(tree.render(row("a")))[0]!;
   const plot = head.split(" · ")[1];
-  assert.ok(plot?.includes("\uf201"), `no Nerd Font chart-line cue in: ${head}`);
-  const spark = [...(plot ?? "")].filter(cell => {
-    const code = cell.codePointAt(0)!;
-    return code >= 0x2800 && code <= 0x28ff;
-  });
-  assert.equal(spark.length, 3, `no Braille line sparkline in: ${head}`);
-  assert.doesNotMatch(spark.join(""), /[▁▂▃▄▅▆▇█▰▱]/);
-  const masks = spark.map(cell => cell.codePointAt(0)! - 0x2800);
-  // The first segment joins the low first call to the high middle call.
-  assert.ok(masks[0]! & 0x40);
-  assert.ok(masks[0]! & 0x08);
-  // The next segment starts at that same peak and heads back down.
-  assert.ok(masks[1]! & 0x01);
-  assert.ok(masks[1]! & 0x20);
+  assert.ok(plot?.includes("\uf080"), `no Nerd Font bar-chart cue in: ${head}`);
+  const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
+  assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);
+  assert.equal(spark[0], "▁", "the shortest call uses the lowest bar");
+  assert.equal(spark[1], "█", "the slowest call uses the tallest bar");
+  assert.ok(["▂", "▃", "▄", "▅", "▆", "▇"].includes(spark[2]!),
+    "the middle-duration call uses an intermediate bar");
 });
 test("the card shows call details without group-level prose", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));

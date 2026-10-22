@@ -124,6 +124,7 @@ export class ToolTree {
       result: event.result,
       status,
       durationMs: event.durationMs,
+      now: Date.now(),
     });
     if (group) this.refresh(group);
     this.watch();

@@ -35,37 +35,18 @@ export interface PaintState {
 /** One spinner frame, and one honest duration refresh, per tick while a card is live. */
 export const SPIN_MS = 100;
 
-/** Widest sparkline the rollup carries; one cell per call, oldest call first. */
+/** Maximum duration bars shown in the rollup, oldest call first. */
 const SPARK_CELLS = 8;
 
-/**
- * How long each call took, as a connected line sparkline. Braille cells plot relative
- * heights; the ASCII fallback draws the direction of each connecting segment.
- */
-const BRAILLE_DOTS = [
-  [0x01, 0x08], // row 0: dots 1, 4
-  [0x02, 0x10], // row 1: dots 2, 5
-  [0x04, 0x20], // row 2: dots 3, 6
-  [0x40, 0x80], // row 3: dots 7, 8
+/** Height levels for one duration bar per call in each glyph mode. */
+const UNICODE_SPARK_BARS = [..."▁▂▃▄▅▆▇█"];
+const ASCII_SPARK_BARS = [...".:-=+*#@"];
+/** Theme color ramp: short calls green, middle calls yellow, long calls red. */
+const SPARK_BAR_COLORS = [
+  "success", "success", "success", "warning", "warning", "error", "error", "error",
 ] as const;
 
-function brailleSegment(from: number, to: number): string {
-  let mask = 0;
-  if (from === to) {
-    mask = BRAILLE_DOTS[from]![0] | BRAILLE_DOTS[from]![1];
-  } else {
-    const distance = Math.abs(to - from);
-    const direction = Math.sign(to - from);
-    // Rasterize through the Braille rows, staying connected as the line moves across the cell.
-    for (let step = 0; step <= distance; step++) {
-      const row = from + direction * step;
-      const column = step === 0 ? 0 : step === distance ? 1 : Math.round(step / distance);
-      mask |= BRAILLE_DOTS[row]![column]!;
-    }
-  }
-  return String.fromCharCode(0x2800 + mask);
-}
-
+/** Render relative call durations as a one-cell height bar per call. */
 function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Glyphs): string {
   const recent = tools.slice(-SPARK_CELLS);
   if (recent.length === 0) return "";
@@ -83,25 +64,12 @@ function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Gl
     span <= 0 ? 0.5 : (Math.log(Math.max(1, value)) - low) / span,
   );
 
-  if (glyphs.spark === "ascii") {
-    return heights
-      .map((height, index) => {
-        if (index === 0) return ".";
-        const previous = heights[index - 1]!;
-        return height > previous ? "/" : height < previous ? "\\" : "-";
-      })
-      .map((segment, index) =>
-        themeText(theme, recent[index]!.status === "running" ? "warning" : "dim", segment),
-      )
-      .join("");
-  }
-
-  const rows = heights.map(height => 3 - Math.round(height * 3));
-  return rows
-    .map((row, index) => {
-      const next = rows[index + 1] ?? row;
-      const segment = brailleSegment(row, next);
-      return themeText(theme, recent[index]!.status === "running" ? "warning" : "dim", segment);
+  const bars = glyphs.spark === "ascii" ? ASCII_SPARK_BARS : UNICODE_SPARK_BARS;
+  return heights
+    .map((height, index) => {
+      const level = Math.round(height * (bars.length - 1));
+      const bar = bars[level]!;
+      return themeText(theme, SPARK_BAR_COLORS[level]!, bar);
     })
     .join("");
 }
@@ -159,13 +127,25 @@ function progressColor(progress: number): Foreground {
   return "success";
 }
 
+/** Choose a theme role by a cell's position along the progress ramp. */
+function progressCellColor(index: number): Foreground {
+  const position = index / PROGRESS_CELLS;
+  if (position < 0.3) return "error";
+  if (position < 0.7) return "warning";
+  return "success";
+}
+
 /** Paint a static progress bar and percentage, leaving empty cells visually quiet. */
 function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): string {
   const value = Math.max(0, Math.min(100, Math.round(progress)));
   const filled = Math.round((value / 100) * PROGRESS_CELLS);
   const color = progressColor(value);
   const cue = glyphs.progress ? themeText(theme, "accent", glyphs.progress + "  ") : "";
-  return cue + themeText(theme, color, "▰".repeat(filled)) +
+  const bar = Array.from(
+    { length: filled },
+    (_, index) => themeText(theme, progressCellColor(index), "▰"),
+  ).join("");
+  return cue + bar +
     themeText(theme, "dim", "▱".repeat(PROGRESS_CELLS - filled)) +
     themeText(theme, color, ` ${String(value).padStart(3, " ")}%`);
 }

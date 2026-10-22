@@ -56,16 +56,16 @@ When grouping is enabled, Pi's codemode instruction makes `// task-intent:` and
 of how much of the requested task is done and how much remains—not a tool-call count or a fixed
 formula. Repeat the integer estimate (0–100) on ordinary calls; update it at meaningful milestones,
 and lower it if scope grows. The final tool call intended to complete and verify the task passes 100;
-Grove shows 100 only after that call succeeds. The metric colors move from red through yellow to green
-as the estimate advances. Both annotations are stored with calls so replay restores the same title
-and estimate.
+Grove shows 100 only after that call succeeds. The bar uses a fixed left-to-right red/yellow/green
+ramp on its filled cells; empty cells stay dim. The percentage keeps its estimate-based color.
+Both annotations are stored with calls so replay restores the same title and estimate.
 
 There are no Goal or Now sections and no group status chip. The rest of the headline carries
 the call count, duration sparkline and tool mix.
 
 ```
 ╭─ Make payment retries safe ───────────────────────────╮
-│ ▸   ▰▱▱▱▱▱▱▱▱▱   6% · 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1 │
+│ ▸   ▰▱▱▱▱▱▱▱▱▱   6% · 2 calls ·   ▃█ · bash ×1 · codemode ×1 │
 │ ├─ ●   codemode · read the classify docs and run one · 1s  │
 │ └─ ●   bash · run the model tests (npm test) · 4s          │
 ╰────────────────────────────────────────────────────────────╯
@@ -77,13 +77,13 @@ call rows show each tool's own per-call intent; Grove adds no separate Goal or N
 ## Rollup
 
 The line under the frame shows how much work is in view and **where the time went**.
-Nerd Font mode adds a percent icon beside the progress meter and a chart-line cue beside the
-sparkline. The last item is a connected line sparkline, not a row of height bars;
-Braille dots still plot the actual durations, one segment per call, oldest first. A log scale
-keeps one four-minute call from flattening everything beside it, and slower calls rise toward
-the top. ASCII mode uses a point followed by slash, backslash, or dash segments to keep the
-trace readable. A running call keeps its segment coloured as running. Exact times stay on
-each row.
+Nerd Font mode adds a percent icon beside the progress meter and a bar-chart cue beside the
+duration bars. Each call gets one height-coded cell, oldest first; a log scale keeps one
+four-minute call from flattening everything beside it, and slower calls rise toward the top.
+Unicode mode uses block heights, while ASCII mode uses increasing intensity characters.
+Bar colors follow relative duration through the theme's success, warning and error colors:
+shorter calls are green, longer calls are red, with intermediate durations transitioning
+between them. Exact times stay on each row.
 
 ## Glyphs
 

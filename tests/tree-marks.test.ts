@@ -70,6 +70,7 @@ test("a finished card keeps a quiet marker", () => {
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "step two" } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, durationMs: 500 } as never, undefined);
   const head = painted(tree)[0]!;
-  assert.match(head, /\[dim\]/);
-  assert.doesNotMatch(head, /warning/);
+  const marker = head.split(" · ")[0]!;
+  assert.match(marker, /\[dim\]/);
+  assert.doesNotMatch(marker, /warning/);
 });
