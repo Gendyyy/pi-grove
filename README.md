@@ -45,26 +45,38 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 
 ## Card shape
 
-One card per request: a headline and the tool rows under it. Nothing sits between them — no goal
-line, no phase line, no prose. The headline carries the outcome, the call count, the duration
-sparkline and the tool mix; each row carries one call's own words.
+One card per request: a model-authored task description in the top border, then the rollup
+and tool rows. The required `taskIntent` identifies the atomic task cluster and stays fixed
+across its calls; the title does not change as tools or phases change. A new task starts a
+new title. The title is not per-call reasoning or a summary of the latest tool action.
+
+When grouping is enabled, Pi's codemode instruction makes `// task-intent:` and
+`// task-progress:` mandatory on every top-level call. Progress is the agent's best-judgment estimate
+of how much of the requested task is done and how much remains—not a tool-call count or a fixed
+formula. Repeat the integer estimate (0–100) on ordinary calls; update it at meaningful milestones,
+and lower it if scope grows. The final tool call intended to complete and verify the task passes 100;
+Grove shows 100 in green only after that call succeeds. Earlier estimates are red near the start and
+yellow while work remains. Both annotations are stored with calls so replay restores the same title
+and estimate.
+
+There are no Goal or Now sections and no group status chip. The rest of the headline carries
+the call count, duration sparkline and tool mix.
 
 ```
-╭─ GROVE ────────────────────────────────────────────────────╮
-│ ▸ DONE · 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1          │
+╭─ Make payment retries safe  ▰▱▱▱▱▱▱▱▱▱ 6% ───────────╮
+│ ▸ 2 calls ·   ⡜⠉ · bash ×1 · codemode ×1                 │
 │ ├─ ●   codemode · read the classify docs and run one · 1s  │
 │ └─ ●   bash · run the model tests (npm test) · 4s          │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
-Grove does not create or retain a group-level goal or phase summary. The individual call rows
-show each tool's own intent without adding another prompt-level section.
+The border title and its completion metric are the card's only group-level summary. Individual
+call rows show each tool's own per-call intent; Grove adds no separate Goal or Now sections.
 
 ## Rollup
 
-The line under the frame answers three questions in order: how the turn ended (the chip),
-how much of the work is in view, and **where the time went**. The last item is a connected
-line sparkline, not a row of height bars. Nerd Font mode adds a chart-line icon as a cue;
+The line under the frame shows how much work is in view and **where the time went**.
+The last item is a connected line sparkline, not a row of height bars. Nerd Font mode adds a chart-line icon as a cue;
 Braille dots still plot the actual durations, one segment per call, oldest first. A log scale
 keeps one four-minute call from flattening everything beside it, and slower calls rise toward
 the top. ASCII mode uses a point followed by slash, backslash, or dash segments to keep the
@@ -81,11 +93,9 @@ dropped for its glyph, and the rollup names tools in words (`read ×2 · bash ×
 is readable without the font. `auto` turns glyphs on only when the terminal can draw them;
 force `ascii` to keep every word.
 
-A live call spins. Its marker walks a frame ramp one frame per 100 ms — `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`
-in a Unicode terminal, `|/-\` in ASCII — and the same tick keeps the row's elapsed time
-honest, so a working card is visibly working while a settled one is still. Nothing else on the
-row moves: the tool word, the intent and the call's own colour stay put, so the motion says
-in-flight without redrawing what the row means.
+A live call spins through its marker ramp every 100 ms, while the same tick keeps elapsed
+time honest. The border title stays static throughout the task. Each live call's description
+gets its own subtle highlight; words and layout stay fixed while running work is visible.
 
 | Glyph | Means |
 | --- | --- |

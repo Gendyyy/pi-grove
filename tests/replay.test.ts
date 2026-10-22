@@ -165,6 +165,66 @@ test("restored groups paint one card at their oldest row", () => {
   assert.equal(tree.owns("c1"), true);
 });
 
+test("replay keeps the stable task title and ignores legacy phase annotations", () => {
+  const entries = [
+    user("2026-01-01T00:00:00.000Z", "make retry handling safe"),
+    assistant("2026-01-01T00:00:01.000Z", [
+      {
+        id: "a1",
+        name: "codemode",
+        arguments: { code: '// @options: {"timeout_ms": 2000}\\n// reasoning: inspect retry handling\\n// task-intent: Inspect payment retry safeguards\\n// group-phase: Trace where timeout handling resets retry count\\nreturn 1;' },
+      },
+      {
+        id: "a2",
+        name: "bash",
+        arguments: {
+          taskIntent: "Inspect payment retry safeguards",
+          taskProgress: 28,
+          reasoning: "find the timeout handling call sites",
+        },
+      },
+      {
+        id: "a3",
+        name: "bash",
+        arguments: {
+          taskIntent: "Inspect payment retry safeguards",
+          taskProgress: 53,
+          groupPhase: "Add regression coverage for timeout retries",
+          reasoning: "write the focused retry tests",
+        },
+      },
+    ]),
+    result("2026-01-01T00:00:02.000Z", "a1", "codemode"),
+    result("2026-01-01T00:00:03.000Z", "a2", "bash"),
+    result("2026-01-01T00:00:04.000Z", "a3", "bash"),
+  ];
+  const tree = new ToolTree(settings());
+  tree.restore(readTranscript(entries, "prompt"));
+  const frame = tree.render(row("a1")).render(100);
+  assert.match(frame[0]!, /Inspect payment retry safeguards/);
+  assert.doesNotMatch(frame[0]!, /Add regression coverage for timeout retries/);
+  assert.doesNotMatch(frame[0]!, /Trace where timeout handling resets retry count/);
+  assert.match(frame[0]!, /53%/, "replay keeps the latest repeated estimate");
+});
+
+test("replay commits 100 only for a successful final tool call", () => {
+  for (const isError of [false, true]) {
+    const entries = [
+      user("2026-01-01T00:00:00.000Z", "finish the retry fix"),
+      assistant("2026-01-01T00:00:01.000Z", [
+        { id: "p1", name: "read", arguments: { taskIntent: "Complete the retry fix", taskProgress: 58 } },
+        { id: "p2", name: "bash", arguments: { taskIntent: "Complete the retry fix", taskProgress: 100 } },
+      ]),
+      result("2026-01-01T00:00:02.000Z", "p1", "read"),
+      result("2026-01-01T00:00:03.000Z", "p2", "bash", { isError }),
+    ];
+    const tree = new ToolTree(settings());
+    tree.restore(readTranscript(entries, "prompt"));
+    const frame = tree.render(row("p1")).render(100)[0]!;
+    assert.match(frame, isError ? /58%/ : /100%/);
+  }
+});
+
 test("a restored call without a result still paints its own card", () => {
   const entries = [
     user("2026-01-01T00:00:00.000Z", "go"),

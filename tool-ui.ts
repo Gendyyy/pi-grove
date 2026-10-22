@@ -7,6 +7,7 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
+import { taskIntentOf, taskProgressOf } from "./tree-model.js";
 import { ToolTree, type GroupMode, type TreeRow } from "./tool-tree.js";
 
 interface ToolUiOptions {
@@ -25,6 +26,22 @@ interface ToolUiOptions {
   thinking: GroveThinking;
 }
 const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
+export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
+When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line and a // task-progress: <0-100> line. Keep task-intent unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Estimate completion by your best judgment of how much of the requested task is done and how much remains; do not base it on tool-call count or invent a fixed denominator. Repeat the current integer estimate on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds. With // @options:, put that header first, then // reasoning:, // task-intent:, and // task-progress:.
+`;
+
+/** Require a stable model-authored task title for grouped top-level codemode calls. */
+export function codemodeGroupMetadataViolation(
+  event: { toolName: string; input: Record<string, unknown>; parentToolCallId?: string },
+  group: GroupMode,
+): string | undefined {
+  if (group === "off" || event.toolName !== "codemode" || event.parentToolCallId !== undefined) return undefined;
+  if (!taskIntentOf(event.input))
+    return "Grove blocked this codemode call: grouping requires a model-written // task-intent: <objective> line. Keep it stable for the same task, then retry.";
+  if (taskProgressOf(event.input) === undefined)
+    return "Grove blocked this codemode call: grouping requires the current // task-progress: <integer 0-100> estimate on every top-level call. Repeat it unchanged until a meaningful milestone, then retry.";
+  return undefined;
+}
 
 /** Own presentation and bounded result metadata, never codemode's tool definition or activation. */
 export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
@@ -83,8 +100,19 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
   pi.on("before_agent_start", (event) => {
     const prompt = event.systemPromptOptions;
     if (prompt.selectedTools.includes("codemode"))
-      prompt.sections.grove_tool_ui = CODEMODE_GUIDANCE;
+      prompt.sections.grove_tool_ui = options.group === "off" ? CODEMODE_GUIDANCE : CODEMODE_GROUP_GUIDANCE;
     else delete prompt.sections.grove_tool_ui;
+  });
+  pi.on("tool_call", (event) => {
+    const reason = codemodeGroupMetadataViolation(
+      {
+        toolName: event.toolName,
+        input: event.input as unknown as Record<string, unknown>,
+        parentToolCallId: event.parentToolCallId,
+      },
+      options.group,
+    );
+    return reason ? { block: true, reason } : undefined;
   });
   pi.on("turn_start", () => tree.boundary("turn"));
   let reasoningMessage = 0;

@@ -3,9 +3,12 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { Component, TuiMouseEvent } from "@earendil-works/pi-tui";
+import { visibleWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { GROUP_TARGET, ToolTree, paintGroup, type TreeGroup, type TreeRow, type TreeSettings } from "../tool-tree.js";
-import { plainTheme } from "../theme.js";
+import { plainTheme, type GroveTheme } from "../theme.js";
+import { summaryLine } from "../block-render.js";
+import { shimmerText } from "../tree-paint.js";
+import { composeSourceTool, type SourceToolDefinition } from "../tool-composition.js";
 
 /** Build settings with plain ASCII glyphs so assertions stay readable. */
 function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
@@ -18,8 +21,47 @@ function inner(): Component {
 }
 
 /** One renderer row as pi would hand it to the tree. */
-function row(id: string, expanded = false): TreeRow {
-  return { toolCallId: id, inner: inner(), theme: plainTheme, expanded, invalidate: () => {} };
+function row(id: string, expanded = false, theme: GroveTheme = plainTheme): TreeRow {
+  return { toolCallId: id, inner: inner(), theme, expanded, invalidate: () => {} };
+}
+
+const ANSI_THEME: GroveTheme = {
+  style: (text, options) => {
+    const color = options.fg === "muted" ? "2" : options.fg === "text" ? "1" : options.fg === "accent" ? "35" : "33";
+    return "\u001b[" + color + "m" + text + "\u001b[0m";
+  },
+};
+
+const PROGRESS_THEME: GroveTheme = {
+  style: (text, options) => {
+    const color = options.fg === "error" ? "31" : options.fg === "warning" ? "33" : options.fg === "success" ? "32" : "2";
+    return "\u001b[" + color + "m" + text + "\u001b[0m";
+  },
+};
+
+function stripAnsi(text: string): string {
+  return text.replace(/\u001b\[[0-9;]*m/g, "");
+}
+
+function stylesFor(raw: string, target: string): string[] {
+  const visible: string[] = [];
+  const styles: string[] = [];
+  let active = "";
+  for (let index = 0; index < raw.length;) {
+    if (raw.startsWith("\u001b[", index)) {
+      const end = raw.indexOf("m", index);
+      if (end < 0) break;
+      active = raw.slice(index, end + 1);
+      index = end + 1;
+      continue;
+    }
+    const cell = String.fromCodePoint(raw.codePointAt(index)!);
+    visible.push(cell);
+    styles.push(active);
+    index += cell.length;
+  }
+  const start = visible.join("").indexOf(target);
+  return start < 0 ? [] : styles.slice(start, start + [...target].length);
 }
 
 /** A left click event with coordinates local to the card. */
@@ -48,6 +90,297 @@ function lines(component: Component, width = 80): string[] {
   return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
+test("composed tools require taskIntent and strip Grove metadata before execution", async () => {
+  let received: unknown;
+  const source = {
+    name: "fixture",
+    parameters: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+    execute: async (_id: string, params: unknown) => {
+      received = params;
+      return { content: [] };
+    },
+  } as unknown as SourceToolDefinition;
+  const composed = composeSourceTool(source, {
+    mode: "reasoning",
+    reasoningGuideline: "reasoning",
+    taskIntent: true,
+    taskIntentGuideline: "stable task title",
+    taskProgress: true,
+    taskProgressGuideline: "current estimated completion percentage",
+  });
+  const schema = composed.parameters as unknown as {
+    required?: string[];
+    properties?: Record<string, { type?: string; maxLength?: number; minimum?: number; maximum?: number }>;
+  };
+  assert.deepEqual(schema.required, ["taskProgress", "taskIntent", "reasoning", "value"]);
+  assert.equal(schema.properties?.taskIntent?.type, "string");
+  assert.equal(schema.properties?.taskIntent?.maxLength, 120);
+  assert.equal(schema.properties?.taskProgress?.type, "integer");
+  assert.equal(schema.properties?.taskProgress?.minimum, 0);
+  assert.equal(schema.properties?.taskProgress?.maximum, 100);
+  assert.match(composed.promptGuidelines?.join(" ") ?? "", /stable task title/);
+  assert.match(composed.promptGuidelines?.join(" ") ?? "", /current estimated completion percentage/);
+
+  await Reflect.apply(composed.execute, composed, [
+    "call-1",
+    { value: "keep", reasoning: "per-call detail", taskIntent: "cluster objective", taskProgress: 35 },
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  assert.deepEqual(received, { value: "keep" });
+});
+
+test("a source cannot reserve Grove taskProgress metadata", () => {
+  const source = {
+    name: "fixture",
+    parameters: { type: "object", properties: { taskProgress: { type: "integer" } } },
+    execute: async () => ({ content: [] }),
+  } as unknown as SourceToolDefinition;
+  assert.throws(
+    () => composeSourceTool(source, {
+      mode: "reasoning",
+      reasoningGuideline: "reasoning",
+      taskIntent: true,
+      taskProgress: true,
+    }),
+    /fixture source schema reserves grove-owned taskProgress/,
+  );
+});
+
+test("a source cannot reserve Grove taskIntent metadata", () => {
+  const source = {
+    name: "fixture",
+    parameters: { type: "object", properties: { taskIntent: { type: "string" } } },
+    execute: async () => ({ content: [] }),
+  } as unknown as SourceToolDefinition;
+  assert.throws(
+    () => composeSourceTool(source, {
+      mode: "reasoning",
+      reasoningGuideline: "reasoning",
+      taskIntent: true,
+    }),
+    /fixture source schema reserves grove-owned taskIntent/,
+  );
+});
+
+test("running descriptions shimmer without changing text or visible width", () => {
+  const description = "inspect the retry path";
+  const first = shimmerText(description, ANSI_THEME, 1_000, 1_000);
+  const later = shimmerText(description, ANSI_THEME, 1_400, 1_000);
+  assert.notEqual(first, later, "the highlight should move");
+  assert.equal(stripAnsi(first), description);
+  assert.equal(stripAnsi(later), description);
+  assert.equal(visibleWidth(first), description.length);
+  assert.equal(visibleWidth(later), description.length);
+});
+
+test("the agent milestone estimate repeats, and only a successful final call reaches green", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const intent = "Inspect payment retry safeguards";
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 6 } });
+  const card = tree.render(row("a", false, PROGRESS_THEME));
+  const first = card.render(80)[0]!;
+  assert.match(stripAnsi(first), /Inspect payment retry safeguards.*▰▱{9} 6%/);
+  assert.equal(stylesFor(first, "▰")[0], "\u001b[31m", "early progress is red");
+  assert.ok(stylesFor(first, "6%").every(style => style === "\u001b[31m"));
+
+  tree.start({ toolCallId: "b", toolName: "grep", args: { taskIntent: intent, taskProgress: 6 } });
+  assert.equal(tree.render(row("a", false, PROGRESS_THEME)).render(80)[0], first, "repeating the same estimate is visually idempotent");
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 5 });
+  tree.end({ toolCallId: "b", toolName: "grep", result: { content: [] }, isError: false, durationMs: 5 });
+
+  tree.start({ toolCallId: "c", toolName: "bash", args: { taskIntent: intent, taskProgress: 50 } });
+  const middle = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(middle), /▰{5}▱{5} 50%/);
+  assert.ok(stylesFor(middle, "50%").every(style => style === "\u001b[33m"), "midpoint is yellow");
+  tree.end({ toolCallId: "c", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
+
+  tree.start({ toolCallId: "d", toolName: "bash", args: { taskIntent: intent, taskProgress: 99 } });
+  const almost = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(almost), /▰{10} 99%/);
+  assert.ok(stylesFor(almost, "99%").every(style => style === "\u001b[33m"), "unfinished progress remains yellow");
+  tree.end({ toolCallId: "d", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
+
+  tree.start({ toolCallId: "e", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
+  const pending = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(pending), /99%/, "100 stays pending while the final call runs");
+  tree.end({ toolCallId: "e", toolName: "bash", result: { content: [] }, isError: false, durationMs: 10 });
+  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(complete), /▰{10} 100%/);
+  assert.ok(stylesFor(complete, "100%").every(style => style === "\u001b[32m"), "completed progress is green");
+
+  tree.start({ toolCallId: "f", toolName: "read", args: { taskIntent: "Verify a different task", taskProgress: 12 } });
+  const nextTask = stripAnsi(tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!);
+  assert.match(nextTask, /Verify a different task.*12%/, "a new task gets its own estimate");
+});
+
+test("100 waits for the declared final call and outstanding calls to succeed", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const intent = "Complete the retry fix";
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 58 } });
+  tree.start({ toolCallId: "b", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
+  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 10 });
+  const waiting = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(waiting), /58%/, "a still-running call prevents completion");
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
+  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(complete), /100%/);
+});
+
+test("a failed final call never paints 100 percent", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const intent = "Complete the retry fix";
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 58 } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
+  tree.start({ toolCallId: "b", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
+  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [{ type: "text", text: "failed" }] }, isError: true, durationMs: 10 });
+  const failed = tree.render(row("a", false, PROGRESS_THEME)).render(80)[0]!;
+  assert.match(stripAnsi(failed), /58%/);
+  assert.doesNotMatch(stripAnsi(failed), /100%/);
+  assert.ok(stylesFor(failed, "58%").every(style => style === "\u001b[33m"));
+});
+
+test("the progress metric stays visible when the title is clipped on narrow cards", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "A very long title that should be clipped", taskProgress: 6 } });
+  const frame = tree.render(row("a")).render(32);
+  assert.ok(frame.every(line => visibleWidth(line) <= 32));
+  assert.match(stripAnsi(frame[0]!), /▰▱{9} 6%/);
+  assert.doesNotMatch(stripAnsi(frame[0]!), /A very long title/);
+});
+
+test("the border title stays static while tool rows run", () => {
+  const realNow = Date.now;
+  try {
+    const base = 1_000_000;
+    const title = "Inspect payment retry safeguards";
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    Date.now = () => base;
+    tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: title, taskProgress: 20 } });
+    const cardRow = row("a", false, ANSI_THEME);
+    const first = tree.render(cardRow).render(80)[0]!;
+    Date.now = () => base + 100;
+    const next = tree.render(cardRow).render(80)[0]!;
+    assert.match(stripAnsi(first).trimStart(), /^\+- Inspect payment retry safeguards/);
+    assert.equal(next, first, "the border title has no shimmer or animated glyph");
+    assert.ok(stylesFor(first, title).every(style => style === "\u001b[35m"));
+    assert.equal(visibleWidth(first), visibleWidth(next));
+    assert.ok(visibleWidth(first) <= 80);
+
+    tree.end({
+      toolCallId: "a",
+      toolName: "read",
+      result: { content: [] },
+      isError: false,
+      durationMs: 100,
+    }, undefined);
+    Date.now = () => base + 200;
+    const betweenCalls = tree.render(cardRow).render(80)[0]!;
+    assert.equal(betweenCalls, first, "the task title stays fixed after a call ends");
+    assert.equal(visibleWidth(betweenCalls), visibleWidth(first));
+
+    tree.settle();
+    Date.now = () => base + 300;
+    const settled = tree.render(cardRow).render(80)[0]!;
+    assert.equal(settled, first, "settlement does not animate or replace the title");
+    assert.equal(visibleWidth(settled), visibleWidth(first));
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("the shared call timer stops when no tool row is running", () => {
+  const realSetInterval = globalThis.setInterval;
+  const realClearInterval = globalThis.clearInterval;
+  let tick: (() => void) | undefined;
+  let clears = 0;
+  globalThis.setInterval = ((callback: (...args: unknown[]) => void) => {
+    tick = callback;
+    return { unref() {} } as unknown as ReturnType<typeof setInterval>;
+  }) as typeof setInterval;
+  globalThis.clearInterval = (() => { clears += 1; }) as typeof clearInterval;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Inspect payment retry safeguards" } });
+    tree.end({
+      toolCallId: "a",
+      toolName: "read",
+      result: { content: [] },
+      isError: false,
+      durationMs: 100,
+    }, undefined);
+    assert.ok(tick);
+    tick!();
+    assert.equal(clears, 1, "the timer stops at the first tick after the last call ends");
+    tree.settle();
+    assert.equal(clears, 1, "settlement does not leave a timer behind");
+  } finally {
+    globalThis.setInterval = realSetInterval;
+    globalThis.clearInterval = realClearInterval;
+  }
+});
+
+test("shimmer formatting only sees the description that fits the row", () => {
+  const fitted: string[] = [];
+  const line = summaryLine(
+    "READ",
+    "· inspect the retry path",
+    " · ",
+    "running",
+    32,
+    detail => {
+      fitted.push(detail);
+      return shimmerText(detail, ANSI_THEME, 1_400, 1_000);
+    },
+  );
+  const visibleDetail = stripAnsi(fitted[fitted.length - 1]!);
+  assert.notEqual(visibleDetail, "· inspect the retry path");
+  assert.match(visibleDetail, /…$/);
+  assert.equal(stripAnsi(line).includes("retry path"), false);
+  assert.ok(visibleWidth(line) <= 32);
+});
+
+test("a running row shimmers its fitted description without changing layout", () => {
+  const realNow = Date.now;
+  try {
+    const base = 1_000_000;
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    Date.now = () => base;
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "inspect the retry path" } });
+    const cardRow = row("a", false, ANSI_THEME);
+    const first = tree.render(cardRow).render(80);
+    Date.now = () => base + 400;
+    const later = tree.render(cardRow).render(80);
+    const firstStyles = stylesFor(first.join("\n"), "inspect the retry path");
+    const laterStyles = stylesFor(later.join("\n"), "inspect the retry path");
+    assert.equal(firstStyles.length, "inspect the retry path".length);
+    assert.notDeepEqual(laterStyles, firstStyles, "the description highlight should move");
+    assert.deepEqual(later.map(visibleWidth), first.map(visibleWidth));
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("settled tool descriptions stay static", () => {
+  const realNow = Date.now;
+  try {
+    const base = 1_000_000;
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    Date.now = () => base;
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "inspect the retry path" } });
+    tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 300 });
+    tree.settle();
+    const cardRow = row("a", false, ANSI_THEME);
+    const first = tree.render(cardRow).render(80).join("\n");
+    Date.now = () => base + 5_000;
+    const later = tree.render(cardRow).render(80).join("\n");
+    assert.equal(later, first, "settled cards should not keep animating");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test("a single call still leads with the group headline", () => {
   const tree = new ToolTree(settings());
   tree.boundary("turn");
@@ -57,11 +390,65 @@ test("a single call still leads with the group headline", () => {
   assert.equal(painted.length, 2);
   assert.match(painted[0]!, /1 call/);
   assert.match(painted[0]!, /read x1/);
+  assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
   assert.match(painted[1]!, /check the manifest/);
   assert.match(painted[1]!, /running/);
 });
 
-test("a failure the group worked past stays a count, not the outcome", () => {
+test("the border title stays on the task description despite legacy phase annotations", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const task = "Inspect payment retry safeguards";
+  tree.start({
+    toolCallId: "a",
+    toolName: "read",
+    args: { taskIntent: task, taskProgress: 20, groupPhase: "Trace when timeout handling resets the retry counter" },
+  });
+  const card = tree.render(row("a"));
+  tree.start({
+    toolCallId: "b",
+    toolName: "grep",
+    args: { taskIntent: task, taskProgress: 20, groupPhase: "Add regression coverage for timeout retries" },
+  });
+  const title = card.render(80)[0]!;
+  assert.match(title, /Inspect payment retry safeguards/);
+  assert.doesNotMatch(title, /Trace when timeout|Add regression coverage/);
+  assert.match(stripAnsi(title), /▰▰▱{8} 20%/);
+
+  tree.start({
+    toolCallId: "nested",
+    toolName: "bash",
+    parentToolCallId: "a",
+    args: { taskIntent: "Run the complete test suite", taskProgress: 100, groupPhase: "Verify behavior" },
+  });
+  assert.match(card.render(80)[0]!, /Inspect payment retry safeguards/, "nested work cannot replace the title");
+  assert.match(stripAnsi(card.render(80)[0]!), /20%/, "nested work cannot replace task progress");
+});
+
+test("codemode task metadata after @options becomes the border title", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({
+    toolCallId: "code",
+    toolName: "codemode",
+    args: { code: '// @options: {"timeout_ms": 2000}\n// reasoning: inspect recent sessions\n// task-intent: Classify session transcripts safely\n// group-phase: Trace how transcript calls are grouped\nreturn 1;' },
+  });
+  assert.match(tree.render(row("code")).render(80)[0]!, /Classify session transcripts safely/);
+  assert.doesNotMatch(tree.render(row("code")).render(80)[0]!, /Trace how transcript calls are grouped/);
+});
+
+test("a long task title is clipped to the available border width", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({
+    toolCallId: "a",
+    toolName: "read",
+    args: { taskIntent: "Prepare a comprehensive compatibility report for every supported platform" },
+  });
+  const frame = tree.render(row("a")).render(32);
+  assert.ok(visibleWidth(frame[0]!) <= 32);
+  assert.match(stripAnsi(frame[0]!), /Prepare a compreh…/);
+  assert.match(frame[0]!, /…/);
+});
+
+test("a recovered failure remains a count without a group status label", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 400 });
@@ -69,18 +456,17 @@ test("a failure the group worked past stays a count, not the outcome", () => {
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 500 });
   // The card paints on its leader row, which is the first call of the group.
   const painted = lines(tree.render(row("a")));
-  // The card reports how the work ended; the miss is still named in the rollup.
-  assert.match(painted[0]!, /DONE/);
-  assert.doesNotMatch(painted[0]!, /FAILED/);
+  assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
   assert.match(painted[0]!, /1 error/);
 });
 
-test("a group that ends on a failure is still FAILED", () => {
+test("a final failure is counted without a group status label", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 400 });
   const painted = lines(tree.render(row("a")));
-  assert.match(painted[0]!, /FAILED/);
+  assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
+  assert.match(painted[0]!, /1 error/);
 });
 
 test("the rollup ends in a sparkline of how long each call took", () => {
@@ -92,7 +478,7 @@ test("the rollup ends in a sparkline of how long each call took", () => {
   tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
   tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
   const head = lines(tree.render(row("a")))[0]!;
-  const spark = head.split(" · ")[2];
+  const spark = head.split(" · ")[1];
   assert.equal(spark, "./\\", `no ASCII line trace in: ${head}`);
   // One segment per call: rising to the slow call, then falling again.
   assert.equal(spark!.length, 3);
@@ -105,7 +491,7 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false, durationMs: 2000 });
   tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
   const head = lines(tree.render(row("a")))[0]!;
-  const spark = head.split(" · ")[2]?.slice(0, 2);
+  const spark = head.split(" · ")[1]?.slice(0, 2);
   assert.equal(spark?.length, 2, `no running line segment in: ${head}`);
   assert.equal(spark?.[0], ".");
   assert.ok(["/", "\\", "-"].includes(spark?.[1] ?? ""));
@@ -120,7 +506,7 @@ test("Unicode duration sparkline plots a connected Braille line, not bars", () =
   tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
   tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false, durationMs: 900 });
   const head = lines(tree.render(row("a")))[0]!;
-  const plot = head.split(" · ")[2];
+  const plot = head.split(" · ")[1];
   assert.ok(plot?.includes("\uf201"), `no Nerd Font chart-line cue in: ${head}`);
   const spark = [...(plot ?? "")].filter(cell => {
     const code = cell.codePointAt(0)!;

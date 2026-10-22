@@ -20,6 +20,8 @@ import {
   brief,
   clean,
   goalOf,
+  taskIntentOf,
+  taskProgressOf,
   targetOf,
   type PaintPhase,
   type TreeGroup,
@@ -85,6 +87,22 @@ export function currentGroup(state: TreeState, now: number): TreeGroup {
   return group;
 }
 
+/** Set the current card title only when a model-authored cluster intent is present. */
+function updateGroupIntent(group: TreeGroup, intent: string): boolean {
+  if (!intent || group.intent === intent) return false;
+  group.intent = intent;
+  group.progress = undefined;
+  group.pendingCompletionId = undefined;
+  return true;
+}
+
+/** Keep the last valid estimate; repeated idempotent values do not repaint the card. */
+function updateGroupProgress(group: TreeGroup, progress: number | undefined): boolean {
+  if (progress === undefined || group.progress === progress) return false;
+  group.progress = progress;
+  return true;
+}
+
 /** Build one row from a tool call, with the goal it stated and its code size. */
 function makeNode(
   state: TreeState,
@@ -101,6 +119,8 @@ function makeNode(
     name: brief(toolName, 100),
     goal: goalOf(record),
     target: targetOf(record),
+    taskIntent: parent ? undefined : taskIntentOf(record) || undefined,
+    completesTask: !parent && taskProgressOf(record) === 100,
     status: "running",
     started,
     seq: ++state.sequence,
@@ -147,21 +167,38 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
   if (typeof input.id !== "string" || input.id.length === 0 || input.id.length > MAX_ID) return undefined;
   const group = currentGroup(state, input.now);
   const record = (input.args ?? undefined) as Record<string, unknown> | undefined;
+  const parent = typeof input.parentId === "string" ? group.nodes.get(input.parentId) : undefined;
+  const statedIntent = parent ? "" : taskIntentOf(record);
+  const statedProgress = parent ? undefined : taskProgressOf(record);
+  const intentChanged = parent ? false : updateGroupIntent(group, statedIntent);
+  const progressChanged = parent || statedProgress === 100
+    ? false
+    : updateGroupProgress(group, statedProgress);
+  const pendingCompletionId = statedProgress === undefined
+    ? group.pendingCompletionId
+    : statedProgress === 100 ? input.id : undefined;
   const known = group.nodes.get(input.id);
   if (known) {
     // Streaming rows report their arguments in pieces; keep the row text in step.
     const goal = goalOf(record);
     const target = targetOf(record);
-    if (goal === known.goal && target === known.target) return undefined;
+    const intentNodeChanged = !parent && statedIntent !== "" && known.taskIntent !== statedIntent;
+    const completion = !parent && statedProgress === 100;
+    const completionChanged = statedProgress !== undefined && known.completesTask !== completion;
+    if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
+    if (goal === known.goal && target === known.target && !intentChanged && !progressChanged &&
+      !intentNodeChanged && !completionChanged) return undefined;
     known.goal = goal;
     known.target = target;
+    if (!parent && statedIntent) known.taskIntent = statedIntent;
+    if (statedProgress !== undefined) known.completesTask = completion;
     return group;
   }
-  const parent = typeof input.parentId === "string" ? group.nodes.get(input.parentId) : undefined;
   if (parent ? parent.children.length >= MAX_CHILDREN : group.rows.length >= MAX_ROWS) return undefined;
   const node = makeNode(state, input.id, input.toolName, input.args, input.now, parent);
   group.nodes.set(input.id, node);
   (parent ? parent.children : group.rows).push(node);
+  if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
   // The card stays on the oldest call of the group, so it grows in place instead of
   // sliding to every new row, which read as each call rendering itself separately.
   if (!parent && group.leaderId === undefined) group.leaderId = node.id;
@@ -232,6 +269,24 @@ export interface EndInput {
   durationMs?: number;
 }
 
+/** Commit 100 only after the declared final call succeeds and all top-level calls settle. */
+function finishPendingCompletion(group: TreeGroup): void {
+  const id = group.pendingCompletionId;
+  if (!id) return;
+  const node = group.nodes.get(id);
+  if (!node || node.taskIntent !== group.intent) {
+    group.pendingCompletionId = undefined;
+    return;
+  }
+  if (node.status === "error" || node.status === "cancelled" || node.status === "incomplete") {
+    group.pendingCompletionId = undefined;
+    return;
+  }
+  if (node.status !== "success" || group.rows.some(row => row.kind !== "thinking" && row.status === "running")) return;
+  group.pendingCompletionId = undefined;
+  updateGroupProgress(group, 100);
+}
+
 /** Finish one recorded call and adopt the steps a codemode snapshot kept of its children. */
 export function finishCall(state: TreeState, input: EndInput): TreeGroup | undefined {
   const group = findGroup(state, input.id);
@@ -240,6 +295,7 @@ export function finishCall(state: TreeState, input: EndInput): TreeGroup | undef
   finalizeNode(group, node, input.result, input.status, input.durationMs);
   // The codemode snapshot is the only record of the steps that ran inside the call.
   attachCalls(state, group, readNested((input.result as { details?: unknown } | undefined)?.details), node);
+  finishPendingCompletion(group);
   return group;
 }
 
@@ -251,6 +307,16 @@ export function attachCalls(
   parent?: TreeNode,
 ): void {
   for (const call of calls) {
+    if (!parent) {
+      const args = (call.args ?? undefined) as Record<string, unknown> | undefined;
+      updateGroupIntent(group, taskIntentOf(args));
+      const progress = taskProgressOf(args);
+      if (progress === 100) group.pendingCompletionId = call.id;
+      else if (progress !== undefined) {
+        updateGroupProgress(group, progress);
+        group.pendingCompletionId = undefined;
+      }
+    }
     const existing = group.nodes.get(call.id);
     if (existing && existing !== parent) {
       // The live session already registered this step from its own tool events, so the
@@ -315,6 +381,7 @@ export function restoreSegments(state: TreeState, segments: ReplaySegment[]): vo
     };
     state.groups.set(group.key, group);
     attachCalls(state, group, calls);
+    finishPendingCompletion(group);
     // A card needs a tool row to be painted on, so reasoning alone keeps no group.
     const first = group.rows.find(row => row.kind !== "thinking");
     if (first) group.leaderId = first.id;
@@ -347,6 +414,7 @@ export function closeGroup(state: TreeState, group: TreeGroup, now: number): voi
     }
   };
   closeNodes(group.rows);
+  group.pendingCompletionId = undefined;
   // Reasoning without a tool call has no row to paint on, so the group is worthless.
   if (!group.rows.some(node => node.kind !== "thinking")) {
     state.groups.delete(group.key);

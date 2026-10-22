@@ -59,12 +59,8 @@ import {
   type SettingKey,
   type SettingValue,
 } from "./settings.js";
-import {
-  composeSourceTool,
-  createDiffingWriteTool,
-  createNativeSource,
-  type SourceToolDefinition,
-} from "./tool-composition.js";
+import { composeSourceTool, type SourceToolDefinition } from "./tool-composition.js";
+import { createDiffingWriteTool, createNativeSource } from "./native-tools.js";
 import {
   createPiFffIntegrationController,
   type PiFffIntegrationController,
@@ -253,6 +249,10 @@ export function createGroveExtension(
       return composeSourceTool(source, {
         mode: settings.mode,
         reasoningGuideline: 'Always pass a "reasoning" phrase to ' + source.name + ': state the GOAL/intent, not the file or command (those are shown already). Write the reasoning in English.',
+        taskIntent: settings.group !== "off",
+        taskIntentGuideline: 'Always pass "taskIntent" to ' + source.name + ': give the concise high-level objective for the current atomic task. Keep it unchanged across calls advancing that task; change it only when starting a distinct task. This is the stable task identity and the border title remains fixed for that task.',
+        taskProgress: settings.group !== "off",
+        taskProgressGuideline: 'Always pass "taskProgress" to ' + source.name + ': your best-judgment estimate (integer 0–100) of how much of the requested task is complete and how much remains. Do not base it on tool-call count or invent a fixed denominator. Repeat the same value on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds.',
       });
     };
     const sources = [

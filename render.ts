@@ -37,3 +37,17 @@ export function stripReasoning(params: Record<string, unknown>): { reasoning?: s
   if (!Object.hasOwn(params, "reasoning")) return { rest: params };
   return { reasoning: typeof reasoning === "string" ? reasoning : undefined, rest };
 }
+
+/** Remove Grove’s cluster-title annotation before delegating to the source tool. */
+export function stripTaskIntent(params: Record<string, unknown>): { taskIntent?: string; rest: Record<string, unknown> } {
+  const { taskIntent, ...rest } = params;
+  if (!Object.hasOwn(params, "taskIntent")) return { rest: params };
+  return { taskIntent: typeof taskIntent === "string" ? taskIntent : undefined, rest };
+}
+
+/** Remove Grove’s progress estimate before delegating to the source tool. */
+export function stripTaskProgress(params: Record<string, unknown>): { taskProgress?: number; rest: Record<string, unknown> } {
+  const { taskProgress, ...rest } = params;
+  if (!Object.hasOwn(params, "taskProgress")) return { rest: params };
+  return { taskProgress: typeof taskProgress === "number" ? taskProgress : undefined, rest };
+}

@@ -62,8 +62,10 @@ export class ToolTree {
     if (this.settings.mode === "off") return;
     // The mode names the one event that closes a card; every other event is narration.
     if (this.settings.mode !== kind) return;
+    const group = activeGroup(this.state);
     settleActive(this.state, Date.now());
     this.stopWatch();
+    if (group) this.refresh(group);
   }
 
   /** Record a tool call, attaching it under its parent when one is running. */
@@ -127,10 +129,12 @@ export class ToolTree {
     this.watch();
   }
 
-  /** Close the current card when the turn ends; unfinished calls become incomplete. */
+  /** Close the current card at its configured boundary; unfinished calls become incomplete. */
   settle(): void {
+    const group = activeGroup(this.state);
     settleActive(this.state, Date.now());
     this.stopWatch();
+    if (group) this.refresh(group);
   }
 
   /** Rebuild cards from a replayed transcript, so a reload or resume keeps the grouping. */
@@ -203,7 +207,7 @@ export class ToolTree {
     this.redraw();
   }
 
-  /** Keep running durations honest and step the spinner with one shared timer. */
+  /** Keep running call markers and elapsed times current while a call is active. */
   private watch(): void {
     if (this.timer !== undefined) return;
     this.timer = setInterval(() => {
@@ -224,8 +228,7 @@ export class ToolTree {
   }
 }
 
-/** Whether any row of the card, at any depth, is still running. */
-function hasRunning(nodes: TreeNode[]): boolean {
+function hasRunning(nodes: readonly TreeNode[]): boolean {
   return nodes.some(node => node.status === "running" || hasRunning(node.children));
 }
 

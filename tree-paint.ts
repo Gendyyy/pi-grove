@@ -15,7 +15,6 @@ import {
   errorCell,
   counted,
   detailOf,
-  groupTiming,
   rowTail,
   toolBreakdown,
   toolCounts,
@@ -114,6 +113,62 @@ export function spinGlyph(glyphs: Glyphs, now: number): string {
   return frames[Math.floor(now / SPIN_MS) % frames.length]!;
 }
 
+const SHIMMER_BAND = 3;
+const SHIMMER_MIN_MS = 1_000;
+const SHIMMER_MAX_MS = 2_600;
+
+/** A soft, fixed-width color band that sweeps across visible running-call text. */
+export function shimmerText(text: string, theme: GroveTheme, now: number, started: number, bold = false): string {
+  const cells = [...text];
+  if (cells.length === 0) return "";
+
+  // Scale the sweep to the fitted text so the light band remains visible on narrow rows.
+  const travel = cells.length + SHIMMER_BAND * 2;
+  const period = Math.min(SHIMMER_MAX_MS, Math.max(SHIMMER_MIN_MS, travel * 45));
+  const elapsed = Math.max(0, now - started);
+  const progress = (elapsed % period) / period;
+  const center = progress * travel - SHIMMER_BAND;
+
+  // Group adjacent cells with the same role to keep ANSI output compact.
+  let output = "";
+  let role: Foreground | undefined;
+  let chunk = "";
+  const flush = () => {
+    if (role !== undefined && chunk) output += themeText(theme, role, chunk, bold);
+  };
+  for (const [index, cell] of cells.entries()) {
+    const distance = Math.abs(index - center);
+    const nextRole: Foreground = distance < 0.75 ? "text" : distance < 1.75 ? "accent" : "muted";
+    if (nextRole !== role) {
+      flush();
+      role = nextRole;
+      chunk = "";
+    }
+    chunk += cell;
+  }
+  flush();
+  return output;
+}
+
+const PROGRESS_CELLS = 10;
+
+/** Keep progress green only at completion; a high estimate is still unfinished. */
+function progressColor(progress: number): Foreground {
+  if (progress < 34) return "error";
+  if (progress < 100) return "warning";
+  return "success";
+}
+
+/** Paint a static progress bar and percentage, leaving empty cells visually quiet. */
+function taskProgressText(progress: number, theme: GroveTheme): string {
+  const value = Math.max(0, Math.min(100, Math.round(progress)));
+  const filled = Math.round((value / 100) * PROGRESS_CELLS);
+  const color = progressColor(value);
+  return themeText(theme, color, "▰".repeat(filled)) +
+    themeText(theme, "dim", "▱".repeat(PROGRESS_CELLS - filled)) +
+    themeText(theme, color, ` ${value}%`);
+}
+
 /** Colour and glyph of a row marker: the call state, not whether the row opens. */
 function stateMark(node: TreeNode, glyphs: Glyphs, now: number): { glyph: string; color: Foreground } {
   if (node.kind === "thinking") return { glyph: glyphs.dot, color: "muted" };
@@ -164,23 +219,9 @@ export function paintGroup(
   const kept = new Set(visible.map(row => row.id));
   const rows = group.rows.filter(row => (row.kind === "thinking" ? row.seq >= from : kept.has(row.id)));
 
-  // The headline always leads the card, even for a single call: it is the frame that
-  // tells you what this turn did, and the rows below are its detail.
-  const timing = groupTiming(group.rows);
+  // The headline always leads the card: the border names the current task, the rollup
+  // counts its calls, and the rows below show their detail.
   const errors = countErrors(tools);
-  // A failed probe is not a failed outcome. Only the call the group last settled on
-  // decides the chip, so a miss that was worked past stays a count instead of renaming
-  // the whole card FAILED while the turn is still succeeding.
-  const settled = tools.filter(node => node.status !== "running");
-  const failedNow = settled.length > 0 && settled[settled.length - 1]!.status === "error";
-  const outcome = timing.running ? "WORKING" : failedNow ? "FAILED" : "DONE";
-  const chipColor: Foreground = timing.running
-    ? "warning"
-    : failedNow
-      ? "error"
-      : errors > 0
-        ? "warning"
-        : "success";
   let headerLine = "";
   if (tools.length > 0) {
     const total = tools.length;
@@ -191,10 +232,8 @@ export function paintGroup(
           themeText(theme, "dim", " of ") +
           themeText(theme, "muted", String(total)) +
           themeText(theme, "muted", " calls");
-    // Status leads the rollup the way a chip does: what the group is doing, then the mix.
-    // The chip is the only place the outcome is written: the frame names the card, not
-    // its state, so the word cannot appear twice on two adjacent lines.
-    const parts = [themeText(theme, chipColor, outcome, true), scope];
+    // Keep the rollup factual: counts, duration shape and tool mix, with no group status label.
+    const parts = [scope];
     // The duration shape sits before the tool mix: a narrow card drops the trailing parts
     // first, and "where did the time go" matters more than the fourth tool name.
     const spark = durationSpark(tools, theme, glyphs);
@@ -204,8 +243,7 @@ export function paintGroup(
     }
     parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode));
     if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
-    const headColor: Foreground = timing.running ? "warning" : "dim";
-    const head = themeText(theme, headColor, (reveal ? glyphs.open : glyphs.closed) + " ");
+    const head = themeText(theme, "dim", (reveal ? glyphs.open : glyphs.closed) + " ");
     headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
   }
   // The rollup sits directly under the frame top: the card is the headline plus its rows,
@@ -220,7 +258,8 @@ export function paintGroup(
       const last = index === nodes.length - 1;
       const guide = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
       const open = expandAll || state.expanded.has(node.id);
-      const mark = stateMark(node, glyphs, Date.now());
+      const now = Date.now();
+      const mark = stateMark(node, glyphs, now);
       // The guide is structure, not state: the dot and the row summary already carry the
       // outcome, so a failed call keeps a neutral stem instead of repainting the line.
       const stemColor: Foreground =
@@ -238,16 +277,26 @@ export function paintGroup(
       const detail = node.kind === "thinking" ? "" : detailOf(node);
       const tail =
         node.kind === "thinking"
-          ? themeText(theme, "dim", formatElapsed(node.duration ?? (node.status === "running" ? Date.now() - node.started : 0)))
+          ? themeText(theme, "dim", formatElapsed(node.duration ?? (node.status === "running" ? now - node.started : 0)))
           : rowTail(node, theme, glyphs, state.settings.icons, state.settings.iconMode);
       const line = detail
         ? summaryLine(
             connector,
             // The dot between the tool word and its intent keeps the two readable apart.
-            themeText(theme, node.status === "error" ? "error" : "muted", "· " + detail),
+            "· " + detail,
             themeText(theme, "dim", DOT),
             tail,
             width,
+            fittedDetail => {
+              const color: Foreground = node.status === "error" ? "error" : "muted";
+              const leadLength =
+                fittedDetail.startsWith("· ") ? 2 : fittedDetail.startsWith("·") ? 1 : 0;
+              const lead = themeText(theme, color, fittedDetail.slice(0, leadLength));
+              const words = fittedDetail.slice(leadLength);
+              return lead + (node.status === "running"
+                ? shimmerText(words, theme, now, node.started)
+                : themeText(theme, color, words));
+            },
           )
         : fitToolLine(connector + themeText(theme, "dim", DOT) + tail, width);
       lines.push(line);
@@ -288,12 +337,19 @@ export function paintGroup(
     const fitted = fitToolLine(line, inner);
     return border(glyphs.v + " ") + fitted + " ".repeat(Math.max(0, inner - visibleWidth(fitted))) + border(" " + glyphs.v);
   };
-  const topPlain = `${glyphs.tl}${glyphs.h} GROVE `;
+  const titlePrefix = glyphs.tl + glyphs.h + " ";
+  const progress = group.progress === undefined ? "" : taskProgressText(group.progress, theme);
+  const titleGap = progress ? 2 : 1;
+  const titleBudget = Math.max(1, width - 10 - visibleWidth(progress) - (progress ? titleGap : 0));
+  const title = fitToolLine(group.intent || "GROVE", titleBudget);
+  const topPlain = titlePrefix + title + (progress ? ` ${progress} ` : " ");
   const fill = Math.max(0, width - 1 - visibleWidth(topPlain));
+  const titleText = themeText(theme, "accent", title, true);
   const wrapped: string[] = [
-    border(glyphs.tl + glyphs.h + " ") +
-      themeText(theme, "accent", "GROVE", true) +
-      border(" " + glyphs.h.repeat(fill) + glyphs.tr),
+    border(titlePrefix) +
+      titleText +
+      (progress ? ` ${progress} ` : " ") +
+      border(glyphs.h.repeat(fill) + glyphs.tr),
   ];
   const remapped = new Map<number, string>();
   for (const [index, line] of lines.entries()) {

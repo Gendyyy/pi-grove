@@ -37,6 +37,10 @@ export interface TreeNode {
   name: string;
   goal: string;
   target: string;
+  /** Task identity captured from this top-level call for completion gating. */
+  taskIntent?: string;
+  /** True when this call declares itself the task-completing final action. */
+  completesTask?: boolean;
   status: TreeStatus;
   started: number;
   duration?: number;
@@ -73,6 +77,12 @@ export interface TreeGroup {
   started: number;
   budget: number;
   openAll: boolean;
+  /** Stable model-authored identity shared by calls advancing one atomic task. */
+  intent?: string;
+  /** Agent's subjective completion estimate, updated only at meaningful milestones. */
+  progress?: number;
+  /** Top-level call awaiting successful completion before the card can reach 100%. */
+  pendingCompletionId?: string;
   invalidate?: () => void;
 }
 
@@ -155,6 +165,30 @@ export function goalOf(args: Record<string, unknown> | undefined): string {
     if (match) return brief(match[1], 200);
   }
   return "";
+}
+
+/** Recover explicit cluster intent from a composed tool field or codemode comment. */
+export function taskIntentOf(args: Record<string, unknown> | undefined): string {
+  const direct = args?.taskIntent;
+  if (typeof direct === "string" && direct.trim()) return brief(direct, 120);
+  const code = args?.code ?? args?.script;
+  if (typeof code === "string") {
+    const match = code.match(/^\s*(?:\/\/|#)\s*task-intent:\s*(.+)$/im);
+    if (match) return brief(match[1], 120);
+  }
+  return "";
+}
+
+/** Recover a bounded task estimate from composed args or a codemode comment. */
+export function taskProgressOf(args: Record<string, unknown> | undefined): number | undefined {
+  const direct = args?.taskProgress;
+  if (typeof direct === "number" && Number.isInteger(direct) && direct >= 0 && direct <= 100) return direct;
+  const code = args?.code ?? args?.script;
+  if (typeof code !== "string") return undefined;
+  const match = code.match(/^\s*(?:\/\/|#)\s*task-progress:\s*(\d{1,3})\s*$/im);
+  if (!match) return undefined;
+  const progress = Number(match[1]);
+  return progress <= 100 ? progress : undefined;
 }
 
 const TARGET_KEYS = ["path", "file_path", "filePath", "pattern", "query", "command", "cmd", "url", "name", "prompt"];

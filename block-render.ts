@@ -40,9 +40,20 @@ export function fitToolLine(line: string, width: number): string {
   return `${truncateToWidth(head, max - tailWidth - 1, "…")} ${tail}`;
 }
 
-/** Fit semantic fields before flattening ANSI, so arrows inside a goal are harmless. */
-export function summaryLine(prefix: string, detail: string, separator: string, summary: string, width = Infinity): string {
-  const join = (body: string, tail: string) => `${prefix}${body ? `${prefix.trim() ? " " : ""}${body}` : ""}${separator}${tail}`;
+/** Fit semantic fields before flattening ANSI; formatting must preserve visible width. */
+export function summaryLine(
+  prefix: string,
+  detail: string,
+  separator: string,
+  summary: string,
+  width = Infinity,
+  formatDetail?: (text: string) => string,
+): string {
+  const join = (body: string, tail: string) =>
+    prefix +
+    (body ? (prefix.trim() ? " " : "") + (formatDetail ? formatDetail(body) : body) : "") +
+    separator +
+    tail;
   const full = join(detail, summary);
   if (visibleWidth(full) <= width) return full;
   const max = Math.max(1, width);
