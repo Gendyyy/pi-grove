@@ -113,6 +113,7 @@ function settings(): TreeSettings {
     groupNestedTools: true,
     groupProgress: true,
     groupSparkline: true,
+    groupGutter: true,
   };
 }
 
@@ -246,8 +247,8 @@ return 1;` },
   const tree = new ToolTree(settings());
   tree.restore(readTranscript(entries, "prompt"));
   const card = lines(tree.render(row("m1")));
-  assert.match(card[0]!, /x Inspect -> \* Build -> o Verify/);
-  assert.match(card[1]!, /55%/);
+  assert.match(card[0]!, /55% > \* Build 2\/3/, card[0]);
+  assert.doesNotMatch(card[0]!, /Inspect|Verify/, "the phases ahead stay unspoken until clicked");
 });
 
 test("replay commits 100 only for a successful final tool call", () => {

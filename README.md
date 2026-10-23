@@ -40,8 +40,9 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
-| `groupProgress` | on / off | on | show the progress meter in the card rollup |
+| `groupProgress` | on / off | on | show the estimate as a meter, with the phase plan when one is declared |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
+| `groupGutter` | on / off | on | divide the rows wherever the plan moved on to another phase |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
@@ -63,19 +64,38 @@ Grove shows 100 only after that call succeeds. Filled cells blend smoothly from 
 to success green; empty cells stay dim. The percentage keeps its estimate-based color.
 Both annotations are stored with calls so replay restores the same title and estimate.
 
-Every card carries a labeled stepper: declare `// task-milestones: inspect=Inspect; build=Build; verify=Verify`
+A card can also carry a phase plan: declare `// task-milestones: inspect=Inspect; build=Build; verify=Verify`
 once, then repeat `// task-milestone: <id>` for the active phase on each top-level call. A plan holds
 one to seven phases and may close on a `verify` phase when the work needs checking, or on a `clean` phase
 when the work leaves temp files, scratch scripts, or other throwaway artifacts behind. Both are preferences,
-not requirements: a plan that ends on plain work is valid, and Grove never invents filler phases. Grove marks earlier phases complete when the active id advances, and the arrows linking the phases
-turn green behind every finished one, so a completed run reads as one unbroken green line; a successful final
-`task-progress: 100` completes the whole stepper. Phases only move forward: every call restates the plan, so a
-restatement is adopted only while it keeps the phases already finished, and a plan that would drop or rewrite them is
-ignored instead of clearing the ticks. The plan is transcript-backed and independent of
-the percentage. The strip is centered in the card, and the active marker breathes between the theme
-accent and muted roles on a cosine curve instead of blinking on and off, so it stays in motion while a
-call is live. Full labels show when they fit; narrow cards switch to a marker rail plus the active label,
-and the tightest cards show only the active phase.
+not requirements: a plan that ends on plain work is valid, and Grove never invents filler phases.
+
+The plan and the estimate share one line, because they answer one question: the meter is a written ruler
+whose needle is the estimate. The filled span keeps the estimate's own ramp from error red at the left edge to
+success green at the right, so the bar's colour and its number can never disagree. A finished phase is pinned at
+the estimate it actually reached, so the order the phases closed in is history rather than arithmetic and never
+moves later; its boundary keeps a vertical tick of its own inside the filled span, in the ramp colour of the
+cell it divides. Nobody can say where a phase will end before it does, so the bar draws a division only after
+one is crossed and never forecasts one, and only a boundary the estimate has since retreated behind turns into
+a warning tick right of the needle. The phase in flight is the only one that spends width on a name, with
+a `2/3` position beside it, and the caret says whether the plan is open. Clicking the meter expands the whole
+plan under it—every name joined by arrows, plus the estimate that closed each finished phase—while clicking the
+frame border still reveals the rows. Each arrow behind a finished phase turns green, so a completed plan reads as
+one green line. Narrow cards drop the label, then the name while keeping the position, before they concede the
+cells the bar needs. Phases
+only move forward: every call restates the plan, so a restatement is adopted only while it keeps the phases
+already finished, and a plan that would drop or rewrite them is ignored instead of clearing the pins. The plan
+is transcript-backed and independent of the percentage, and a successful final `task-progress: 100` closes it.
+While a call is live, the needle's own cell breathes between the accent and muted roles on a cosine curve
+instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
+
+The rows carry the same rule one level down. Wherever the plan moved from one phase to the next between two
+calls, Grove draws a divider into the row list itself—`│ ┆ ◆ Build ─────────`—so the boundary stands where it
+happened instead of only in the meter above. A card never divides itself above its first row, and a phase whose
+calls all landed inside a single row never earns a divider: the gutter is an event log, not a forecast. The label
+holds the accent while the phase is in flight and turns green once the plan has moved past it. The diamond in
+front of the name keeps a divider from reading as one more call, and the divider opens the plan when clicked,
+exactly like the meter. `groupGutter` turns the dividers off.
 
 There are no Goal or Now sections and no group status chip. By default, the headline places
 progress first, then the duration sparkline, then the call count and tool mix.

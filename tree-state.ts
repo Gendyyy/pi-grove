@@ -9,6 +9,7 @@ import { thinkingGoal, thinkingPreview, thinkingSummary } from "./thinking.js";
 import { plainTheme } from "./theme.js";
 import {
   GROUP_TARGET,
+  PHASES_TARGET,
   MAX_CHILDREN,
   MAX_GROUPS,
   MAX_GROUPS_TOTAL,
@@ -99,7 +100,35 @@ function updateGroupIntent(group: TreeGroup, intent: string): boolean {
   group.milestones = undefined;
   group.activeMilestoneId = undefined;
   group.pendingCompletionId = undefined;
+  group.phaseBounds = undefined;
+  group.openPhases = undefined;
   return true;
+}
+
+/**
+ * Pin the boundary of every phase the advancing call finished, at the estimate the same
+ * call carried. A crossing is history, so a boundary may never slide back behind the one
+ * before it: the meter would then claim a finished phase shrank.
+ */
+function pinPhaseBounds(group: TreeGroup, from: number, to: number): boolean {
+  const plan = group.milestones;
+  // Without an observed estimate there is nothing to pin: a phase cannot claim progress the
+  // card never saw it reach, so the boundary stays at zero and the bar keeps the open scale.
+  if (!plan || to <= from || group.progress === undefined) return false;
+  const bounds = group.phaseBounds?.length === plan.length + 1
+    ? [...group.phaseBounds]
+    : Array.from({ length: plan.length + 1 }, () => 0);
+  const stated = Math.max(0, Math.min(100, Math.round(group.progress)));
+  let changed = false;
+  for (let index = from + 1; index <= to && index < bounds.length; index += 1) {
+    const value = Math.max(bounds[index - 1] ?? 0, stated);
+    if (bounds[index] !== value) {
+      bounds[index] = value;
+      changed = true;
+    }
+  }
+  if (changed) group.phaseBounds = bounds;
+  return changed;
 }
 
 /** Apply an optional phase plan and current id, preserving the last valid state. */
@@ -115,6 +144,11 @@ function updateGroupMilestones(
   if (milestones) {
     // Phases behind the active one are done, so a plan may not rewrite them.
     const adopted = adoptMilestones(group.milestones, milestones, Math.max(0, activeIndex));
+    // Only a resized plan invalidates crossings: a restated one keeps every position it had.
+    if (!group.milestones || group.milestones.length !== adopted.length) {
+      group.phaseBounds = Array.from({ length: adopted.length + 1 }, () => 0);
+      changed = true;
+    }
     if (adopted !== group.milestones) {
       group.milestones = adopted;
       changed = true;
@@ -131,6 +165,7 @@ function updateGroupMilestones(
   const nextIndex = Math.min(plan.length - 1, declaredIndex < 0 ? floor : Math.max(floor, declaredIndex));
   const nextId = plan[nextIndex]?.id;
   if (nextId !== group.activeMilestoneId) {
+    if (pinPhaseBounds(group, Math.max(0, planIndex), nextIndex)) changed = true;
     group.activeMilestoneId = nextId;
     changed = true;
   }
@@ -163,6 +198,7 @@ function makeNode(
     target: targetOf(record),
     taskIntent: parent || !includeTaskMetadata ? undefined : taskIntentOf(record) || undefined,
     completesTask: !parent && includeTaskMetadata && taskProgressOf(record) === 100,
+    milestone: parent || !includeTaskMetadata ? undefined : taskMilestoneOf(record) || undefined,
     status: "running",
     started,
     seq: ++state.sequence,
@@ -235,12 +271,14 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
     const intentNodeChanged = !parent && statedIntent !== "" && known.taskIntent !== statedIntent;
     const completion = !parent && statedProgress === 100;
     const completionChanged = statedProgress !== undefined && known.completesTask !== completion;
+    const milestoneNodeChanged = !parent && statedMilestone !== undefined && known.milestone !== statedMilestone;
     if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
     if (goal === known.goal && target === known.target && !intentChanged && !milestonesChanged && !progressChanged &&
-      !intentNodeChanged && !completionChanged) return undefined;
+      !intentNodeChanged && !completionChanged && !milestoneNodeChanged) return undefined;
     known.goal = goal;
     known.target = target;
     if (!parent && statedIntent) known.taskIntent = statedIntent;
+    if (!parent && statedMilestone) known.milestone = statedMilestone;
     if (statedProgress !== undefined) known.completesTask = completion;
     return group;
   }
@@ -361,6 +399,7 @@ export function attachCalls(
     if (!parent) {
       const args = (call.args ?? undefined) as Record<string, unknown> | undefined;
       updateGroupIntent(group, taskIntentOf(args));
+      // The replayed call carries the same estimate, so the meter restores the same crossings.
       updateGroupMilestones(group, taskMilestonesOf(args), taskMilestoneOf(args));
       const progress = taskProgressOf(args);
       if (progress === 100) group.pendingCompletionId = call.id;
@@ -477,6 +516,8 @@ export function closeGroup(state: TreeState, group: TreeGroup, now: number): voi
 /** Open or close one level of the card: a single row, or every row at once. */
 export function toggleTarget(state: TreeState, group: TreeGroup, target: string): void {
   if (target === GROUP_TARGET) group.openAll = !group.openAll;
+  // The meter line owns the plan gesture, so the border stays the row gesture.
+  else if (target === PHASES_TARGET) group.openPhases = !group.openPhases;
   else if (state.expanded.has(target)) state.expanded.delete(target);
   else state.expanded.add(target);
 }

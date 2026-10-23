@@ -10,6 +10,7 @@ import {
   DOT,
   ELLIPSIS,
   GROUP_TARGET,
+  PHASES_TARGET,
   PREVIEW_LINES,
   TASK_MILESTONE_MAX,
   countErrors,
@@ -130,11 +131,11 @@ function progressColor(progress: number): Foreground {
 }
 
 /** Blend the theme's error and success colors for one progress cell. */
-function progressCellText(theme: GroveTheme, index: number): string {
-  const position = index / (PROGRESS_CELLS - 1);
+function progressCellText(theme: GroveTheme, index: number, cells = PROGRESS_CELLS, glyph = "▰"): string {
+  const position = cells > 1 ? index / (cells - 1) : 0;
   const palette = theme.colors ?? FALLBACK_PROGRESS_COLORS;
   const color = mixColors(palette.error, palette.success, position, "oklch");
-  return theme.style("▰", { fg: color });
+  return theme.style(glyph, { fg: color });
 }
 
 /** Paint a static progress bar and percentage, leaving empty cells visually quiet. */
@@ -170,61 +171,133 @@ function pulseText(glyph: string, theme: GroveTheme, now: number, base: PulseBas
   return theme.style(glyph, { fg: mixColors(from, palette.muted, breath, "oklch") });
 }
 
-/** Center one painted line in the card body: the strip reads as a strap, not as a row. */
-function centered(line: string, width: number): string {
-  const pad = Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
-  return " ".repeat(pad) + line;
+/** Cells in a plan meter: wide enough to hold real zones, narrow enough to stay a meter. */
+const METER_CELLS_MIN = 10;
+const METER_CELLS_MAX = 24;
+
+/** One painted meter: the line itself, plus the expanded plan when the user asked for it. */
+interface MeterPaint {
+  line: string;
+  plan?: string;
 }
 
-/** Render centered task phases, switching to a compact rail when labels would clip. */
-function milestoneText(
+/**
+ * Paint the plan as one meter: the bar is a written ruler whose needle is the estimate.
+ * A finished phase keeps the width it earned at the estimate that closed it, the active
+ * phase runs from there up to the needle, and the phases still ahead split what is left,
+ * so the plan's remaining shape reads without spending a single label on the future.
+ */
+function phaseMeterText(
   group: TreeGroup,
   theme: GroveTheme,
   glyphs: Glyphs,
   width: number,
   now: number,
-): string | undefined {
-  const milestones = group.milestones;
-  if (!milestones || milestones.length === 0 || milestones.length > TASK_MILESTONE_MAX) return undefined;
-  const complete = group.progress === 100;
+  running: boolean,
+): MeterPaint | undefined {
+  const plan = group.milestones;
+  if (!plan || plan.length === 0 || plan.length > TASK_MILESTONE_MAX) return undefined;
+  const value = Math.max(0, Math.min(100, Math.round(group.progress ?? 0)));
+  const complete = value === 100;
   const activeIndex = complete
-    ? milestones.length - 1
-    : milestones.findIndex(milestone => milestone.id === group.activeMilestoneId);
+    ? plan.length - 1
+    : plan.findIndex(milestone => milestone.id === group.activeMilestoneId);
   if (activeIndex < 0) return undefined;
 
-  const stateAt = (index: number): "complete" | "active" | "pending" =>
-    complete || index < activeIndex ? "complete" : index === activeIndex ? "active" : "pending";
-  // One phase as painted text: the active marker breathes, complete and pending phases stay quiet.
-  const segmentAt = (index: number, withLabel: boolean): string => {
-    const status = stateAt(index);
-    const label = withLabel ? " " + milestones[index]!.label : "";
-    if (status === "active") {
-      // Without a concrete palette the pulse would be invisible, so keep the classic single run.
-      if (!theme.colors?.accent || !theme.colors.muted)
-        return themeText(theme, "accent", glyphs.dot + label);
-      return pulseText(glyphs.dot, theme, now) + (label ? themeText(theme, "accent", label) : "");
-    }
-    return themeText(
-      theme,
-      status === "complete" ? "success" : "dim",
-      (status === "complete" ? glyphs.check : glyphs.hollow) + label,
-    );
-  };
-  // An arrow carries the state of the phase behind it, so a finished run reads as one
-  // unbroken green line instead of green markers linked by grey dashes.
-  const joinAfter = (index: number): string =>
-    themeText(theme, stateAt(index) === "complete" ? "success" : "dim", " " + glyphs.arrow + " ");
-  const chain = (segments: string[]): string =>
-    segments.map((segment, index) => (index < segments.length - 1 ? segment + joinAfter(index) : segment)).join("");
-  const full = chain(milestones.map((_, index) => segmentAt(index, true)));
-  if (visibleWidth(full) <= width) return centered(full, width);
+  const caret = group.openPhases ? glyphs.open : glyphs.closed;
+  const marker = complete ? glyphs.check : glyphs.dot;
+  const label = " " + plan[activeIndex]!.label;
+  const position = ` ${activeIndex + 1}/${plan.length}`;
+  const pct = ` ${String(value).padStart(3, " ")}%`;
+  const cue = glyphs.progress ? themeText(theme, "accent", glyphs.progress + "  ") : "";
+  const cueWidth = glyphs.progress ? 3 : 0;
+  // The plan's scale survives the longest: a narrow card drops the phase name, then the
+  // whole suffix, before it will concede cells the bar needs to show zones at all.
+  const forms = [` ${caret} ${marker}${label}${position}`, ` ${caret} ${marker}${position}`, ""];
+  const suffix = forms.find(
+    form => width - cueWidth - visibleWidth(form) - visibleWidth(pct) - 1 >= METER_CELLS_MIN,
+  ) ?? "";
+  const cells = Math.max(
+    METER_CELLS_MIN,
+    Math.min(METER_CELLS_MAX, width - cueWidth - visibleWidth(suffix) - visibleWidth(pct) - (suffix ? 1 : 0)),
+  );
+  const cellAt = (percent: number): number =>
+    Math.max(0, Math.min(cells, Math.round((percent / 100) * cells)));
+  const bounds = group.phaseBounds?.length === plan.length + 1
+    ? group.phaseBounds
+    : Array.from({ length: plan.length + 1 }, () => 0);
 
-  const rail = chain(milestones.map((_, index) => segmentAt(index, false)));
-  const active = " " + milestones[activeIndex]!.label;
-  if (visibleWidth(rail) + visibleWidth(active) <= width)
-    return centered(rail + themeText(theme, "accent", active), width);
-  // Too narrow for the rail: the current phase alone has to carry the state.
-  return centered(fitToolLine(segmentAt(activeIndex, true), width), width);
+  const fill = cellAt(value);
+  const painted: Array<string | undefined> = new Array<string | undefined>(cells).fill(undefined);
+  // The whole filled span keeps the estimate's own ramp, error red at the left edge to success
+  // green at the right, so the bar's colour and its percentage can never disagree.
+  for (let index = 0; index < fill; index += 1) painted[index] = progressCellText(theme, index, cells);
+  // A boundary earns a column only once it is actually crossed: nobody can say where a phase
+  // will end before it does, so the bar draws no forecasts. The tick keeps the ramp colour of
+  // the cell it divides, and one the estimate has retreated behind is a warning right of the needle.
+  const ticks = new Set<number>();
+  for (let index = 1; index <= activeIndex; index += 1) {
+    const tick = cellAt(bounds[index] ?? 0);
+    if (tick <= 0 || tick >= cells) continue;
+    painted[tick] = tick <= fill
+      ? progressCellText(theme, tick, cells, glyphs.tick)
+      : themeText(theme, "warning", glyphs.tick);
+    ticks.add(tick);
+  }
+  // The needle is the one cell that moves on its own: it breathes while work is in flight,
+  // so a breathing bar means a live call and a still bar means nothing is happening. When a
+  // boundary lands on the needle the needle *is* that boundary, so the tick breathes instead.
+  if (running && fill > 0) {
+    const edge = fill - 1;
+    painted[edge] = pulseText(ticks.has(edge) ? glyphs.tick : "▰", theme, now);
+  }
+  const empty = themeText(theme, "dim", "▱");
+  const bar = painted.map(cell => cell ?? empty).join("");
+  // A finished plan is green; a plan left open at 100 already says the estimate is wrong.
+  const tone: Foreground = complete ? "success" : "accent";
+  const suffixText = suffix
+    ? themeText(theme, "muted", " " + caret) +
+      " " +
+      themeText(theme, tone, marker) +
+      themeText(theme, tone, suffix.slice(visibleWidth(` ${caret} ${marker}`)))
+    : "";
+  return {
+    line: cue + bar + themeText(theme, progressColor(value), pct) + suffixText,
+    plan: group.openPhases ? phasePlanText(group, theme, glyphs, width, value, activeIndex, bounds) : undefined,
+  };
+}
+
+/** The whole plan under the meter, on demand: every name, and the estimate that closed it. */
+function phasePlanText(
+  group: TreeGroup,
+  theme: GroveTheme,
+  glyphs: Glyphs,
+  width: number,
+  value: number,
+  activeIndex: number,
+  bounds: number[],
+): string {
+  const plan = group.milestones ?? [];
+  const complete = value === 100;
+  const parts: string[] = [];
+  plan.forEach((phase, index) => {
+    if (index > 0) {
+      // The arrow behind a finished phase turns green, so a completed run reads as one line.
+      const green = complete || index <= activeIndex;
+      parts.push(` ${themeText(theme, green ? "success" : "dim", glyphs.arrow)} `);
+    }
+    const done = complete || index < activeIndex;
+    const current = !complete && index === activeIndex;
+    const role: Foreground = done ? "success" : current ? "accent" : "dim";
+    const glyph = done ? glyphs.check : current ? glyphs.dot : glyphs.hollow;
+    // A finished phase states the estimate that closed it: that crossing is the real fact.
+    const crossed = done ? Math.round(index === activeIndex ? value : bounds[index + 1] ?? 0) : undefined;
+    parts.push(
+      themeText(theme, role, glyph + " " + phase.label) +
+        (crossed === undefined ? "" : themeText(theme, "muted", ` ${crossed}%`)),
+    );
+  });
+  return fitToolLine("  " + parts.join(""), width);
 }
 
 /** A row marker: its glyph, the role that colours it, and the role it breathes while live. */
@@ -298,9 +371,43 @@ export function paintGroup(
   const kept = new Set(visible.map(row => row.id));
   const rows = group.rows.filter(row => (row.kind === "thinking" ? row.seq >= from : kept.has(row.id)));
 
+  // The gutter is the same rule one level down: a divider appears only where the plan really
+  // moved, so the rows read as an event log instead of a forecast. Nothing is invented for a
+  // phase that has not started, and a plan-less card never grows a divider at all.
+  let dividerPhase: string | undefined;
+  let dividedRows = false;
+  const phaseDivider = (node: TreeNode): string | undefined => {
+    const plan = group.milestones;
+    const declared = node.milestone;
+    if (!plan || !declared || declared === dividerPhase) return undefined;
+    const index = plan.findIndex(phase => phase.id === declared);
+    if (index < 0) return undefined;
+    dividerPhase = declared;
+    // The first row has no boundary above it: the card start already says "here".
+    if (!dividedRows) return undefined;
+    const complete = group.progress === 100;
+    const activeIndex = complete ? plan.length - 1 : plan.findIndex(phase => phase.id === group.activeMilestoneId);
+    const role: Foreground = complete || index < activeIndex ? "success" : index === activeIndex ? "accent" : "dim";
+    // The tick matches the one the meter draws for the same boundary; the diamond says this
+    // row is the plan moving, not another call.
+    const lead = glyphs.pipe + " " + glyphs.tick + " ";
+    const mark = themeText(theme, role, glyphs.diamond) + " ";
+    const label = themeText(theme, role, plan[index]!.label);
+    const room = Math.max(0, inner - visibleWidth(lead) - visibleWidth(mark) - visibleWidth(label) - 1);
+    const tail = room > 0 ? themeText(theme, "dim", " " + glyphs.h.repeat(room)) : "";
+    return themeText(theme, "dim", lead) + mark + label + tail;
+  };
+
+
   // The headline always leads the card: the border names the current task, the rollup
   // counts its calls, and the rows below show their detail.
   const errors = countErrors(tools);
+  // The plan meter leads the card: it carries the estimate, the current phase and the shape
+  // of the remaining plan in one line, so the rollup never has to repeat the percentage.
+  const running = tools.some(row => row.status === "running");
+  const meter = state.settings.groupProgress
+    ? phaseMeterText(group, theme, glyphs, inner, Date.now(), running)
+    : undefined;
   let headerLine = "";
   if (tools.length > 0) {
     const total = tools.length;
@@ -313,7 +420,7 @@ export function paintGroup(
           themeText(theme, "muted", " calls");
     // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
     const parts: string[] = [];
-    if (state.settings.groupProgress && group.progress !== undefined)
+    if (!meter && state.settings.groupProgress && group.progress !== undefined)
       parts.push(taskProgressText(group.progress, theme, glyphs));
     // Keep the duration shape ahead of the count and tool mix when space gets tight.
     if (state.settings.groupSparkline) {
@@ -329,11 +436,14 @@ export function paintGroup(
     const head = themeText(theme, "dim", (reveal ? glyphs.open : glyphs.closed) + " ");
     headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
   }
-  // The milestone strip and rollup sit directly below the frame top, before call details.
-  const milestones = milestoneText(group, theme, glyphs, inner, Date.now());
-  if (milestones) {
-    lines.push(milestones);
-    targets.set(lines.length - 1, GROUP_TARGET);
+  // One line, one gesture: the meter opens the plan it draws, the border opens the rows.
+  if (meter) {
+    lines.push(meter.line);
+    targets.set(lines.length - 1, PHASES_TARGET);
+    if (meter.plan) {
+      lines.push(meter.plan);
+      targets.set(lines.length - 1, PHASES_TARGET);
+    }
   }
   if (headerLine) {
     lines.push(headerLine);
@@ -344,6 +454,15 @@ export function paintGroup(
     for (const [index, node] of nodes.entries()) {
       const last = index === nodes.length - 1;
       const guide = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
+      // One line, one gesture still holds: the divider belongs to the plan, like the meter.
+      if (ancestors.length === 0 && node.kind !== "thinking") {
+        const divider = state.settings.groupGutter ? phaseDivider(node) : undefined;
+        dividedRows = true;
+        if (divider) {
+          lines.push(fitToolLine(divider, width));
+          targets.set(lines.length - 1, PHASES_TARGET);
+        }
+      }
       const open = expandAll || state.expanded.has(node.id);
       const now = Date.now();
       const mark = stateMark(node, glyphs);

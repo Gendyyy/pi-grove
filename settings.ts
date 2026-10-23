@@ -30,6 +30,7 @@ export interface GroveSettings {
   groupNestedTools: boolean;
   groupProgress: boolean;
   groupSparkline: boolean;
+  groupGutter: boolean;
   thinking: GroveThinking;
   /** Absent leaves pi's own hidden-thinking label alone; empty hides those lines. */
   thinkingLabel: string | undefined;
@@ -113,6 +114,14 @@ export const SETTINGS: readonly SettingSpec[] = [
     fallback: true,
     label: "Duration sparkline",
     summary: "show relative call durations in the card rollup",
+  },
+  {
+    key: "groupGutter",
+    kind: "boolean",
+    apply: "live",
+    fallback: true,
+    label: "Phase gutter",
+    summary: "divide the rows wherever the plan moved on to another phase",
   },
   { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", apply: "reload", label: "Reasoning", summary: "where reasoning appears" },
   {
@@ -199,6 +208,7 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     groupNestedTools: readFlag(settingSpec("groupNestedTools"), raw.groupNestedTools, true),
     groupProgress: readFlag(settingSpec("groupProgress"), raw.groupProgress, true),
     groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline, true),
+    groupGutter: readFlag(settingSpec("groupGutter"), raw.groupGutter, true),
     thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS, "off"),
     thinkingLabel: (() => {
       const value = coerce(settingSpec("thinkingLabel"), raw.thinkingLabel);
@@ -230,6 +240,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { words: ["group", "nested"], keys: ["groupNestedTools"] },
   { words: ["group", "progress"], keys: ["groupProgress"] },
   { words: ["group", "sparkline"], keys: ["groupSparkline"] },
+  { words: ["group", "gutter"], keys: ["groupGutter"] },
   { words: ["group"], keys: ["group"] },
   { words: ["thinking", "label"], keys: ["thinkingLabel"] },
   { words: ["thinking"], keys: ["thinking"] },

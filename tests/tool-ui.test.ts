@@ -91,6 +91,7 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
     groupNestedTools: true,
     groupProgress: true,
     groupSparkline: true,
+    groupGutter: true,
     thinking: "inline",
   });
   controller.updateSettings({ groupProgress: false, groupWindow: 3 });

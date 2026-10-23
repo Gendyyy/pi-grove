@@ -65,6 +65,7 @@ export class FakeHost {
       groupNestedTools: true,
       groupProgress: true,
       groupSparkline: true,
+      groupGutter: true,
       ...options.settings,
     };
     this.tree = new ToolTree(settings, () => {

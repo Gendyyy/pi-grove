@@ -35,6 +35,7 @@ function settings(): TreeSettings {
     groupNestedTools: true,
     groupProgress: true,
     groupSparkline: true,
+    groupGutter: true,
   };
 }
 

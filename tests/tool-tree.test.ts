@@ -22,6 +22,7 @@ function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
     groupNestedTools: true,
     groupProgress: true,
     groupSparkline: true,
+    groupGutter: true,
     ...overrides,
   };
 }
@@ -322,7 +323,7 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   assert.match(stripAnsi(nextTask[1]!), /12%/, "a new task gets its own estimate");
 });
 
-test("milestone stepper advances monotonically and settles only after successful completion", () => {
+test("the plan meter advances monotonically and settles only after successful completion", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const phases = "inspect=Inspect; build=Build; verify=Verify";
   const start = (id: string, milestone: string, progress: number, intent = "Implement retry safety") =>
@@ -331,28 +332,28 @@ test("milestone stepper advances monotonically and settles only after successful
       toolName: "read",
       args: { taskIntent: intent, taskProgress: progress, taskMilestones: phases, taskMilestone: milestone },
     });
-  const stepper = () => lines(tree.render(row("a")))[0]!;
+  const meter = () => lines(tree.render(row("a")))[0]!;
 
   start("a", "inspect", 20);
-  assert.match(stepper(), /\* Inspect -> o Build -> o Verify/);
+  assert.match(meter(), /20% > \* Inspect 1\/3/);
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
   start("b", "build", 55);
-  assert.match(stepper(), /x Inspect -> \* Build -> o Verify/);
+  assert.match(meter(), /55% > \* Build 2\/3/);
   tree.end({ toolCallId: "b", toolName: "read", result: { content: [] }, isError: false });
   start("c", "inspect", 56);
-  assert.match(stepper(), /x Inspect -> \* Build -> o Verify/, "an out-of-order annotation cannot reopen a completed phase");
+  assert.match(meter(), /56% > \* Build 2\/3/, "an out-of-order annotation cannot reopen a completed phase");
   tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
   start("d", "verify", 100);
-  assert.match(stepper(), /x Inspect -> x Build -> \* Verify/);
+  assert.match(meter(), /56% > \* Verify 3\/3/, "the final estimate stays pending while its call runs");
   tree.end({ toolCallId: "d", toolName: "read", result: { content: [] }, isError: false });
-  assert.match(stepper(), /x Inspect -> x Build -> x Verify/);
+  assert.match(meter(), /100% > x Verify 3\/3/);
 
   tree.start({
     toolCallId: "e",
     toolName: "read",
     args: { taskIntent: "Review a different task", taskProgress: 12 },
   });
-  assert.doesNotMatch(stepper(), /Inspect|Build|Verify/, "a new task clears the previous plan");
+  assert.doesNotMatch(meter(), /Inspect|Build|Verify/, "a new task clears the previous plan");
 });
 
 test("a 35 percent progress meter colors filled cells along the gradient", () => {
@@ -1333,14 +1334,15 @@ test("a shrink-wrapped final call keeps the phases the card already showed", () 
       },
     });
   };
-  const strip = (): string => lines(tree.render(row("a"))).find(line => line.includes("Inspect")) ?? "";
+  // The position counter is the plan's skeleton: a collapsed plan would read 1/1.
+  const meter = (): string => lines(tree.render(row("a")))[0] ?? "";
 
   step("a", plan, "inspect", 20);
   step("b", plan, "build", 60);
-  assert.match(strip(), /Inspect.*Build/);
+  assert.match(meter(), /60% > \* Build 2\/3/);
 
-  // The closing call names only the phase it is working on. The card must still show the
-  // phases that are already finished instead of collapsing to a one-step plan.
+  // The closing call names only the phase it is working on. The card must still keep the
+  // phases the plan already showed instead of collapsing to a one-step plan.
   step("c", "verify=Verify", "verify", 100);
-  assert.match(strip(), /Inspect.*Build.*Verify/);
+  assert.match(meter(), /Verify 3\/3/);
 });

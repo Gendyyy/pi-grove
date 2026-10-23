@@ -31,6 +31,8 @@ export interface TreeSettings {
   groupProgress: boolean;
   /** Show relative call durations in the card rollup. */
   groupSparkline: boolean;
+  /** Divide the rows wherever the plan moved on to another phase. */
+  groupGutter: boolean;
 }
 
 /** Lifecycle state of one tool call in the tree. */
@@ -47,6 +49,8 @@ export interface TreeNode {
   taskIntent?: string;
   /** True when this call declares itself the task-completing final action. */
   completesTask?: boolean;
+  /** Phase this call declared, so the rows can show where the plan moved. */
+  milestone?: string;
   status: TreeStatus;
   started: number;
   duration?: number;
@@ -99,11 +103,21 @@ export interface TreeGroup {
   activeMilestoneId?: string;
   /** Top-level call awaiting successful completion before the card can reach 100%. */
   pendingCompletionId?: string;
+  /**
+   * Percent at which each phase boundary was crossed, so a finished phase keeps the width
+   * it actually earned. Monotone, one longer than the plan, and written only from an
+   * observed crossing: a boundary we have not reached yet stays a guess until it happens.
+   */
+  phaseBounds?: number[];
+  /** True while the full plan is expanded under the meter. */
+  openPhases?: boolean;
   invalidate?: () => void;
 }
 
 /** Click target that toggles every level of a group; node ids are tool call ids. */
 export const GROUP_TARGET = "@group";
+/** Click target that toggles the phase plan under the meter; one line, one meaning. */
+export const PHASES_TARGET = "@phases";
 
 export const MAX_ROWS = 64;
 export const MAX_CHILDREN = 32;
@@ -129,6 +143,10 @@ export interface Glyphs {
   hollow: string;
   /** Connector between two task phases, pointing at the next one. */
   arrow: string;
+  /** Phase boundary drawn inside the meter, dashed because an unreached one is a guess. */
+  tick: string;
+  /** Milestone mark on a divider row, so a phase change never reads as another call. */
+  diamond: string;
   /** Frame corners and edges of the group card. */
   tl: string;
   tr: string;
@@ -148,11 +166,11 @@ export interface Glyphs {
 
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", arrow: "→", spark: "bars", chart: "\uf080", progress: "", check: "✓",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", arrow: "→", tick: "┆", diamond: "◆", spark: "bars", chart: "\uf080", progress: "", check: "✓",
 };
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
-  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", arrow: "->", spark: "ascii", chart: "", progress: "", check: "x",
+  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", arrow: "->", tick: ":", diamond: "*", spark: "ascii", chart: "", progress: "", check: "x",
 };
 
 /** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */

@@ -241,7 +241,7 @@ function hasRunning(nodes: readonly TreeNode[]): boolean {
 }
 
 // The public surface stays here: importers and tests never need to know the split.
-export { GROUP_TARGET, treeGlyphs } from "./tree-model.js";
+export { GROUP_TARGET, PHASES_TARGET, treeGlyphs } from "./tree-model.js";
 export type {
   Glyphs,
   GroupMode,

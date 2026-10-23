@@ -52,7 +52,7 @@ test("settings classify startup composition separately from live presentation", 
   const reload = SETTINGS.filter(spec => spec.apply === "reload").map(spec => spec.key);
   const live = SETTINGS.filter(spec => spec.apply === "live").map(spec => spec.key);
   assert.deepEqual(reload, ["enabled", "mode", "group", "thinking"]);
-  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupProgress", "groupSparkline", "thinkingLabel"]);
+  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupProgress", "groupSparkline", "groupGutter", "thinkingLabel"]);
   const rows = panelRows(readSettings("/nonexistent/grove.json"));
   assert.match(rows.find(row => row.key === "groupProgress")?.description ?? "", /applies immediately/);
   assert.match(rows.find(row => row.key === "group")?.description ?? "", /requires Grove reload/);

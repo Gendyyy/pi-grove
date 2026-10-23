@@ -27,6 +27,7 @@ function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> =
     groupNestedTools: true,
     groupProgress: true,
     groupSparkline: true,
+    groupGutter: true,
     ...overrides,
   };
 }

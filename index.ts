@@ -123,6 +123,7 @@ export function createGroveExtension(
         case "groupNestedTools": toolUi?.updateSettings({ groupNestedTools: settings.groupNestedTools }); return;
         case "groupProgress": toolUi?.updateSettings({ groupProgress: settings.groupProgress }); return;
         case "groupSparkline": toolUi?.updateSettings({ groupSparkline: settings.groupSparkline }); return;
+        case "groupGutter": toolUi?.updateSettings({ groupGutter: settings.groupGutter }); return;
         case "thinkingLabel":
           currentThinkingLabel = settings.thinkingLabel;
           if (settings.enabled) applyThinkingLabel(ctx.ui as unknown as ThinkingLabelUi);
@@ -314,6 +315,7 @@ export function createGroveExtension(
       groupNestedTools: settings.groupNestedTools,
       groupProgress: settings.groupProgress,
       groupSparkline: settings.groupSparkline,
+      groupGutter: settings.groupGutter,
       thinking: settings.thinking,
     });
 

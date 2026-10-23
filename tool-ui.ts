@@ -25,13 +25,21 @@ interface ToolUiOptions {
   groupNestedTools: boolean;
   groupProgress: boolean;
   groupSparkline: boolean;
+  groupGutter: boolean;
   /** Where reasoning appears: a row of the card, pi own rows, or nowhere. */
   thinking: GroveThinking;
 }
 /** Settings that can be changed without rebuilding tool definitions or event handlers. */
 export type ToolUiLiveSettings = Pick<
   ToolUiOptions,
-  "icons" | "iconMode" | "groupRevealErrors" | "groupWindow" | "groupNestedTools" | "groupProgress" | "groupSparkline"
+  | "icons"
+  | "iconMode"
+  | "groupRevealErrors"
+  | "groupWindow"
+  | "groupNestedTools"
+  | "groupProgress"
+  | "groupSparkline"
+  | "groupGutter"
 >;
 
 /** Runtime handle used by /grove to update the active presentation. */
@@ -104,6 +112,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       groupNestedTools: options.groupNestedTools,
       groupProgress: options.groupProgress,
       groupSparkline: options.groupSparkline,
+      groupGutter: options.groupGutter,
     },
     redraw,
   );
@@ -117,6 +126,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       ...(settings.groupNestedTools === undefined ? {} : { groupNestedTools: settings.groupNestedTools }),
       ...(settings.groupProgress === undefined ? {} : { groupProgress: settings.groupProgress }),
       ...(settings.groupSparkline === undefined ? {} : { groupSparkline: settings.groupSparkline }),
+      ...(settings.groupGutter === undefined ? {} : { groupGutter: settings.groupGutter }),
     };
     tree.updateSettings(treeSettings);
   };
