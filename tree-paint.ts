@@ -2,7 +2,7 @@
  * tree-paint.ts — turns one group into the lines of its collapsed or revealed card,
  * and records the click target of every line it paints.
  */
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { mixColors, rgbColor, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, fitToolLine, formatElapsed, summaryLine } from "./block-render.js";
 import type { IconMode } from "./icons.js";
 import { plainTheme, themeText, toolLabel, type Foreground, type GroveTheme } from "./theme.js";
@@ -120,20 +120,22 @@ export function shimmerText(text: string, theme: GroveTheme, now: number, starte
 }
 
 const PROGRESS_CELLS = 10;
+/** Plain test themes have no active palette, so use explicit red and green endpoints. */
+const FALLBACK_PROGRESS_COLORS = { error: rgbColor(255, 0, 0), success: rgbColor(0, 255, 0) };
 
-/** Keep progress green only at completion; a high estimate is still unfinished. */
+/** Color the percentage by coarse estimate bands. */
 function progressColor(progress: number): Foreground {
   if (progress < 34) return "error";
   if (progress < 67) return "warning";
   return "success";
 }
 
-/** Choose a theme role by a cell's position along the progress ramp. */
-function progressCellColor(index: number): Foreground {
-  const position = index / PROGRESS_CELLS;
-  if (position < 0.3) return "error";
-  if (position < 0.7) return "warning";
-  return "success";
+/** Blend the theme's error and success colors for one progress cell. */
+function progressCellText(theme: GroveTheme, index: number): string {
+  const position = index / (PROGRESS_CELLS - 1);
+  const palette = theme.colors ?? FALLBACK_PROGRESS_COLORS;
+  const color = mixColors(palette.error, palette.success, position, "oklch");
+  return theme.style("▰", { fg: color });
 }
 
 /** Paint a static progress bar and percentage, leaving empty cells visually quiet. */
@@ -144,7 +146,7 @@ function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): 
   const cue = glyphs.progress ? themeText(theme, "accent", glyphs.progress + "  ") : "";
   const bar = Array.from(
     { length: filled },
-    (_, index) => themeText(theme, progressCellColor(index), "▰"),
+    (_, index) => progressCellText(theme, index),
   ).join("");
   return cue + bar +
     themeText(theme, "dim", "▱".repeat(PROGRESS_CELLS - filled)) +
@@ -227,14 +229,13 @@ export function paintGroup(
     // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
     const parts: string[] = [];
     if (group.progress !== undefined) parts.push(taskProgressText(group.progress, theme, glyphs));
-    parts.push(scope);
-    // The duration shape sits before the tool mix: a narrow card drops the trailing parts
-    // first, and "where did the time go" matters more than the fourth tool name.
+    // Keep the duration shape ahead of the count and tool mix when space gets tight.
     const spark = durationSpark(tools, theme, glyphs);
     if (spark) {
       const chart = glyphs.chart ? themeText(theme, "accent", glyphs.chart + "  ") : "";
       parts.push(chart + spark);
     }
+    parts.push(scope);
     parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode));
     if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
     const head = themeText(theme, "dim", (reveal ? glyphs.open : glyphs.closed) + " ");

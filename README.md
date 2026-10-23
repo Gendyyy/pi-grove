@@ -56,16 +56,16 @@ When grouping is enabled, Pi's codemode instruction makes `// task-intent:` and
 of how much of the requested task is done and how much remains—not a tool-call count or a fixed
 formula. Repeat the integer estimate (0–100) on ordinary calls; update it at meaningful milestones,
 and lower it if scope grows. The final tool call intended to complete and verify the task passes 100;
-Grove shows 100 only after that call succeeds. The bar uses a fixed left-to-right red/yellow/green
-ramp on its filled cells; empty cells stay dim. The percentage keeps its estimate-based color.
+Grove shows 100 only after that call succeeds. Filled cells blend smoothly from the theme's error red
+to success green; empty cells stay dim. The percentage keeps its estimate-based color.
 Both annotations are stored with calls so replay restores the same title and estimate.
 
-There are no Goal or Now sections and no group status chip. The rest of the headline carries
-the call count, duration sparkline and tool mix.
+There are no Goal or Now sections and no group status chip. The headline places progress first,
+then the duration sparkline, then the call count and tool mix.
 
 ```
 ╭─ Make payment retries safe ───────────────────────────╮
-│ ▸   ▰▱▱▱▱▱▱▱▱▱   6% · 2 calls ·   ▃█ · bash ×1 · codemode ×1 │
+│ ▸   ▰▱▱▱▱▱▱▱▱▱   6% ·   ▃█ · 2 calls · bash ×1 · codemode ×1 │
 │ ├─ ●   codemode · read the classify docs and run one · 1s  │
 │ └─ ●   bash · run the model tests (npm test) · 4s          │
 ╰────────────────────────────────────────────────────────────╯

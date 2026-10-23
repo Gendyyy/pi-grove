@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MouseRegion, visibleWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { colorToRgb, MouseRegion, rgbColor, visibleWidth, type Color, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { GROUP_TARGET, ToolTree, paintGroup, type TreeGroup, type TreeRow, type TreeSettings } from "../tool-tree.js";
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { summaryLine } from "../block-render.js";
@@ -41,11 +41,22 @@ const DURATION_THEME: GroveTheme = {
 };
 
 const PROGRESS_THEME: GroveTheme = {
+  colors: { error: rgbColor(255, 0, 0), success: rgbColor(0, 255, 0) },
   style: (text, options) => {
+    if (typeof options.fg === "object" && options.fg !== null) {
+      const { r, g, b } = colorToRgb(options.fg);
+      return `\u001b[38;2;${Math.round(r)};${Math.round(g)};${Math.round(b)}m${text}\u001b[0m`;
+    }
     const color = options.fg === "error" ? "31" : options.fg === "warning" ? "33" : options.fg === "success" ? "32" : "2";
     return "\u001b[" + color + "m" + text + "\u001b[0m";
   },
 };
+
+/** Build the truecolor ANSI prefix emitted for a concrete progress palette color. */
+function rgbAnsi(color: Color): string {
+  const { r, g, b } = colorToRgb(color);
+  return `\u001b[38;2;${Math.round(r)};${Math.round(g)};${Math.round(b)}m`;
+}
 
 function stripAnsi(text: string): string {
   return text.replace(/\u001b\[[0-9;]*m/g, "");
@@ -194,7 +205,7 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   assert.match(stripAnsi(headline), /Inspect payment retry safeguards/);
   assert.doesNotMatch(stripAnsi(headline), /[▰▱]|6%/);
   assert.match(stripAnsi(first), /▰▱{9} +6%/);
-  assert.equal(stylesFor(first, "▰")[0], "\u001b[31m", "early progress is red");
+  assert.equal(stylesFor(first, "▰")[0], rgbAnsi(PROGRESS_THEME.colors!.error), "the first cell starts at theme error red");
   assert.ok(stylesFor(first, "6%").every(style => style === "\u001b[31m"));
 
   tree.start({ toolCallId: "b", toolName: "grep", args: { taskIntent: intent, taskProgress: 6 } });
@@ -220,11 +231,11 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   assert.equal(almostFrame[0], headline, "progress never rewrites the border title");
   assert.match(stripAnsi(almost), /▰{10} +99%/);
   assert.ok(stylesFor(almost, "99%").every(style => style === "\u001b[32m"), "high progress advances to green");
-  assert.deepEqual(stylesFor(almost, "▰".repeat(10)), [
-    "\u001b[31m", "\u001b[31m", "\u001b[31m",
-    "\u001b[33m", "\u001b[33m", "\u001b[33m", "\u001b[33m",
-    "\u001b[32m", "\u001b[32m", "\u001b[32m",
-  ], "the filled meter keeps its red-to-yellow-to-green cell gradient");
+  const gradient = stylesFor(almost, "▰".repeat(10));
+  assert.equal(gradient.length, 10);
+  assert.equal(gradient[0], rgbAnsi(PROGRESS_THEME.colors!.error), "the ramp starts at theme error red");
+  assert.equal(gradient[9], rgbAnsi(PROGRESS_THEME.colors!.success), "the ramp ends at theme success green");
+  assert.equal(new Set(gradient).size, 10, "every cell shifts to a distinct interpolated color");
   tree.end({ toolCallId: "d", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
 
   tree.start({ toolCallId: "e", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
@@ -250,13 +261,42 @@ test("a 35 percent progress meter colors filled cells along the gradient", () =>
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Inspect retries", taskProgress: 35 } });
   const line = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
   assert.match(stripAnsi(line), /▰{4}▱{6} +35%/);
-  assert.deepEqual(stylesFor(line, "▰".repeat(4)), [
-    "\u001b[31m", "\u001b[31m", "\u001b[31m", "\u001b[33m",
-  ]);
+  const gradient = stylesFor(line, "▰".repeat(4));
+  assert.equal(gradient[0], rgbAnsi(PROGRESS_THEME.colors!.error));
+  assert.equal(new Set(gradient).size, 4, "each filled cell shifts toward green");
   assert.ok(stylesFor(line, "▱".repeat(6)).every(style => style === "\u001b[2m"),
     "unfilled cells stay dim");
   assert.ok(stylesFor(line, "35%").every(style => style === "\u001b[33m"),
     "the percentage keeps its estimate-based color");
+});
+
+test("rollup places the call count after progress and the duration sparkline", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt", window: 5, iconMode: "nerd" }));
+    for (let index = 0; index < 10; index++) {
+      const toolCallId = "call-" + index;
+      tree.start({
+        toolCallId,
+        toolName: "bash",
+        args: { taskIntent: "Tune the progress rollup", taskProgress: 90, reasoning: "run a step" },
+      });
+      now += (index + 1) * 100;
+      tree.end({ toolCallId, toolName: "bash", result: { content: [] }, isError: false });
+    }
+
+    const header = stripAnsi(lines(tree.render(row("call-0", false, PROGRESS_THEME)))[0]!);
+    const progress = header.indexOf("90%");
+    const sparkline = header.indexOf("\uf080");
+    const callCount = header.indexOf("5 of 10 calls");
+    assert.ok(progress >= 0, `progress is missing: ${header}`);
+    assert.ok(sparkline > progress, `sparkline must follow progress: ${header}`);
+    assert.ok(callCount > sparkline, `call count must follow the sparkline: ${header}`);
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test("partial streamed annotations cannot clear the committed progress meter", () => {
@@ -555,7 +595,7 @@ test("the rollup ends in height bars for call durations", () => {
     now += 900;
     tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
     const head = lines(tree.render(row("a")))[0]!;
-    const spark = head.split(" · ")[1];
+    const spark = head.split(" · ")[0]?.slice(2);
     assert.equal(spark, ".@-", `no ASCII duration bars in: ${head}`);
     assert.equal(spark!.length, 3);
     assert.doesNotMatch(spark!, /[\/\\]/);
@@ -635,7 +675,7 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false });
     tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
     const head = lines(tree.render(row("a")))[0]!;
-    const spark = head.split(" · ")[1]?.slice(0, 2);
+    const spark = head.split(" · ")[0]?.slice(2, 4);
     assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
     assert.equal(spark?.[0], "@");
     assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");
@@ -661,7 +701,7 @@ test("Unicode duration sparkline uses height bars", () => {
     tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
     now += 1_500;
     const head = lines(tree.render(row("a")))[0]!;
-    const plot = head.split(" · ")[1];
+    const plot = head.split(" · ")[0];
     assert.ok(plot?.includes("\uf080"), `no Nerd Font bar-chart cue in: ${head}`);
     const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
     assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);

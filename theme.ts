@@ -1,10 +1,13 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { glyphWords, markFor, toolWord, type IconMode } from "./icons.js";
 
-export type GroveTheme = Pick<Theme, "style">;
+export type GroveTheme = Pick<Theme, "style"> & {
+  /** Optional active palette used to blend progress cells; plain formatters may omit it. */
+  colors?: Pick<Theme["colors"], "error" | "success">;
+};
 
 /** Explicit unstyled formatter for persisted summaries and text-only previews. */
-export const plainTheme: GroveTheme = { style: (text) => text };
+export const plainTheme: GroveTheme = { style: text => text };
 
 export type Foreground = "toolTitle" | "toolOutput" | "text" | "muted" | "dim"
   | "accent" | "success" | "error" | "warning"

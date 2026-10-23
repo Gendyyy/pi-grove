@@ -2,9 +2,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ToolTree, type TreeRow, type TreeSettings } from "../tool-tree.js";
-import type { GroveTheme } from "../theme.js";
+import { plainTheme, type GroveTheme } from "../theme.js";
 
-const theme: GroveTheme = { style: (text, options) => "[" + (options.fg ?? "-") + "]" + text };
+const theme: GroveTheme = { ...plainTheme, style: (text, options) => "[" + (options.fg ?? "-") + "]" + text };
 const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4 };
 const inner = () => ({ render: () => ["inner"], invalidate: () => {} });
 const row = (id: string): TreeRow => ({ toolCallId: id, inner: inner(), theme, expanded: false, invalidate: () => {} });
