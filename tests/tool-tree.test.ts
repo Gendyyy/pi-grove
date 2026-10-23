@@ -12,7 +12,7 @@ import { composeSourceTool, type SourceToolDefinition } from "../tool-compositio
 
 /** Build settings with plain ASCII glyphs so assertions stay readable. */
 function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
-  return { mode: "turn", revealErrors: true, icons: false, iconMode: "ascii", window: 4, ...overrides };
+  return { mode: "turn", revealErrors: false, icons: false, iconMode: "ascii", window: 4, ...overrides };
 }
 
 /** Minimal pi component standing in for a renderer result. */
@@ -884,14 +884,14 @@ test("the collapsed card keeps only the newest calls and expands on click", () =
   assert.equal(lines(tree.render(row("a"))).length, 5);
 });
 
-test("failed nested steps stay visible while their parent is collapsed", () => {
-  const tree = new ToolTree(settings());
+test("failed nested steps stay hidden by default and can be revealed explicitly", () => {
+  const tree = new ToolTree(settings({ revealErrors: true }));
   tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "c1", toolName: "bash", result: { content: [{ type: "text", text: "boom" }] }, isError: true, durationMs: 1200 });
   assert.ok(lines(tree.render(row("c"))).some(line => /run the tests/.test(line)));
 
-  const quiet = new ToolTree(settings({ revealErrors: false }));
+  const quiet = new ToolTree(settings());
   quiet.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
   quiet.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "run the tests" } });
   quiet.end({ toolCallId: "c1", toolName: "bash", result: { content: [{ type: "text", text: "boom" }] }, isError: true, durationMs: 1200 });

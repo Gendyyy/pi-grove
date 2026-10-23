@@ -38,7 +38,7 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `iconMode` | auto / nerd / ascii | auto | whether the font can draw them |
 | `group` | prompt / turn / message / off | prompt | where one card ends |
 | `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
-| `groupRevealErrors` | on / off | on | keep failed steps visible while collapsed |
+| `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 

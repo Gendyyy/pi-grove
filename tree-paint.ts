@@ -12,6 +12,7 @@ import {
   GROUP_TARGET,
   PREVIEW_LINES,
   countErrors,
+  countToolCalls,
   errorCell,
   counted,
   detailOf,
@@ -150,9 +151,19 @@ function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): 
     themeText(theme, color, ` ${String(value).padStart(3, " ")}%`);
 }
 
-/** Colour and glyph of a row marker: the call state, not whether the row opens. */
+/** Colour and glyph of a row marker reflect call state and nested codemode failures. */
 function stateMark(node: TreeNode, glyphs: Glyphs, now: number): { glyph: string; color: Foreground } {
   if (node.kind === "thinking") return { glyph: glyphs.dot, color: "muted" };
+  if (node.name === "codemode") {
+    const failures = countErrors(node.children);
+    if (failures > 0) {
+      const total = countToolCalls(node.children);
+      return {
+        glyph: node.status === "running" ? spinGlyph(glyphs, now) : glyphs.dot,
+        color: failures === total ? "error" : "warning",
+      };
+    }
+  }
   switch (node.status) {
     case "running":
       // A live call spins: the marker walks the frame ramp, one frame per tick, so the row

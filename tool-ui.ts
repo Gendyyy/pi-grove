@@ -18,7 +18,7 @@ interface ToolUiOptions {
   iconMode: IconMode;
   /** Transcript scope one card covers: a turn, one assistant message, or no grouping. */
   group: GroupMode;
-  /** Keep failed nested steps visible while their parent row is collapsed. */
+  /** Opt in to showing failed nested steps while their parent row is collapsed. */
   groupRevealErrors: boolean;
   /** Recent calls kept visible in the collapsed card. */
   groupWindow: number;

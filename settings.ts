@@ -77,9 +77,9 @@ export const SETTINGS: readonly SettingSpec[] = [
   {
     key: "groupRevealErrors",
     kind: "boolean",
-    fallback: true,
+    fallback: false,
     label: "Keep failures visible",
-    summary: "failed steps stay visible while collapsed",
+    summary: "failed steps stay visible while collapsed when enabled",
   },
   { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", label: "Reasoning", summary: "where reasoning appears" },
   {
@@ -161,7 +161,7 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     iconMode: readChoice(settingSpec("iconMode"), raw.iconMode, ICON_MODES, "auto"),
     group: readChoice(settingSpec("group"), raw.group, GROUPS, "prompt"),
     groupWindow: readNumber(settingSpec("groupWindow"), raw.groupWindow, 4),
-    groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors, true),
+    groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors, false),
     thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS, "off"),
     thinkingLabel: (() => {
       const value = coerce(settingSpec("thinkingLabel"), raw.thinkingLabel);

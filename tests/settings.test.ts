@@ -44,7 +44,7 @@ function run(line: string) {
   return applyCommand(resolved);
 }
 
-test("missing settings fall back to the documented defaults", async () => {
+test("missing settings use defaults and nested error visibility stays opt-in", async () => {
   const path = await scratch({});
   const settings = readSettings(path);
   assert.equal(settings.enabled, true);
@@ -53,7 +53,8 @@ test("missing settings fall back to the documented defaults", async () => {
   assert.equal(settings.iconMode, "auto");
   assert.equal(settings.group, "prompt");
   assert.equal(settings.groupWindow, 5);
-  assert.equal(settings.groupRevealErrors, true);
+  assert.equal(settings.groupRevealErrors, false);
+  assert.equal(readSettings(await scratch({ groupRevealErrors: true })).groupRevealErrors, true);
   assert.equal(settings.thinking, "off");
   assert.equal(settings.thinkingLabel, "");
 });

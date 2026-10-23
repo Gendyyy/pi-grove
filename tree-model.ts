@@ -19,7 +19,7 @@ export type PaintScope = "prompt" | "turn" | "message";
 /** Presentation settings owned by grove.json and resolved once at startup. */
 export interface TreeSettings {
   mode: GroupMode;
-  /** Keep failed nested steps visible while their parent card is collapsed. */
+  /** Opt in to showing failed nested steps while their parent card is collapsed. */
   revealErrors: boolean;
   icons: boolean;
   iconMode: IconMode;
@@ -268,6 +268,14 @@ export function countErrors(nodes: TreeNode[]): number {
   return nodes.reduce(
     (total, node) =>
       node.kind === "thinking" ? total : total + (node.status === "error" ? 1 : 0) + countErrors(node.children),
+    0,
+  );
+}
+
+/** Count tool calls anywhere in the subtree, excluding reasoning rows. */
+export function countToolCalls(nodes: TreeNode[]): number {
+  return nodes.reduce(
+    (total, node) => node.kind === "thinking" ? total : total + 1 + countToolCalls(node.children),
     0,
   );
 }
