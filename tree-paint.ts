@@ -332,6 +332,7 @@ export function paintGroup(
       border(" " + glyphs.h.repeat(fill) + glyphs.tr),
   ];
   const remapped = new Map<number, string>();
+  remapped.set(0, GROUP_TARGET);
   for (const [index, line] of lines.entries()) {
     wrapped.push(body(line));
     const target = targets.get(index);

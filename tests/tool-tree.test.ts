@@ -3,7 +3,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { visibleWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { MouseRegion, visibleWidth, type Component, type TuiMouseEvent } from "@earendil-works/pi-tui";
 import { GROUP_TARGET, ToolTree, paintGroup, type TreeGroup, type TreeRow, type TreeSettings } from "../tool-tree.js";
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { summaryLine } from "../block-render.js";
@@ -772,6 +772,28 @@ test("clicking a codemode row reveals its nested steps", () => {
   assert.equal(after.length, 4);
   assert.match(after[2]!, /list files/);
   assert.match(after[3]!, /read the entry/);
+});
+
+test("clicking the card title reveals one level without Pi expand-all", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
+  tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
+  tree.start({ toolCallId: "d", toolName: "bash", args: { reasoning: "run the tests" } });
+  let piExpanded = false;
+  const card = tree.render(row("c", piExpanded));
+  const hostRegion = new MouseRegion(card, () => {
+    piExpanded = !piExpanded;
+    return { handled: true };
+  });
+
+  // The title border belongs to Grove, so the host must not interpret this as expand-all.
+  assert.equal(hostRegion.handleMouse(click(0))?.handled, true);
+  assert.equal(piExpanded, false);
+
+  const revealed = lines(tree.render(row("c", piExpanded)));
+  assert.equal(revealed.length, 3);
+  assert.match(revealed.join(" "), /run the tests/);
+  assert.doesNotMatch(revealed.join(" "), /list files/);
 });
 
 test("the header reveals every row but opens no level", () => {
