@@ -3,7 +3,7 @@ import { glyphWords, markFor, toolWord, type IconMode } from "./icons.js";
 
 export type GroveTheme = Pick<Theme, "style"> & {
   /** Optional active palette used to blend progress cells; plain formatters may omit it. */
-  colors?: Pick<Theme["colors"], "error" | "success">;
+  colors?: Pick<Theme["colors"], "error" | "success" | "accent" | "muted" | "warning">;
 };
 
 /** Explicit unstyled formatter for persisted summaries and text-only previews. */

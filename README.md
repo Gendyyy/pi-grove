@@ -65,11 +65,17 @@ Both annotations are stored with calls so replay restores the same title and est
 
 Every card carries a labeled stepper: declare `// task-milestones: inspect=Inspect; build=Build; verify=Verify`
 once, then repeat `// task-milestone: <id>` for the active phase on each top-level call. A plan holds
-one to seven phases and always ends in a `verify` phase, so even a small task declares its work plus a
-closing check instead of inventing filler. Grove marks earlier phases complete when the active id advances; a successful final
-`task-progress: 100` completes the whole stepper. The plan is transcript-backed and independent of
-the percentage. Full labels show when they fit; narrow cards switch to a marker rail plus the active
-label, and the tightest cards show only the active phase.
+one to seven phases and may close on a `verify` phase when the work needs checking, or on a `clean` phase
+when the work leaves temp files, scratch scripts, or other throwaway artifacts behind. Both are preferences,
+not requirements: a plan that ends on plain work is valid, and Grove never invents filler phases. Grove marks earlier phases complete when the active id advances, and the arrows linking the phases
+turn green behind every finished one, so a completed run reads as one unbroken green line; a successful final
+`task-progress: 100` completes the whole stepper. Phases only move forward: every call restates the plan, so a
+restatement is adopted only while it keeps the phases already finished, and a plan that would drop or rewrite them is
+ignored instead of clearing the ticks. The plan is transcript-backed and independent of
+the percentage. The strip is centered in the card, and the active marker breathes between the theme
+accent and muted roles on a cosine curve instead of blinking on and off, so it stays in motion while a
+call is live. Full labels show when they fit; narrow cards switch to a marker rail plus the active label,
+and the tightest cards show only the active phase.
 
 There are no Goal or Now sections and no group status chip. By default, the headline places
 progress first, then the duration sparkline, then the call count and tool mix.
@@ -89,12 +95,12 @@ call rows show each tool's own per-call intent; Grove adds no separate Goal or N
 
 The line under the frame shows how much work is in view and **where the time went**.
 Nerd Font mode adds a percent icon beside the progress meter and a bar-chart cue beside the
-duration bars. Each call gets one height-coded cell, oldest first; a log scale keeps one
-four-minute call from flattening everything beside it, and slower calls rise toward the top.
-Unicode mode uses block heights, while ASCII mode uses increasing intensity characters.
-Bar colors follow relative duration through the theme's success, warning and error colors:
-shorter calls are green, longer calls are red, with intermediate durations transitioning
-between them. Exact times stay on each row. Live call times use Grove's full start-to-finish
+duration bars. Each call gets one height-coded cell, oldest first, on a fixed log scale from
+50ms to 10s, so a cell means the same thing on every card: 150ms is a low cell whether or not
+a 90s call shares the strip, and anything slower than 10s clamps to the top. Unicode mode uses
+block heights, while ASCII mode uses increasing intensity characters. Bar colors are absolute
+bands of that same scale: the theme's success color for fast calls, warning in the middle,
+error for slow ones. Exact times stay on each row. Live call times use Grove's full start-to-finish
 elapsed interval, not the host-reported execution duration. `/grove group progress off` hides only
 the meter, not milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
 `/grove group nested off` hides nested tool names/counts from both the summary strip and codemode
@@ -110,8 +116,8 @@ dropped for its glyph, and the rollup names tools in words (`read ×2 · bash ×
 is readable without the font. `auto` turns glyphs on only when the terminal can draw them;
 force `ascii` to keep every word.
 
-A live call spins through its marker ramp every 100 ms, while the same tick keeps elapsed
-time honest. The border title stays static throughout the task. Each live call's description
+A live call breathes its marker every 100 ms, exactly like the active phase marker, while the
+same tick keeps elapsed time honest. The border title stays static throughout the task. Each live call's description
 gets its own subtle highlight; words and layout stay fixed while running work is visible.
 
 | Glyph | Means |
@@ -133,7 +139,7 @@ gets its own subtle highlight; words and layout stay fixed while running work is
 | `` | error, failed |
 | `` | cancelled |
 | `` | incomplete |
-| `` | ⠋⠙⠹… | running, spinning one frame per tick |
+| `` | breathing dot | running, one steady dot whose colour swells and quiets |
 
 A tool grove has no glyph for keeps its name beside the generic mark, so an MCP call still
 says which server ran. A plain terminal keeps every word and drops only the old bracket

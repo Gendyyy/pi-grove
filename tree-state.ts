@@ -20,6 +20,7 @@ import {
   brief,
   clean,
   goalOf,
+  adoptMilestones,
   taskMilestoneOf,
   taskMilestonesOf,
   taskIntentOf,
@@ -108,27 +109,26 @@ function updateGroupMilestones(
   milestoneId: string | undefined,
 ): boolean {
   let changed = false;
-  let planChanged = false;
+  const activeIndex = group.activeMilestoneId && group.milestones
+    ? group.milestones.findIndex(milestone => milestone.id === group.activeMilestoneId)
+    : -1;
   if (milestones) {
-    const samePlan = group.milestones?.length === milestones.length &&
-      group.milestones.every((milestone, index) =>
-        milestone.id === milestones[index]?.id && milestone.label === milestones[index]?.label,
-      );
-    if (!samePlan) {
-      group.milestones = milestones;
+    // Phases behind the active one are done, so a plan may not rewrite them.
+    const adopted = adoptMilestones(group.milestones, milestones, Math.max(0, activeIndex));
+    if (adopted !== group.milestones) {
+      group.milestones = adopted;
       changed = true;
-      planChanged = true;
     }
   }
   const plan = group.milestones;
   if (!plan) return changed;
-  const declaredIndex = milestoneId ? plan.findIndex(milestone => milestone.id === milestoneId) : -1;
-  const currentIndex = group.activeMilestoneId
+  const planIndex = group.activeMilestoneId
     ? plan.findIndex(milestone => milestone.id === group.activeMilestoneId)
     : -1;
-  const nextIndex = declaredIndex < 0
-    ? currentIndex < 0 ? 0 : currentIndex
-    : planChanged || currentIndex < 0 ? declaredIndex : Math.max(currentIndex, declaredIndex);
+  const declaredIndex = milestoneId ? plan.findIndex(milestone => milestone.id === milestoneId) : -1;
+  // A phase only moves forward: finishing work is never undone by a restated plan.
+  const floor = Math.max(0, planIndex);
+  const nextIndex = Math.min(plan.length - 1, declaredIndex < 0 ? floor : Math.max(floor, declaredIndex));
   const nextId = plan[nextIndex]?.id;
   if (nextId !== group.activeMilestoneId) {
     group.activeMilestoneId = nextId;

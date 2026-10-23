@@ -246,7 +246,7 @@ return 1;` },
   const tree = new ToolTree(settings());
   tree.restore(readTranscript(entries, "prompt"));
   const card = lines(tree.render(row("m1")));
-  assert.match(card[0]!, /x Inspect - \* Build - o Verify/);
+  assert.match(card[0]!, /x Inspect -> \* Build -> o Verify/);
   assert.match(card[1]!, /55%/);
 });
 

@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ToolTree, type TreeRow, type TreeSettings } from "../tool-tree.js";
+import { colorToRgb, rgbColor } from "@earendil-works/pi-tui";
 import { plainTheme, type GroveTheme } from "../theme.js";
+import { PULSE_MS } from "../tree-paint.js";
 
 const theme: GroveTheme = { ...plainTheme, style: (text, options) => "[" + (options.fg ?? "-") + "]" + text };
 const settings: TreeSettings = {
@@ -32,6 +34,30 @@ function painted(tree: ToolTree, width = 96, rowTheme: GroveTheme = theme): stri
   return card(tree, "a", rowTheme).render(width).map(plain).slice(1, -1);
 }
 
+/** Theme with a concrete palette that tags every colour as an rgb triple. */
+function paletteTheme(): GroveTheme {
+  return {
+    colors: {
+      accent: rgbColor(160, 120, 255),
+      muted: rgbColor(80, 80, 80),
+      success: rgbColor(0, 200, 0),
+      error: rgbColor(255, 0, 0),
+      warning: rgbColor(230, 180, 60),
+    },
+    style: (text, options) => {
+      if (typeof options.fg === "object" && options.fg !== null) {
+        const { r, g, b } = colorToRgb(options.fg);
+        return "rgb(" + [r, g, b].map(channel => Math.round(channel)).join(",") + ")" + text;
+      }
+      return "[" + (options.fg ?? "-") + "]" + text;
+    },
+  };
+}
+
+/** Colour the theme tagged onto the active phase marker of the strip. */
+function markerColor(lines: readonly string[]): string | undefined {
+  return lines.find(line => line.includes("Build"))?.match(/rgb\(\d+,\d+,\d+\)\*/)?.[0];
+}
 /** Build a settled codemode call with the requested nested outcomes. */
 function codemodeWithOutcomes(failures: boolean[]): ToolTree {
   const tree = new ToolTree(settings);
@@ -66,7 +92,7 @@ test("milestone stepper colors each phase and switches to the active label when 
 
   const full = painted(tree, 40, plainTheme).find(line => line.includes("Inspect"));
   assert.ok(full);
-  assert.match(full, /x Inspect - \* Build - o Verify/);
+  assert.match(full, /x Inspect -> \* Build -> o Verify/);
 
   const compact = painted(tree, 35, plainTheme).find(line => line.includes("Build"));
   assert.ok(compact);
@@ -94,6 +120,76 @@ test("an unframed narrow card preserves a fitting active milestone label", () =>
   assert.ok(compact.length <= 27, `compact stepper exceeds its viewport: ${compact}`);
 });
 
+test("the milestone strip is centered inside the card", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: {
+      taskIntent: "Implement retry safety",
+      taskProgress: 55,
+      taskMilestones: "inspect=Inspect; build=Build; verify=Verify",
+      taskMilestone: "build",
+    },
+  });
+
+  const strip = painted(tree, 40, plainTheme).find(line => line.includes("Inspect"));
+  assert.ok(strip);
+  const lead = strip.length - strip.trimStart().length;
+  const trail = strip.length - strip.trimEnd().length;
+  assert.ok(Math.abs(lead - trail) <= 1, "strip is off-center: " + lead + " before, " + trail + " after");
+});
+
+test("the arrow between phases turns green once the phase behind it is done", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: {
+      taskIntent: "Implement retry safety",
+      taskProgress: 60,
+      taskMilestones: "inspect=Inspect; build=Build; verify=Verify",
+      taskMilestone: "build",
+    },
+  });
+
+  const strip = painted(tree, 180).find(line => line.includes("Inspect")) ?? "";
+  assert.match(strip, /Inspect\[success\] -> \[accent\]/, strip);
+  assert.ok(strip.includes("Build[dim] -> "), "a pending run keeps its arrow quiet: " + strip);
+});
+
+test("the active milestone marker breathes instead of blinking on and off", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: {
+      taskIntent: "Implement retry safety",
+      taskProgress: 55,
+      taskMilestones: "inspect=Inspect; build=Build; verify=Verify",
+      taskMilestone: "build",
+    },
+  });
+
+  const realNow = Date.now;
+  // Sample the strip at fixed clock positions, since the pulse is driven by the paint clock.
+  const sample = (clock: number): string | undefined => {
+    try {
+      Date.now = () => clock;
+      return markerColor(painted(tree, 60, paletteTheme()));
+    } finally {
+      Date.now = realNow;
+    }
+  };
+
+  const bright = sample(0);
+  const mid = sample(PULSE_MS / 2);
+  const nextCycle = sample(PULSE_MS);
+  assert.ok(bright && mid && nextCycle);
+  assert.equal(bright, nextCycle, "one cycle later the marker returns to where it started");
+  assert.notEqual(bright, mid, "half a cycle lands on a different colour, not the same glyph");
+  assert.notEqual(mid, "rgb(80,80,80)*", "the pulse quiets toward muted without switching the marker off");
+});
 test("codemode marks partial nested failures orange without revealing them", () => {
   const rows = painted(codemodeWithOutcomes([true, false]));
   const codemode = rows.find(line => line.includes("codemode"));
@@ -125,27 +221,33 @@ test("a settled call shows a filled dot in its status colour", () => {
   assert.doesNotMatch(ok!, /error/);
 });
 
-test("a running call spins through the frame ramp", () => {
+test("a running call breathes its marker instead of cycling frames", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the schema" } });
     tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
     const base = 1_000_000;
+    // Sample the live row marker, the only cell painted as a breathing dot.
     const marker = (offset: number): string => {
       Date.now = () => base + offset;
-      const row = painted(tree)[2]!;
-      const found = /\[warning\]([^ ])/.exec(row);
-      assert.ok(found, `expected a spinner frame in ${JSON.stringify(row)}`);
-      return found[1]!;
+      // The detail text is the narrowest thing on the row, so locate it by the tool label.
+      const row = painted(tree, 96, paletteTheme()).find(line => line.includes("rgb(") && line.includes("bash"));
+      assert.ok(row, "expected the live row in the painted card");
+      const found = /rgb\(\d+,\d+,\d+\)\*/.exec(row);
+      assert.ok(found, "expected a breathing marker in " + JSON.stringify(row));
+      return found[0];
     };
-    // One frame per tick, each a single cell the terminal can rotate in place.
-    const frames = [0, 100, 200, 300].map(marker);
-    assert.deepEqual(frames, ["|", "/", "-", "\\"]);
-    // Halfway through the ramp the marker is a different cell, not a blink out.
-    assert.notEqual(marker(100), marker(0));
-    // The ramp wraps, so a long call keeps turning instead of stopping on the last frame.
-    assert.equal(marker(400), marker(0));
+    const glyphOf = (paintedMarker: string): string => paintedMarker.replace(/^rgb\([^)]*\)/, "");
+
+    const bright = marker(0);
+    const mid = marker(PULSE_MS / 2);
+    // The glyph is steady, so the row cannot flicker between frames the way a spinner did.
+    assert.equal(glyphOf(bright), "*");
+    assert.equal(glyphOf(mid), "*");
+    assert.notEqual(bright, mid, "half a cycle lands on a different brightness");
+    assert.equal(marker(PULSE_MS), bright, "one cycle later the breathing returns to where it started");
+    assert.notEqual(mid, "rgb(80,80,80)*", "the pulse quiets toward muted without switching the marker off");
   } finally {
     Date.now = real;
   }

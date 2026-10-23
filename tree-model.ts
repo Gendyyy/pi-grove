@@ -127,8 +127,8 @@ export interface Glyphs {
   times: string;
   dot: string;
   hollow: string;
-  /** Frames of the running marker, drawn one per tick so a live call visibly spins. */
-  spin: string;
+  /** Connector between two task phases, pointing at the next one. */
+  arrow: string;
   /** Frame corners and edges of the group card. */
   tl: string;
   tr: string;
@@ -148,13 +148,11 @@ export interface Glyphs {
 
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
-  spin: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "bars", chart: "\uf080", progress: "", check: "✓",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", arrow: "→", spark: "bars", chart: "\uf080", progress: "", check: "✓",
 };
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
-  spin: "|/-\\",
-  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", spark: "ascii", chart: "", progress: "", check: "x",
+  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", arrow: "->", spark: "ascii", chart: "", progress: "", check: "x",
 };
 
 /** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
@@ -216,8 +214,6 @@ const TASK_MILESTONE_ID = /^[a-z][a-z0-9-]{0,23}$/;
 /** Smallest and largest phase plan a card renders; one phase is enough for a small task. */
 export const TASK_MILESTONE_MIN = 1;
 export const TASK_MILESTONE_MAX = 7;
-/** Every plan closes on a verification phase, so a task cannot claim done without a check. */
-export const TASK_MILESTONE_FINAL = "verify";
 
 /** Recover a valid one-to-seven phase plan from composed args or a codemode comment. */
 export function taskMilestonesOf(args: Record<string, unknown> | undefined): TaskMilestone[] | undefined {
@@ -242,8 +238,28 @@ export function taskMilestonesOf(args: Record<string, unknown> | undefined): Tas
     ids.add(id);
     milestones.push({ id, label });
   }
-  if (milestones.at(-1)?.id !== TASK_MILESTONE_FINAL) return undefined;
   return milestones;
+}
+
+/**
+ * Keep a re-declared plan only while it preserves the phases already finished.
+ *
+ * Every call restates the plan, so a model that rewrites or shrinks it mid-task would
+ * otherwise erase the ticks the card already showed. A plan is adopted when its completed
+ * prefix is unchanged, which covers renaming labels and inserting work after the current
+ * phase; anything that would un-complete a phase leaves the standing plan in place.
+ */
+export function adoptMilestones(
+  previous: TaskMilestone[] | undefined,
+  next: TaskMilestone[],
+  completed: number,
+): TaskMilestone[] {
+  if (!previous || previous.length === 0) return next;
+  const done = Math.max(0, Math.min(completed, previous.length));
+  const prefixKept = previous
+    .slice(0, done)
+    .every((milestone, index) => milestone.id === next[index]?.id);
+  return prefixKept ? next : previous;
 }
 
 /** Recover the current phase id from composed args or a codemode comment. */

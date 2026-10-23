@@ -8,7 +8,7 @@ import { GROUP_TARGET, ToolTree, paintGroup, type TreeGroup, type TreeRow, type 
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { summaryLine } from "../block-render.js";
 import { shimmerText } from "../tree-paint.js";
-import { taskMilestoneOf, taskMilestonesOf } from "../tree-model.js";
+import { adoptMilestones, taskMilestoneOf, taskMilestonesOf } from "../tree-model.js";
 import { composeSourceTool, type SourceToolDefinition } from "../tool-composition.js";
 
 /** Build settings with plain ASCII glyphs so assertions stay readable. */
@@ -52,7 +52,13 @@ const DURATION_THEME: GroveTheme = {
 };
 
 const PROGRESS_THEME: GroveTheme = {
-  colors: { error: rgbColor(255, 0, 0), success: rgbColor(0, 255, 0) },
+  colors: {
+    error: rgbColor(255, 0, 0),
+    success: rgbColor(0, 255, 0),
+    accent: rgbColor(140, 120, 255),
+    warning: rgbColor(220, 180, 60),
+    muted: rgbColor(120, 120, 120),
+  },
   style: (text, options) => {
     if (typeof options.fg === "object" && options.fg !== null) {
       const { r, g, b } = colorToRgb(options.fg);
@@ -147,7 +153,7 @@ test("milestone annotations accept only bounded, uniquely identified phase plans
 
   for (const declaration of [
     "a=A;b=B;c=C;d=D;e=E;f=F;g=G;h=H",
-    "plan=Plan;work=Work;check=Check",
+    "plan=Plan;;verify=Verify",
     "",
     "Inspect=Inspect;build=Build;verify=Verify",
     "same=Inspect;same=Build;verify=Verify",
@@ -156,6 +162,15 @@ test("milestone annotations accept only bounded, uniquely identified phase plans
   ]) {
     assert.equal(taskMilestonesOf({ taskMilestones: declaration }), undefined, declaration);
   }
+  assert.deepEqual(taskMilestonesOf({ taskMilestones: "inspect=Inspect;build=Build" })?.map(milestone => milestone.id), [
+    "inspect",
+    "build",
+  ]);
+  assert.deepEqual(taskMilestonesOf({ taskMilestones: "implement=Implement;clean=Clean;verify=Verify" })?.map(milestone => milestone.id), [
+    "implement",
+    "clean",
+    "verify",
+  ]);
   const bounded = taskMilestonesOf({ taskMilestones: "inspect=This milestone label is too long;build=Build;verify=Verify" });
   assert.equal(bounded?.[0]?.label.length, 24);
 });
@@ -319,18 +334,18 @@ test("milestone stepper advances monotonically and settles only after successful
   const stepper = () => lines(tree.render(row("a")))[0]!;
 
   start("a", "inspect", 20);
-  assert.match(stepper(), /\* Inspect - o Build - o Verify/);
+  assert.match(stepper(), /\* Inspect -> o Build -> o Verify/);
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
   start("b", "build", 55);
-  assert.match(stepper(), /x Inspect - \* Build - o Verify/);
+  assert.match(stepper(), /x Inspect -> \* Build -> o Verify/);
   tree.end({ toolCallId: "b", toolName: "read", result: { content: [] }, isError: false });
   start("c", "inspect", 56);
-  assert.match(stepper(), /x Inspect - \* Build - o Verify/, "an out-of-order annotation cannot reopen a completed phase");
+  assert.match(stepper(), /x Inspect -> \* Build -> o Verify/, "an out-of-order annotation cannot reopen a completed phase");
   tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
   start("d", "verify", 100);
-  assert.match(stepper(), /x Inspect - x Build - \* Verify/);
+  assert.match(stepper(), /x Inspect -> x Build -> \* Verify/);
   tree.end({ toolCallId: "d", toolName: "read", result: { content: [] }, isError: false });
-  assert.match(stepper(), /x Inspect - x Build - x Verify/);
+  assert.match(stepper(), /x Inspect -> x Build -> x Verify/);
 
   tree.start({
     toolCallId: "e",
@@ -766,7 +781,7 @@ test("the rollup ends in height bars for call durations", () => {
     tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
     const head = lines(tree.render(row("a")))[0]!;
     const spark = head.split(" · ")[0]?.slice(2);
-    assert.equal(spark, ".@-", `no ASCII duration bars in: ${head}`);
+    assert.equal(spark, ":@+", `no ASCII duration bars in: ${head}`);
     assert.equal(spark!.length, 3);
     assert.doesNotMatch(spark!, /[\/\\]/);
   } finally {
@@ -826,8 +841,8 @@ test("duration bars transition from success through warning to error colors", ()
       tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
     }
     const rendered = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
-    assert.ok(rendered.includes("\u001b[32m▁"), "shortest duration is green/success");
-    assert.ok(rendered.includes("\u001b[33m▄"), "middle duration uses the warning color");
+    assert.ok(rendered.includes("\u001b[32m▂"), "shortest duration is green/success");
+    assert.ok(rendered.includes("\u001b[33m▅"), "middle duration uses the warning color");
     assert.ok(rendered.includes("\u001b[31m█"), "longest duration is red/error");
   } finally {
     Date.now = realNow;
@@ -847,7 +862,7 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
     const head = lines(tree.render(row("a")))[0]!;
     const spark = head.split(" · ")[0]?.slice(2, 4);
     assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
-    assert.equal(spark?.[0], "@");
+    assert.equal(spark?.[0], "*", "a 2s call sits above the middle of the absolute ramp");
     assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");
     const colored = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
     assert.ok(colored.includes("\u001b[32m."), "the running bar color follows its short elapsed duration");
@@ -856,6 +871,34 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
   }
 });
 
+test("duration bars compare across cards instead of normalising per card", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  // Render two calls and keep only the bar cells, so the shapes can be compared.
+  const bars = (durations: readonly number[]): string => {
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+    durations.forEach((elapsed, index) => {
+      const id = "c" + index;
+      tree.start({ toolCallId: id, toolName: "read", args: { reasoning: "read the log" } });
+      now += elapsed;
+      tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
+    });
+    const head = lines(tree.render(row("c0")))[0] ?? "";
+    return [...head].filter(cell => "▁▂▃▄▅▆▇█".includes(cell)).join("");
+  };
+  try {
+    // Same 1:2 shape, 40x apart in real time: an absolute ramp must not flatten them together.
+    const fast = bars([100, 200]);
+    const slow = bars([4_000, 8_000]);
+    assert.equal(fast.length, 2);
+    assert.equal(slow.length, 2);
+    assert.notEqual(fast, slow);
+    assert.ok("▁▂▃▄▅▆▇█".indexOf(fast[0]!) < "▁▂▃▄▅▆▇█".indexOf(slow[0]!));
+  } finally {
+    Date.now = realNow;
+  }
+});
 test("Unicode duration sparkline uses height bars", () => {
   const realNow = Date.now;
   let now = 10_000;
@@ -875,7 +918,7 @@ test("Unicode duration sparkline uses height bars", () => {
     assert.ok(plot?.includes("\uf080"), `no Nerd Font bar-chart cue in: ${head}`);
     const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
     assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);
-    assert.equal(spark[0], "▁", "the shortest call uses the lowest bar");
+    assert.equal(spark[0], "▂", "the shortest call uses the lowest bar");
     assert.equal(spark[1], "█", "the slowest call uses the tallest bar");
     assert.ok(["▂", "▃", "▄", "▅", "▆", "▇"].includes(spark[2]!),
       "the middle-duration call uses an intermediate bar");
@@ -1251,4 +1294,53 @@ test("a codemode call does not duplicate the steps it already registered live", 
   const steps = painted.filter(line => line.includes("bun test") || line.includes("read the entry"));
   assert.equal(steps.length, 2, painted.join(" | "));
   assert.equal(painted.filter(line => line.includes("bun test")).length, 1);
+});
+
+test("a re-declared plan may grow but never drops the phases already done", () => {
+  const plan = (text: string) => taskMilestonesOf({ taskMilestones: text })!;
+  const base = plan("inspect=Inspect;build=Build;verify=Verify");
+  // Renaming a phase keeps the whole plan, so finished phases keep their ticks.
+  assert.deepEqual(
+    adoptMilestones(base, plan("inspect=Inspect code;build=Build it;verify=Verify"), 1).map(milestone => milestone.label),
+    ["Inspect code", "Build it", "Verify"],
+  );
+  // Inserting a phase after the completed prefix is a real replan and is accepted.
+  assert.deepEqual(
+    adoptMilestones(base, plan("inspect=Inspect;design=Design;build=Build;verify=Verify"), 1).map(milestone => milestone.label),
+    ["Inspect", "Design", "Build", "Verify"],
+  );
+  // Shrinking or replacing the plan would erase finished work, so the old plan stands.
+  assert.deepEqual(adoptMilestones(base, plan("verify=Verify"), 2), base);
+  assert.deepEqual(adoptMilestones(base, plan("prototype=Prototype;verify=Verify"), 1), base);
+  // The first declaration is always adopted, and an empty history cannot reject anything.
+  assert.deepEqual(adoptMilestones(undefined, base, 0), base);
+  assert.deepEqual(adoptMilestones(base, plan("verify=Verify"), 0), plan("verify=Verify"));
+});
+
+test("a shrink-wrapped final call keeps the phases the card already showed", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const plan = "inspect=Inspect;build=Build;verify=Verify";
+  const step = (id: string, milestones: string, milestone: string, progress: number): void => {
+    tree.start({
+      toolCallId: id,
+      toolName: "bash",
+      args: {
+        reasoning: "run the check",
+        taskIntent: "Harden the parser",
+        taskProgress: progress,
+        taskMilestones: milestones,
+        taskMilestone: milestone,
+      },
+    });
+  };
+  const strip = (): string => lines(tree.render(row("a"))).find(line => line.includes("Inspect")) ?? "";
+
+  step("a", plan, "inspect", 20);
+  step("b", plan, "build", 60);
+  assert.match(strip(), /Inspect.*Build/);
+
+  // The closing call names only the phase it is working on. The card must still show the
+  // phases that are already finished instead of collapsing to a one-step plan.
+  step("c", "verify=Verify", "verify", 100);
+  assert.match(strip(), /Inspect.*Build.*Verify/);
 });

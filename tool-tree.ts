@@ -8,7 +8,7 @@ import type { ToolExecutionEndEvent, ToolExecutionStartEvent } from "@earendil-w
 import type { ReplaySegment } from "./replay.js";
 import { plainTheme, type GroveTheme } from "./theme.js";
 import { TreeBlock, type TreeRow } from "./tree-block.js";
-import { paintGroup, SPIN_MS } from "./tree-paint.js";
+import { paintGroup, TICK_MS } from "./tree-paint.js";
 import { GROUP_TARGET, type GroupMode, type PaintScope, type TreeGroup, type TreeNode, type TreeSettings, type TreeStatus } from "./tree-model.js";
 import {
   activeGroup,
@@ -225,7 +225,7 @@ export class ToolTree {
         return;
       }
       group.invalidate?.();
-    }, SPIN_MS);
+    }, TICK_MS);
     this.timer.unref?.();
   }
 

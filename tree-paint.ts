@@ -33,9 +33,8 @@ export interface PaintState {
   expanded: ReadonlySet<string>;
 }
 
-/** Repaint cadence for running markers and live duration traces. */
-/** One spinner frame, and one honest duration refresh, per tick while a card is live. */
-export const SPIN_MS = 100;
+/** Repaint cadence while a card is live: one breathe step and one honest duration refresh per tick. */
+export const TICK_MS = 100;
 
 /** Maximum duration bars shown in the rollup, oldest call first. */
 const SPARK_CELLS = 8;
@@ -48,7 +47,17 @@ const SPARK_BAR_COLORS = [
   "success", "success", "success", "warning", "warning", "error", "error", "error",
 ] as const;
 
-/** Render relative call durations as a one-cell height bar per call. */
+/** Absolute duration window: cells span 50ms to 10s on a log curve. */
+const SPARK_FLOOR_MS = 50;
+const SPARK_CEIL_MS = 10_000;
+
+/** Place one duration on the fixed log scale, so a height means the same thing on every card. */
+function sparkPosition(ms: number): number {
+  const floor = Math.log1p(SPARK_FLOOR_MS);
+  const span = Math.log1p(SPARK_CEIL_MS) - floor;
+  return Math.max(0, Math.min(1, (Math.log1p(Math.max(0, ms)) - floor) / span));
+}
+/** Render one height-coded cell per call, on an absolute scale. */
 function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Glyphs): string {
   const recent = tools.slice(-SPARK_CELLS);
   if (recent.length === 0) return "";
@@ -58,13 +67,9 @@ function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Gl
   );
   if (took.every(value => value <= 0)) return "";
 
-  // A log scale keeps one four-minute call from flattening every other point.
-  const low = Math.log(Math.max(1, Math.min(...took)));
-  const high = Math.log(Math.max(1, Math.max(...took)));
-  const span = high - low;
-  const heights = took.map(value =>
-    span <= 0 ? 0.5 : (Math.log(Math.max(1, value)) - low) / span,
-  );
+  // Heights are absolute, not normalised to the window: a fast card reads low and a slow one
+  // reads tall, so the bars say how slow a call was, not which call was the slowest.
+  const heights = took.map(value => (value <= 0 ? 0 : sparkPosition(value)));
 
   const bars = glyphs.spark === "ascii" ? ASCII_SPARK_BARS : UNICODE_SPARK_BARS;
   return heights
@@ -74,13 +79,6 @@ function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Gl
       return themeText(theme, SPARK_BAR_COLORS[level]!, bar);
     })
     .join("");
-}
-
-/** The running marker at this instant: a frame of the ramp, wrap-around included. */
-export function spinGlyph(glyphs: Glyphs, now: number): string {
-  const frames = [...glyphs.spin];
-  if (frames.length === 0) return glyphs.dot;
-  return frames[Math.floor(now / SPIN_MS) % frames.length]!;
 }
 
 const SHIMMER_BAND = 3;
@@ -154,8 +152,38 @@ function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): 
     themeText(theme, color, ` ${String(value).padStart(3, " ")}%`);
 }
 
-/** Render ordered task phases, switching to a compact rail when labels would clip. */
-function milestoneText(group: TreeGroup, theme: GroveTheme, glyphs: Glyphs, width: number): string | undefined {
+/** One breathe cycle for the active phase marker, slow enough to read as a pulse. */
+export const PULSE_MS = 1600;
+/** Deepest point of the breathe: the marker quiets toward the muted role, never to nothing. */
+const PULSE_DEPTH = 0.85;
+
+/** Roles a marker can breathe in: the hue stays put, only its brightness moves. */
+type PulseBase = "accent" | "warning" | "error";
+
+/** Blend the marker's own role toward muted on a cosine curve, so it breathes instead of blinking. */
+function pulseText(glyph: string, theme: GroveTheme, now: number, base: PulseBase = "accent"): string {
+  const palette = theme.colors;
+  const from = palette?.[base];
+  if (!from || !palette?.muted) return themeText(theme, base, glyph);
+  const phase = (now % PULSE_MS) / PULSE_MS;
+  const breath = ((1 - Math.cos(phase * 2 * Math.PI)) / 2) * PULSE_DEPTH;
+  return theme.style(glyph, { fg: mixColors(from, palette.muted, breath, "oklch") });
+}
+
+/** Center one painted line in the card body: the strip reads as a strap, not as a row. */
+function centered(line: string, width: number): string {
+  const pad = Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
+  return " ".repeat(pad) + line;
+}
+
+/** Render centered task phases, switching to a compact rail when labels would clip. */
+function milestoneText(
+  group: TreeGroup,
+  theme: GroveTheme,
+  glyphs: Glyphs,
+  width: number,
+  now: number,
+): string | undefined {
   const milestones = group.milestones;
   if (!milestones || milestones.length === 0 || milestones.length > TASK_MILESTONE_MAX) return undefined;
   const complete = group.progress === 100;
@@ -166,43 +194,66 @@ function milestoneText(group: TreeGroup, theme: GroveTheme, glyphs: Glyphs, widt
 
   const stateAt = (index: number): "complete" | "active" | "pending" =>
     complete || index < activeIndex ? "complete" : index === activeIndex ? "active" : "pending";
-  const roleAt = (index: number): Foreground =>
-    stateAt(index) === "complete" ? "success" : stateAt(index) === "active" ? "accent" : "dim";
-  const markerAt = (index: number): string => {
+  // One phase as painted text: the active marker breathes, complete and pending phases stay quiet.
+  const segmentAt = (index: number, withLabel: boolean): string => {
     const status = stateAt(index);
-    return status === "complete" ? glyphs.check : status === "active" ? glyphs.dot : glyphs.hollow;
+    const label = withLabel ? " " + milestones[index]!.label : "";
+    if (status === "active") {
+      // Without a concrete palette the pulse would be invisible, so keep the classic single run.
+      if (!theme.colors?.accent || !theme.colors.muted)
+        return themeText(theme, "accent", glyphs.dot + label);
+      return pulseText(glyphs.dot, theme, now) + (label ? themeText(theme, "accent", label) : "");
+    }
+    return themeText(
+      theme,
+      status === "complete" ? "success" : "dim",
+      (status === "complete" ? glyphs.check : glyphs.hollow) + label,
+    );
   };
-  const full = milestones.map((milestone, index) =>
-    themeText(theme, roleAt(index), markerAt(index) + " " + milestone.label),
-  ).join(themeText(theme, "dim", " " + glyphs.h + " "));
-  if (visibleWidth(full) <= width) return full;
+  // An arrow carries the state of the phase behind it, so a finished run reads as one
+  // unbroken green line instead of green markers linked by grey dashes.
+  const joinAfter = (index: number): string =>
+    themeText(theme, stateAt(index) === "complete" ? "success" : "dim", " " + glyphs.arrow + " ");
+  const chain = (segments: string[]): string =>
+    segments.map((segment, index) => (index < segments.length - 1 ? segment + joinAfter(index) : segment)).join("");
+  const full = chain(milestones.map((_, index) => segmentAt(index, true)));
+  if (visibleWidth(full) <= width) return centered(full, width);
 
-  const markers = milestones.map((_, index) => themeText(theme, roleAt(index), markerAt(index)))
-    .join(themeText(theme, "dim", " " + glyphs.h + " "));
-  const active = themeText(theme, roleAt(activeIndex), " " + milestones[activeIndex]!.label);
-  if (visibleWidth(markers + active) <= width) return markers + active;
+  const rail = chain(milestones.map((_, index) => segmentAt(index, false)));
+  const active = " " + milestones[activeIndex]!.label;
+  if (visibleWidth(rail) + visibleWidth(active) <= width)
+    return centered(rail + themeText(theme, "accent", active), width);
   // Too narrow for the rail: the current phase alone has to carry the state.
-  return fitToolLine(themeText(theme, roleAt(activeIndex), markerAt(activeIndex) + " " + milestones[activeIndex]!.label), width);
+  return centered(fitToolLine(segmentAt(activeIndex, true), width), width);
+}
+
+/** A row marker: its glyph, the role that colours it, and the role it breathes while live. */
+interface StateMark {
+  glyph: string;
+  color: Foreground;
+  pulse?: PulseBase;
 }
 
 /** Colour and glyph of a row marker reflect call state and nested codemode failures. */
-function stateMark(node: TreeNode, glyphs: Glyphs, now: number): { glyph: string; color: Foreground } {
+function stateMark(node: TreeNode, glyphs: Glyphs): StateMark {
   if (node.kind === "thinking") return { glyph: glyphs.dot, color: "muted" };
   if (node.name === "codemode") {
     const failures = countErrors(node.children);
     if (failures > 0) {
       const total = countToolCalls(node.children);
+      const color: PulseBase = failures === total ? "error" : "warning";
       return {
-        glyph: node.status === "running" ? spinGlyph(glyphs, now) : glyphs.dot,
-        color: failures === total ? "error" : "warning",
+        glyph: glyphs.dot,
+        color,
+        ...(node.status === "running" ? { pulse: color } : {}),
       };
     }
   }
   switch (node.status) {
     case "running":
-      // A live call spins: the marker walks the frame ramp, one frame per tick, so the row
-      // reads as in flight instead of as a dot that sometimes blinks out.
-      return { glyph: spinGlyph(glyphs, now), color: "warning" };
+      // A live call breathes the way the active milestone does: one steady dot whose colour
+      // swells and quiets, instead of a rotating glyph that makes the row flicker.
+      return { glyph: glyphs.dot, color: "warning", pulse: "warning" };
     case "error":
       return { glyph: glyphs.dot, color: "error" };
     case "success":
@@ -279,7 +330,7 @@ export function paintGroup(
     headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
   }
   // The milestone strip and rollup sit directly below the frame top, before call details.
-  const milestones = milestoneText(group, theme, glyphs, inner);
+  const milestones = milestoneText(group, theme, glyphs, inner, Date.now());
   if (milestones) {
     lines.push(milestones);
     targets.set(lines.length - 1, GROUP_TARGET);
@@ -295,7 +346,7 @@ export function paintGroup(
       const guide = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
       const open = expandAll || state.expanded.has(node.id);
       const now = Date.now();
-      const mark = stateMark(node, glyphs, now);
+      const mark = stateMark(node, glyphs);
       // The guide is structure, not state: the dot and the row summary already carry the
       // outcome, so a failed call keeps a neutral stem instead of repainting the line.
       const stemColor: Foreground =
@@ -307,8 +358,10 @@ export function paintGroup(
       // The branch keeps its stem; the dot after it carries the call state, so a running
       // call blinks in place instead of the marker only saying open or closed.
       const stem = guide + (last ? glyphs.end : glyphs.tee) + "─ ";
-      const connector =
-        themeText(theme, stemColor, stem) + themeText(theme, mark.color, mark.glyph) + " " + label;
+      const markText = mark.pulse
+        ? pulseText(mark.glyph, theme, now, mark.pulse)
+        : themeText(theme, mark.color, mark.glyph);
+      const connector = themeText(theme, stemColor, stem) + markText + " " + label;
       // Reasoning stays a plain label until it is clicked; the text lives in the preview.
       const detail = node.kind === "thinking" ? "" : detailOf(node);
       const tail =

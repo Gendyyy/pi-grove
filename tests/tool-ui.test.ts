@@ -35,7 +35,7 @@ test("grouped top-level codemode calls require stable identity and current progr
     toolName: "codemode",
     input: { code: script("// reasoning: inspect the retry path", intent, progress, "return 1;") },
   };
-  assert.match(codemodeGroupMetadataViolation(missingPlan, "prompt") ?? "", /task-milestones.*last phase is verify/);
+  assert.match(codemodeGroupMetadataViolation(missingPlan, "prompt") ?? "", /task-milestones.*one to seven short labeled phases/);
 
   const missingPhase = {
     toolName: "codemode",
