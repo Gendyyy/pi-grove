@@ -6,6 +6,8 @@ import { CODEMODE_GROUP_GUIDANCE, codemodeGroupMetadataViolation, registerToolUi
 const script = (...lines: string[]) => lines.join("\n");
 const intent = "// task-intent: Make payment retries safe from duplicate charges";
 const progress = "// task-progress: 6";
+const plan = "// task-milestones: inspect=Inspect; build=Build; verify=Verify";
+const phase = "// task-milestone: inspect";
 test("grouped top-level codemode calls require stable identity and current progress", () => {
   const missingTask = {
     toolName: "codemode",
@@ -27,8 +29,26 @@ test("grouped top-level codemode calls require stable identity and current progr
 
   const validTask = {
     toolName: "codemode",
+    input: { code: script("// reasoning: inspect the retry path", intent, progress, plan, phase, "return 1;") },
+  };
+  const missingPlan = {
+    toolName: "codemode",
     input: { code: script("// reasoning: inspect the retry path", intent, progress, "return 1;") },
   };
+  assert.match(codemodeGroupMetadataViolation(missingPlan, "prompt") ?? "", /task-milestones.*last phase is verify/);
+
+  const missingPhase = {
+    toolName: "codemode",
+    input: { code: script("// reasoning: inspect the retry path", intent, progress, plan, "return 1;") },
+  };
+  assert.match(codemodeGroupMetadataViolation(missingPhase, "prompt") ?? "", /task-milestone: <id> naming the phase/);
+
+  const foreignPhase = {
+    toolName: "codemode",
+    input: { code: script("// reasoning: inspect the retry path", intent, progress, plan, "// task-milestone: deploy", "return 1;") },
+  };
+  assert.match(codemodeGroupMetadataViolation(foreignPhase, "prompt") ?? "", /must name a phase from the declared/);
+
   assert.equal(codemodeGroupMetadataViolation(validTask, "prompt"), undefined);
 
   const annotated = {
@@ -38,6 +58,8 @@ test("grouped top-level codemode calls require stable identity and current progr
       "// reasoning: inspect the retry path",
       intent,
       progress,
+      plan,
+      phase,
       "// group-phase: ignored legacy annotation",
       "return 1;",
     ) },
@@ -58,7 +80,7 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
     },
     registerToolRenderer() {},
   } as unknown as ExtensionAPI;
-  registerToolUi(pi, {
+  const controller = registerToolUi(pi, {
     tools: new Set(),
     mode: "reasoning",
     icons: false,
@@ -66,8 +88,12 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
     group: "prompt",
     groupRevealErrors: true,
     groupWindow: 5,
+    groupNestedTools: true,
+    groupProgress: true,
+    groupSparkline: true,
     thinking: "inline",
   });
+  controller.updateSettings({ groupProgress: false, groupWindow: 3 });
 
   const promptEvent = { systemPromptOptions: { selectedTools: ["codemode"], sections: {} as Record<string, string> } };
   handlers.get("before_agent_start")?.(promptEvent);
@@ -75,6 +101,9 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /stable border title, not a phase update/);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /best judgment.*not.*tool-call count.*fixed denominator/s);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /final tool call.*100.*only after that call succeeds/s);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /one to seven short labeled phases/);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /task-milestone: <id>.*every top-level call/);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /phase state stays independent of the percentage/);
   assert.doesNotMatch(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /group-phase/);
 
   const toolCall = handlers.get("tool_call")!;
@@ -87,7 +116,7 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
 
   const accepted = toolCall({
     toolName: "codemode",
-    input: { code: script("// reasoning: inspect the retry path", intent, progress, "// group-phase: ignored legacy annotation", "return 1;") },
+    input: { code: script("// reasoning: inspect the retry path", intent, progress, plan, phase, "// group-phase: ignored legacy annotation", "return 1;") },
   });
   assert.equal(accepted, undefined, "legacy phase comments no longer affect the task title");
 });
@@ -97,6 +126,8 @@ test("Pi-agent guidance keeps task identity as the sole border title", () => {
   assert.match(CODEMODE_GROUP_GUIDANCE, /stable border title, not a phase update/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /best judgment.*not.*tool-call count.*fixed denominator/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /final tool call.*100.*only after that call succeeds/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /one to seven short labeled phases/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /task-milestone: <id>.*every top-level call/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /@options:.*reasoning:.*task-intent:.*task-progress:/s);
   assert.doesNotMatch(CODEMODE_GROUP_GUIDANCE, /group-phase/);
 });

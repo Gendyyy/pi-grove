@@ -20,11 +20,14 @@ import {
   brief,
   clean,
   goalOf,
+  taskMilestoneOf,
+  taskMilestonesOf,
   taskIntentOf,
   taskProgressOf,
   targetOf,
   type PaintPhase,
   type TreeGroup,
+  type TaskMilestone,
   type TreeNode,
   type TreeStatus,
 } from "./tree-model.js";
@@ -92,8 +95,46 @@ function updateGroupIntent(group: TreeGroup, intent: string): boolean {
   if (!intent || group.intent === intent) return false;
   group.intent = intent;
   group.progress = undefined;
+  group.milestones = undefined;
+  group.activeMilestoneId = undefined;
   group.pendingCompletionId = undefined;
   return true;
+}
+
+/** Apply an optional phase plan and current id, preserving the last valid state. */
+function updateGroupMilestones(
+  group: TreeGroup,
+  milestones: TaskMilestone[] | undefined,
+  milestoneId: string | undefined,
+): boolean {
+  let changed = false;
+  let planChanged = false;
+  if (milestones) {
+    const samePlan = group.milestones?.length === milestones.length &&
+      group.milestones.every((milestone, index) =>
+        milestone.id === milestones[index]?.id && milestone.label === milestones[index]?.label,
+      );
+    if (!samePlan) {
+      group.milestones = milestones;
+      changed = true;
+      planChanged = true;
+    }
+  }
+  const plan = group.milestones;
+  if (!plan) return changed;
+  const declaredIndex = milestoneId ? plan.findIndex(milestone => milestone.id === milestoneId) : -1;
+  const currentIndex = group.activeMilestoneId
+    ? plan.findIndex(milestone => milestone.id === group.activeMilestoneId)
+    : -1;
+  const nextIndex = declaredIndex < 0
+    ? currentIndex < 0 ? 0 : currentIndex
+    : planChanged || currentIndex < 0 ? declaredIndex : Math.max(currentIndex, declaredIndex);
+  const nextId = plan[nextIndex]?.id;
+  if (nextId !== group.activeMilestoneId) {
+    group.activeMilestoneId = nextId;
+    changed = true;
+  }
+  return changed;
 }
 
 /** Keep the last valid estimate; repeated idempotent values do not repaint the card. */
@@ -174,7 +215,12 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
   const streaming = input.streaming === true;
   const statedIntent = parent || streaming ? "" : taskIntentOf(record);
   const statedProgress = parent || streaming ? undefined : taskProgressOf(record);
+  const statedMilestones = parent || streaming ? undefined : taskMilestonesOf(record);
+  const statedMilestone = parent || streaming ? undefined : taskMilestoneOf(record);
   const intentChanged = parent || streaming ? false : updateGroupIntent(group, statedIntent);
+  const milestonesChanged = parent || streaming
+    ? false
+    : updateGroupMilestones(group, statedMilestones, statedMilestone);
   const progressChanged = parent || statedProgress === 100
     ? false
     : updateGroupProgress(group, statedProgress);
@@ -190,7 +236,7 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
     const completion = !parent && statedProgress === 100;
     const completionChanged = statedProgress !== undefined && known.completesTask !== completion;
     if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
-    if (goal === known.goal && target === known.target && !intentChanged && !progressChanged &&
+    if (goal === known.goal && target === known.target && !intentChanged && !milestonesChanged && !progressChanged &&
       !intentNodeChanged && !completionChanged) return undefined;
     known.goal = goal;
     known.target = target;
@@ -315,6 +361,7 @@ export function attachCalls(
     if (!parent) {
       const args = (call.args ?? undefined) as Record<string, unknown> | undefined;
       updateGroupIntent(group, taskIntentOf(args));
+      updateGroupMilestones(group, taskMilestonesOf(args), taskMilestoneOf(args));
       const progress = taskProgressOf(args);
       if (progress === 100) group.pendingCompletionId = call.id;
       else if (progress !== undefined) {

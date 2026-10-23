@@ -26,7 +26,16 @@ function call(id: string, name: string): unknown {
 
 /** Settings with ASCII glyphs so painted lines can be asserted literally. */
 function settings(): TreeSettings {
-  return { mode: "prompt", revealErrors: true, icons: false, iconMode: "ascii", window: 4 };
+  return {
+    mode: "prompt",
+    revealErrors: true,
+    icons: false,
+    iconMode: "ascii",
+    window: 4,
+    groupNestedTools: true,
+    groupProgress: true,
+    groupSparkline: true,
+  };
 }
 
 /** Minimal stand-in for a renderer component. */

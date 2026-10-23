@@ -8,12 +8,14 @@ import { DynamicBorder, type ExtensionUIContext, type Theme } from "@earendil-wo
 import { defaultConfigPath } from "./config.js";
 import {
   panelRows,
+  panelValue,
   parseValue,
   readSettings,
-  saveSetting,
+  persistPanelSetting,
   withSetting,
   type GroveSettings,
   type SettingKey,
+  type SettingValue,
 } from "./settings.js";
 
 /** Rows the panel draws above the list: border, title, config path. */
@@ -26,6 +28,8 @@ const VISIBLE_ROWS = 9;
 export interface PanelOptions {
   configPath?: string;
   settings?: GroveSettings;
+  /** Apply a persisted setting to the active extension when its policy permits it. */
+  onLiveChange?: (key: SettingKey, value: SettingValue) => void;
 }
 
 /** The file the panel writes, shortened so it fits one line. */
@@ -82,8 +86,7 @@ function buildItems(
 }
 
 /**
- * Open the settings panel. Resolves true when at least one option was written, which is the
- * caller cue to reload so the new layout takes effect.
+ * Open the settings panel. Resolves true only when a persisted option needs Grove reloaded.
  */
 export async function showSettingsPanel(
   ui: ExtensionUIContext,
@@ -91,19 +94,26 @@ export async function showSettingsPanel(
 ): Promise<boolean> {
   const configPath = options.configPath ?? defaultConfigPath();
   const live: GroveSettings = { ...(options.settings ?? readSettings(configPath)) };
-  let changed = false;
+  let needsReload = false;
+  let pendingSaves = Promise.resolve();
 
-  await ui.custom<boolean>(
+  await ui.custom<void>(
     (tui, theme, _keybindings, done) => {
       const container = new Container();
       const change = (key: SettingKey, raw: string): void => {
         const outcome = parseValue(key, raw);
         if (!outcome.ok) return;
         Object.assign(live, withSetting(live, outcome.key, outcome.value));
-        changed = true;
-        list.updateValue(key, outcome.display);
-        void saveSetting(outcome.key, outcome.value, configPath).catch((error: unknown) => {
-          ui.notify("grove could not save " + key + ": " + String(error), "warning");
+        list.updateValue(key, panelValue(key, outcome.value));
+        pendingSaves = pendingSaves.then(async () => {
+          const reload = await persistPanelSetting(
+            outcome.key,
+            outcome.value,
+            configPath,
+            options.onLiveChange,
+            message => ui.notify(message, "warning"),
+          );
+          needsReload ||= reload;
         });
         tui.requestRender();
       };
@@ -120,7 +130,7 @@ export async function showSettingsPanel(
           hint: (text) => theme.fg("dim", text),
         },
         (id, value) => change(id as SettingKey, value),
-        () => done(changed),
+        () => done(),
         { enableSearch: true },
       );
 
@@ -153,5 +163,6 @@ export async function showSettingsPanel(
     { overlay: true },
   );
 
-  return changed;
+  await pendingSaves;
+  return needsReload;
 }

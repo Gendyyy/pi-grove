@@ -104,7 +104,16 @@ test("a call with no stored result stays unfinished instead of disappearing", ()
 
 /** Settings with ASCII glyphs so painted lines can be asserted literally. */
 function settings(): TreeSettings {
-  return { mode: "prompt", revealErrors: true, icons: false, iconMode: "ascii", window: 4 };
+  return {
+    mode: "prompt",
+    revealErrors: true,
+    icons: false,
+    iconMode: "ascii",
+    window: 4,
+    groupNestedTools: true,
+    groupProgress: true,
+    groupSparkline: true,
+  };
 }
 
 /** Minimal stand-in for a renderer component. */
@@ -205,6 +214,40 @@ test("replay keeps the stable task title and ignores legacy phase annotations", 
   assert.doesNotMatch(frame[0]!, /Add regression coverage for timeout retries/);
   assert.doesNotMatch(frame[0]!, /Trace where timeout handling resets retry count/);
   assert.match(frame[1]!, /53%/, "replay keeps the latest repeated estimate");
+});
+
+test("replay restores the latest declared milestone from codemode comments", () => {
+  const plan = "// task-milestones: inspect=Inspect; build=Build; verify=Verify";
+  const entries = [
+    user("2026-01-01T00:00:00.000Z", "finish the retry fix"),
+    assistant("2026-01-01T00:00:01.000Z", [
+      {
+        id: "m1",
+        name: "codemode",
+        arguments: { code: `// task-intent: Implement retry safety
+// task-progress: 25
+${plan}
+// task-milestone: inspect
+return 1;` },
+      },
+      {
+        id: "m2",
+        name: "codemode",
+        arguments: { code: `// task-intent: Implement retry safety
+// task-progress: 55
+${plan}
+// task-milestone: build
+return 1;` },
+      },
+    ]),
+    result("2026-01-01T00:00:02.000Z", "m1", "codemode"),
+    result("2026-01-01T00:00:03.000Z", "m2", "codemode"),
+  ];
+  const tree = new ToolTree(settings());
+  tree.restore(readTranscript(entries, "prompt"));
+  const card = lines(tree.render(row("m1")));
+  assert.match(card[0]!, /x Inspect - \* Build - o Verify/);
+  assert.match(card[1]!, /55%/);
 });
 
 test("replay commits 100 only for a successful final tool call", () => {

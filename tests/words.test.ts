@@ -18,7 +18,17 @@ const PERCENT = "";
 
 /** Tree settings with the glyph style switched on. */
 function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> = {}): TreeSettings {
-  return { mode: "turn", revealErrors: true, icons: true, iconMode, window: 4, ...overrides };
+  return {
+    mode: "turn",
+    revealErrors: true,
+    icons: true,
+    iconMode,
+    window: 4,
+    groupNestedTools: true,
+    groupProgress: true,
+    groupSparkline: true,
+    ...overrides,
+  };
 }
 
 /** A renderer row as pi hands it to the tree. */

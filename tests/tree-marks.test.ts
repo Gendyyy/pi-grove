@@ -5,22 +5,31 @@ import { ToolTree, type TreeRow, type TreeSettings } from "../tool-tree.js";
 import { plainTheme, type GroveTheme } from "../theme.js";
 
 const theme: GroveTheme = { ...plainTheme, style: (text, options) => "[" + (options.fg ?? "-") + "]" + text };
-const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4 };
+const settings: TreeSettings = {
+  mode: "prompt",
+  revealErrors: false,
+  icons: false,
+  iconMode: "ascii",
+  window: 4,
+  groupNestedTools: true,
+  groupProgress: true,
+  groupSparkline: true,
+};
 const inner = () => ({ render: () => ["inner"], invalidate: () => {} });
-const row = (id: string): TreeRow => ({ toolCallId: id, inner: inner(), theme, expanded: false, invalidate: () => {} });
+const row = (id: string, rowTheme: GroveTheme = theme): TreeRow => ({ toolCallId: id, inner: inner(), theme: rowTheme, expanded: false, invalidate: () => {} });
 const click = (y: number) => ({ type: "click", button: "left", x: 0, y, screenX: 0, screenY: 0, width: 96, height: 40 });
 const plain = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, "");
-const card = (tree: ToolTree, id = "a") => tree.render(row(id)) as unknown as {
+const card = (tree: ToolTree, id = "a", rowTheme: GroveTheme = theme) => tree.render(row(id, rowTheme)) as unknown as {
   handleMouse?: (event: unknown) => unknown;
   render(width: number): string[];
 };
 
 /** Paint the group with every row revealed. */
-function painted(tree: ToolTree): string[] {
+function painted(tree: ToolTree, width = 96, rowTheme: GroveTheme = theme): string[] {
   // The header is the first line inside the frame, so the raw frame index is 1.
-  card(tree).handleMouse?.(click(1));
+  card(tree, "a", rowTheme).handleMouse?.(click(1));
   // This theme tags text instead of emitting escapes, so the frame is sliced, not parsed.
-  return card(tree).render(96).map(plain).slice(1, -1);
+  return card(tree, "a", rowTheme).render(width).map(plain).slice(1, -1);
 }
 
 /** Build a settled codemode call with the requested nested outcomes. */
@@ -35,6 +44,55 @@ function codemodeWithOutcomes(failures: boolean[]): ToolTree {
   tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: false, durationMs: 200 });
   return tree;
 }
+
+test("milestone stepper colors each phase and switches to the active label when narrow", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: {
+      taskIntent: "Implement retry safety",
+      taskProgress: 55,
+      taskMilestones: "inspect=Inspect; build=Build; verify=Verify",
+      taskMilestone: "build",
+    },
+  });
+
+  const labeled = painted(tree, 180).find(line => line.includes("Inspect"));
+  assert.ok(labeled);
+  assert.match(labeled, /\[success\]x Inspect/);
+  assert.match(labeled, /\[accent\]\* Build/);
+  assert.match(labeled, /\[dim\]o Verify/);
+
+  const full = painted(tree, 40, plainTheme).find(line => line.includes("Inspect"));
+  assert.ok(full);
+  assert.match(full, /x Inspect - \* Build - o Verify/);
+
+  const compact = painted(tree, 35, plainTheme).find(line => line.includes("Build"));
+  assert.ok(compact);
+  assert.doesNotMatch(compact, /Inspect|Verify/);
+  assert.match(compact, /x.*\*.*o.*Build/);
+  assert.ok(compact.length <= 35, `compact stepper exceeds its viewport: ${compact}`);
+});
+
+test("an unframed narrow card preserves a fitting active milestone label", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: {
+      taskIntent: "Implement retry safety",
+      taskProgress: 55,
+      taskMilestones: "inspect=Inspect; build=Checkpoint; verify=Verify",
+      taskMilestone: "build",
+    },
+  });
+
+  const compact = card(tree, "a", plainTheme).render(27).map(plain).find(line => line.includes("Check"));
+  assert.ok(compact);
+  assert.match(compact, /x.*\*.*o.*Checkpoint/);
+  assert.ok(compact.length <= 27, `compact stepper exceeds its viewport: ${compact}`);
+});
 
 test("codemode marks partial nested failures orange without revealing them", () => {
   const rows = painted(codemodeWithOutcomes([true, false]));
@@ -59,8 +117,8 @@ test("a settled call shows a filled dot in its status colour", () => {
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: true, durationMs: 800 } as never, undefined);
   const [head, ok, failed] = painted(tree) as [string, string, string];
-  const headerMarker = head!.split(" · ")[0]!;
-  assert.match(headerMarker, /\[dim\]/);
+  const headerMarker = head!.match(/\[dim\]v/)?.[0];
+  assert.ok(headerMarker);
   assert.doesNotMatch(headerMarker, /warning/);
   assert.match(ok!, /\[success\]\*/);
   assert.match(failed!, /\[error\]\*/);
@@ -103,4 +161,41 @@ test("a finished card keeps a quiet marker", () => {
   const marker = head.split(" · ")[0]!;
   assert.match(marker, /\[dim\]/);
   assert.doesNotMatch(marker, /warning/);
+});
+
+test("a two-phase plan still paints a labeled stepper", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: { taskIntent: "Tidy the retry helper", taskProgress: 40, taskMilestones: "work=Tidy helper; verify=Verify", taskMilestone: "work" },
+  });
+
+  const line = painted(tree, 60).find(candidate => candidate.includes("Tidy helper"));
+  assert.ok(line, "one phase must render as a stepper");
+  assert.match(line, /\[accent\]\* Tidy helper/);
+});
+
+test("seven phases keep the active phase readable on a narrow card", () => {
+  const tree = new ToolTree(settings);
+  tree.start({
+    toolCallId: "a",
+    toolName: "bash",
+    args: {
+      taskIntent: "Ship the retry guard",
+      taskProgress: 50,
+      taskMilestones: "plan=Plan; read=Read; patch=Patch; test=Test; docs=Docs; review=Review; verify=Verify",
+      taskMilestone: "test",
+    },
+  });
+
+  const wide = painted(tree, 200).find(candidate => candidate.includes("Plan"));
+  assert.ok(wide, "seven phases fit while the labels have room");
+  assert.match(wide, /\[success\]x Plan/);
+  assert.match(wide, /\[accent\]\* Test/);
+
+  const narrow = painted(tree, 28, plainTheme).find(candidate => candidate.includes("Test"));
+  assert.ok(narrow, "the active phase keeps its label on a narrow card");
+  assert.doesNotMatch(narrow, /Plan|Verify/);
+  assert.ok(narrow.length <= 28, `narrow stepper exceeds its viewport: ${narrow}`);
 });

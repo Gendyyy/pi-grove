@@ -27,6 +27,9 @@ export interface GroveSettings {
   group: GroveGroup;
   groupWindow: number;
   groupRevealErrors: boolean;
+  groupNestedTools: boolean;
+  groupProgress: boolean;
+  groupSparkline: boolean;
   thinking: GroveThinking;
   /** Absent leaves pi's own hidden-thinking label alone; empty hides those lines. */
   thinkingLabel: string | undefined;
@@ -35,12 +38,16 @@ export interface GroveSettings {
 export type SettingKey = keyof GroveSettings;
 export type SettingValue = boolean | number | string | undefined;
 export type SettingKind = "boolean" | "enum" | "number" | "text";
+/** Whether a setting can be applied to the active extension instance. */
+export type SettingApply = "live" | "reload";
 
 /** One option: how to validate it, what it falls back to, and how to describe it. */
 export interface SettingSpec {
   key: SettingKey;
   /** Human wording for the settings panel. */
   label: string;
+  /** Whether changing this option mutates the active renderer or needs startup again. */
+  apply: SettingApply;
   /** Values the panel cycles through when they differ from the enum list. */
   choices?: readonly string[];
   kind: SettingKind;
@@ -59,14 +66,15 @@ const WINDOW_MAX = 32;
 export const WINDOW_CHOICES = ["1", "2", "3", "4", "5", "6", "8", "10", "12", "16"] as const;
 
 export const SETTINGS: readonly SettingSpec[] = [
-  { key: "enabled", kind: "boolean", fallback: true, label: "Enabled", summary: "render grove at all; PI_GROVE overrides" },
-  { key: "mode", kind: "enum", values: MODES, fallback: "reasoning", label: "Row label", summary: "what a tool row leads with" },
-  { key: "icons", kind: "boolean", fallback: true, label: "Tool icons", summary: "draw a glyph before each tool name" },
-  { key: "iconMode", kind: "enum", values: ICON_MODES, fallback: "auto", label: "Icon set", summary: "which glyph set to use" },
-  { key: "group", kind: "enum", values: GROUPS, fallback: "prompt", label: "Grouping", summary: "where one collapsed card ends" },
+  { key: "enabled", kind: "boolean", fallback: true, apply: "reload", label: "Enabled", summary: "render grove at all; PI_GROVE overrides" },
+  { key: "mode", kind: "enum", values: MODES, fallback: "reasoning", apply: "reload", label: "Row label", summary: "what a tool row leads with" },
+  { key: "icons", kind: "boolean", fallback: true, apply: "live", label: "Tool icons", summary: "draw a glyph before each tool name" },
+  { key: "iconMode", kind: "enum", values: ICON_MODES, fallback: "auto", apply: "live", label: "Icon set", summary: "which glyph set to use" },
+  { key: "group", kind: "enum", values: GROUPS, fallback: "prompt", apply: "reload", label: "Grouping", summary: "where one collapsed card ends" },
   {
     key: "groupWindow",
     kind: "number",
+    apply: "live",
     min: 1,
     max: WINDOW_MAX,
     fallback: 5,
@@ -77,14 +85,40 @@ export const SETTINGS: readonly SettingSpec[] = [
   {
     key: "groupRevealErrors",
     kind: "boolean",
+    apply: "live",
     fallback: false,
     label: "Keep failures visible",
     summary: "failed steps stay visible while collapsed when enabled",
   },
-  { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", label: "Reasoning", summary: "where reasoning appears" },
+  {
+    key: "groupNestedTools",
+    kind: "boolean",
+    apply: "live",
+    fallback: true,
+    label: "Nested tool counts",
+    summary: "show nested tool names and counts inline",
+  },
+  {
+    key: "groupProgress",
+    kind: "boolean",
+    apply: "live",
+    fallback: true,
+    label: "Progress meter",
+    summary: "show the progress estimate in the card rollup",
+  },
+  {
+    key: "groupSparkline",
+    kind: "boolean",
+    apply: "live",
+    fallback: true,
+    label: "Duration sparkline",
+    summary: "show relative call durations in the card rollup",
+  },
+  { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", apply: "reload", label: "Reasoning", summary: "where reasoning appears" },
   {
     key: "thinkingLabel",
     kind: "text",
+    apply: "live",
     fallback: "",
     label: "Thinking label",
     summary: "text pi prints for a hidden thinking run; empty hides it",
@@ -162,6 +196,9 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     group: readChoice(settingSpec("group"), raw.group, GROUPS, "prompt"),
     groupWindow: readNumber(settingSpec("groupWindow"), raw.groupWindow, 4),
     groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors, false),
+    groupNestedTools: readFlag(settingSpec("groupNestedTools"), raw.groupNestedTools, true),
+    groupProgress: readFlag(settingSpec("groupProgress"), raw.groupProgress, true),
+    groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline, true),
     thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS, "off"),
     thinkingLabel: (() => {
       const value = coerce(settingSpec("thinkingLabel"), raw.thinkingLabel);
@@ -190,6 +227,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   { words: ["icons"], keys: ["icons", "iconMode"] },
   { words: ["group", "window"], keys: ["groupWindow"] },
   { words: ["group", "errors"], keys: ["groupRevealErrors"] },
+  { words: ["group", "nested"], keys: ["groupNestedTools"] },
+  { words: ["group", "progress"], keys: ["groupProgress"] },
+  { words: ["group", "sparkline"], keys: ["groupSparkline"] },
   { words: ["group"], keys: ["group"] },
   { words: ["thinking", "label"], keys: ["thinkingLabel"] },
   { words: ["thinking"], keys: ["thinking"] },
@@ -277,6 +317,12 @@ export function describe(key: SettingKey, value: SettingValue): string {
   return String(value);
 }
 
+/** Format one value using the choices displayed by the settings panel. */
+export function panelValue(key: SettingKey, value: SettingValue): string {
+  if (settingSpec(key).kind === "boolean") return value === true ? "on" : "off";
+  return describe(key, value);
+}
+
 /** The value a setting currently holds, for change detection and status output. */
 export function currentValue(settings: GroveSettings, key: SettingKey): SettingValue {
   return settings[key];
@@ -308,6 +354,31 @@ export function withSetting(settings: GroveSettings, key: SettingKey, value: Set
 /** Persist one option; the key names the JSON field, so nothing else needs editing. */
 export function saveSetting(key: SettingKey, value: SettingValue, configPath = defaultConfigPath()): Promise<void> {
   return updateConfig({ [key]: value }, configPath);
+}
+
+/** Persist a panel change, apply reload-free values, and report whether Grove must restart. */
+export async function persistPanelSetting(
+  key: SettingKey,
+  value: SettingValue,
+  configPath: string,
+  onLiveChange: ((key: SettingKey, value: SettingValue) => void) | undefined,
+  notify: (message: string) => void,
+): Promise<boolean> {
+  try {
+    await saveSetting(key, value, configPath);
+  } catch (error) {
+    notify("grove could not save " + key + ": " + String(error));
+    return false;
+  }
+
+  if (settingSpec(key).apply === "reload" || !onLiveChange) return true;
+  try {
+    onLiveChange(key, value);
+    return false;
+  } catch (error) {
+    notify("grove saved " + key + " but could not apply it live: " + String(error));
+    return true;
+  }
 }
 
 /** Every command form /grove offers, derived so a new option cannot be forgotten. */
@@ -348,8 +419,8 @@ function panelRow(settings: GroveSettings, spec: SettingSpec): PanelRow {
   const row: PanelRow = {
     key: spec.key,
     label: spec.label,
-    description: spec.summary,
-    currentValue: describe(spec.key, currentValue(settings, spec.key)),
+    description: spec.summary + (spec.apply === "live" ? " · applies immediately" : " · requires Grove reload"),
+    currentValue: panelValue(spec.key, currentValue(settings, spec.key)),
   };
   if (spec.kind === "boolean") row.choices = ["on", "off"];
   else if (spec.kind === "enum") row.choices = spec.values ?? [];

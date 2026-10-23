@@ -41,7 +41,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { resolveIconMode } from "./icons.js";
 import { showSettingsPanel } from "./panel.js";
-import { registerToolUi } from "./tool-ui.js";
+import { registerToolUi, type ToolUiController } from "./tool-ui.js";
 import { registerTitleStatus } from "./title-status.js";
 import { defaultConfigPath } from "./config.js";
 import {
@@ -54,8 +54,10 @@ import {
   resolveCommand,
   saveSetting,
   settingsSource,
+  settingSpec,
   statusLines,
   usageText,
+  withSetting,
   type SettingKey,
   type SettingValue,
 } from "./settings.js";
@@ -97,11 +99,42 @@ export function createGroveExtension(
     const read = dependencies.readSettings ?? readSettings;
     const save = dependencies.saveSetting ?? saveSetting;
     const settings = read(configPath);
+    let toolUi: ToolUiController | undefined;
+    let currentThinkingLabel = settings.thinkingLabel;
+    type ThinkingLabelUi = { setHiddenThinkingLabel(value?: string): void };
+    /** Apply the current hidden-thinking label after pi resets extension UI state. */
+    const applyThinkingLabel = (ui: ThinkingLabelUi): void => {
+      if (currentThinkingLabel === undefined) return;
+      try {
+        ui.setHiddenThinkingLabel(currentThinkingLabel);
+      } catch {
+        // Hosts without the label API keep pi own wording.
+      }
+    };
+    /** Persisted presentation changes update the active renderer without restarting it. */
+    const applyLiveSetting = (ctx: ExtensionCommandContext, key: SettingKey, value: SettingValue): void => {
+      if (settingSpec(key).apply !== "live") return;
+      Object.assign(settings, withSetting(settings, key, value));
+      switch (key) {
+        case "icons": toolUi?.updateSettings({ icons: settings.icons }); return;
+        case "iconMode": toolUi?.updateSettings({ iconMode: resolveIconMode(settings.iconMode) }); return;
+        case "groupWindow": toolUi?.updateSettings({ groupWindow: settings.groupWindow }); return;
+        case "groupRevealErrors": toolUi?.updateSettings({ groupRevealErrors: settings.groupRevealErrors }); return;
+        case "groupNestedTools": toolUi?.updateSettings({ groupNestedTools: settings.groupNestedTools }); return;
+        case "groupProgress": toolUi?.updateSettings({ groupProgress: settings.groupProgress }); return;
+        case "groupSparkline": toolUi?.updateSettings({ groupSparkline: settings.groupSparkline }); return;
+        case "thinkingLabel":
+          currentThinkingLabel = settings.thinkingLabel;
+          if (settings.enabled) applyThinkingLabel(ctx.ui as unknown as ThinkingLabelUi);
+          return;
+        default: return;
+      }
+    };
     const integration =
       dependencies.createIntegration?.(pi, cwd) ??
       createPiFffIntegrationController({ pi, cwd });
 
-    /** Persist one option and reload, so every option travels the same path. */
+    /** Persist one setting and apply it live or reload according to its policy. */
     const change = async (
       ctx: ExtensionCommandContext,
       key: SettingKey,
@@ -126,6 +159,17 @@ export function createGroveExtension(
         ctx.ui.notify("Could not save " + configPath + ": " + detail, "error");
         return;
       }
+      if (settingSpec(key).apply === "live") {
+        try {
+          applyLiveSetting(ctx, key, value);
+          ctx.ui.notify(key + " set to " + display + "; applied immediately.", "info");
+        } catch (error) {
+          ctx.ui.notify(key + " was saved but could not be applied live; reloading: " + String(error), "warning");
+          await ctx.reload();
+        }
+        return;
+      }
+      Object.assign(settings, withSetting(settings, key, value));
       ctx.ui.notify(key + " set to " + display + "; reloading.", "info");
       await ctx.reload();
     };
@@ -190,10 +234,13 @@ export function createGroveExtension(
         }
 
         if (verb === "" || verb === "panel" || verb === "settings") {
-          const written = await showSettingsPanel(ctx.ui, { settings });
-          if (!written) return;
-          ctx.ui.notify("grove settings saved; reloading to apply them.", "info");
-          ctx.reload();
+          const needsReload = await showSettingsPanel(ctx.ui, {
+            settings,
+            onLiveChange: (key, value) => applyLiveSetting(ctx, key, value),
+          });
+          if (!needsReload) return;
+          ctx.ui.notify("grove settings saved; reloading to apply the changes.", "info");
+          await ctx.reload();
           return;
         }
 
@@ -225,23 +272,14 @@ export function createGroveExtension(
     }
     if (!settings.enabled) return;
     registerTitleStatus(pi);
-    const thinkingLabel = settings.thinkingLabel;
-    if (thinkingLabel !== undefined) {
-      // A blank label makes pi render no hidden-thinking line at all. pi restores its
-      // own wording in resetExtensionUI(), so every new message re-arms the label.
-      const label = thinkingLabel;
-      const applyThinkingLabel = (ctx: { ui: { setHiddenThinkingLabel(value?: string): void } }): void => {
-        try {
-          ctx.ui.setHiddenThinkingLabel(label);
-        } catch {
-          // Hosts without the label API keep pi own wording.
-        }
-      };
-      pi.on("session_start", (_event, ctx) => applyThinkingLabel(ctx));
-      pi.on("agent_start", (_event, ctx) => applyThinkingLabel(ctx));
-      pi.on("turn_start", (_event, ctx) => applyThinkingLabel(ctx));
-      pi.on("message_start", (_event, ctx) => applyThinkingLabel(ctx));
-    }
+    // A blank label hides the line; pi resets this value on each message, so listeners
+    // read the mutable setting rather than capturing a startup-only copy.
+    const rearmThinkingLabel = (_event: unknown, ctx: { ui: unknown }): void =>
+      applyThinkingLabel(ctx.ui as ThinkingLabelUi);
+    pi.on("session_start", rearmThinkingLabel);
+    pi.on("agent_start", rearmThinkingLabel);
+    pi.on("turn_start", rearmThinkingLabel);
+    pi.on("message_start", rearmThinkingLabel);
 
     const composedNames = new Set<string>();
     const compose = (source: SourceToolDefinition): SourceToolDefinition => {
@@ -265,7 +303,7 @@ export function createGroveExtension(
       pi.registerTool(compose(source));
     }
     startupPlan.commit(compose);
-    registerToolUi(pi, {
+    toolUi = registerToolUi(pi, {
       tools: composedNames,
       mode: settings.mode,
       icons: settings.icons,
@@ -273,6 +311,9 @@ export function createGroveExtension(
       group: settings.group,
       groupRevealErrors: settings.groupRevealErrors,
       groupWindow: settings.groupWindow,
+      groupNestedTools: settings.groupNestedTools,
+      groupProgress: settings.groupProgress,
+      groupSparkline: settings.groupSparkline,
       thinking: settings.thinking,
     });
 

@@ -39,6 +39,9 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `group` | prompt / turn / message / off | prompt | where one card ends |
 | `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
+| `groupNestedTools` | on / off | on | show nested tool names and counts inline |
+| `groupProgress` | on / off | on | show the progress meter in the card rollup |
+| `groupSparkline` | on / off | on | show relative call durations in the card rollup |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
@@ -60,8 +63,16 @@ Grove shows 100 only after that call succeeds. Filled cells blend smoothly from 
 to success green; empty cells stay dim. The percentage keeps its estimate-based color.
 Both annotations are stored with calls so replay restores the same title and estimate.
 
-There are no Goal or Now sections and no group status chip. The headline places progress first,
-then the duration sparkline, then the call count and tool mix.
+Every card carries a labeled stepper: declare `// task-milestones: inspect=Inspect; build=Build; verify=Verify`
+once, then repeat `// task-milestone: <id>` for the active phase on each top-level call. A plan holds
+one to seven phases and always ends in a `verify` phase, so even a small task declares its work plus a
+closing check instead of inventing filler. Grove marks earlier phases complete when the active id advances; a successful final
+`task-progress: 100` completes the whole stepper. The plan is transcript-backed and independent of
+the percentage. Full labels show when they fit; narrow cards switch to a marker rail plus the active
+label, and the tightest cards show only the active phase.
+
+There are no Goal or Now sections and no group status chip. By default, the headline places
+progress first, then the duration sparkline, then the call count and tool mix.
 
 ```
 ╭─ Make payment retries safe ───────────────────────────╮
@@ -84,7 +95,10 @@ Unicode mode uses block heights, while ASCII mode uses increasing intensity char
 Bar colors follow relative duration through the theme's success, warning and error colors:
 shorter calls are green, longer calls are red, with intermediate durations transitioning
 between them. Exact times stay on each row. Live call times use Grove's full start-to-finish
-elapsed interval, not the host-reported execution duration.
+elapsed interval, not the host-reported execution duration. `/grove group progress off` hides only
+the meter, not milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
+`/grove group nested off` hides nested tool names/counts from both the summary strip and codemode
+rows while preserving top-level tool counts, expandable child rows, and parent failure markers.
 
 ## Glyphs
 
@@ -136,11 +150,19 @@ option above. Enter cycles a value or opens a submenu, typing filters, Escape cl
 ```
 /grove                      open the settings panel
 /grove status               report every option and what is active
-/grove group turn           persist one option, then reload
+/grove group turn           change card boundaries (reload required)
 /grove group window 6       numbers are clamped to their range
+/grove group nested off      hide inline nested names/counts
+/grove group progress off    hide the progress meter
+/grove group sparkline off   hide duration bars from the rollup
 /grove thinking label Plan  free text, quoted output, empty hides the label
 /grove on | off | toggle
 ```
+
+Tool icons, icon set, visible-call window, failure visibility, nested counts, progress,
+duration bars, and the thinking label apply immediately. Enabled state, row-label mode,
+grouping, and reasoning placement require Grove to reload because they change startup-time
+tool composition or event behavior. The settings panel labels each option with its policy.
 
 ## Reasoning
 

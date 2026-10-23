@@ -11,6 +11,7 @@ import {
   ELLIPSIS,
   GROUP_TARGET,
   PREVIEW_LINES,
+  TASK_MILESTONE_MAX,
   countErrors,
   countToolCalls,
   errorCell,
@@ -153,6 +154,37 @@ function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): 
     themeText(theme, color, ` ${String(value).padStart(3, " ")}%`);
 }
 
+/** Render ordered task phases, switching to a compact rail when labels would clip. */
+function milestoneText(group: TreeGroup, theme: GroveTheme, glyphs: Glyphs, width: number): string | undefined {
+  const milestones = group.milestones;
+  if (!milestones || milestones.length === 0 || milestones.length > TASK_MILESTONE_MAX) return undefined;
+  const complete = group.progress === 100;
+  const activeIndex = complete
+    ? milestones.length - 1
+    : milestones.findIndex(milestone => milestone.id === group.activeMilestoneId);
+  if (activeIndex < 0) return undefined;
+
+  const stateAt = (index: number): "complete" | "active" | "pending" =>
+    complete || index < activeIndex ? "complete" : index === activeIndex ? "active" : "pending";
+  const roleAt = (index: number): Foreground =>
+    stateAt(index) === "complete" ? "success" : stateAt(index) === "active" ? "accent" : "dim";
+  const markerAt = (index: number): string => {
+    const status = stateAt(index);
+    return status === "complete" ? glyphs.check : status === "active" ? glyphs.dot : glyphs.hollow;
+  };
+  const full = milestones.map((milestone, index) =>
+    themeText(theme, roleAt(index), markerAt(index) + " " + milestone.label),
+  ).join(themeText(theme, "dim", " " + glyphs.h + " "));
+  if (visibleWidth(full) <= width) return full;
+
+  const markers = milestones.map((_, index) => themeText(theme, roleAt(index), markerAt(index)))
+    .join(themeText(theme, "dim", " " + glyphs.h + " "));
+  const active = themeText(theme, roleAt(activeIndex), " " + milestones[activeIndex]!.label);
+  if (visibleWidth(markers + active) <= width) return markers + active;
+  // Too narrow for the rail: the current phase alone has to carry the state.
+  return fitToolLine(themeText(theme, roleAt(activeIndex), markerAt(activeIndex) + " " + milestones[activeIndex]!.label), width);
+}
+
 /** Colour and glyph of a row marker reflect call state and nested codemode failures. */
 function stateMark(node: TreeNode, glyphs: Glyphs, now: number): { glyph: string; color: Foreground } {
   if (node.kind === "thinking") return { glyph: glyphs.dot, color: "muted" };
@@ -196,6 +228,8 @@ export function paintGroup(
   targets.clear();
   const lines: string[] = [];
   if (group.rows.length === 0) return lines;
+  // Under 24 columns the card has no frame, so preserve the entire row width.
+  const inner = width < 24 ? width : Math.max(8, width - 4);
   const glyphs = treeGlyphs(state.settings.iconMode);
   // Two different gestures: the header reveals every row of the group, while pi own
   // expand-all (ctrl+o) opens every level. A revealed row still opens only by click.
@@ -228,21 +262,28 @@ export function paintGroup(
           themeText(theme, "muted", " calls");
     // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
     const parts: string[] = [];
-    if (group.progress !== undefined) parts.push(taskProgressText(group.progress, theme, glyphs));
+    if (state.settings.groupProgress && group.progress !== undefined)
+      parts.push(taskProgressText(group.progress, theme, glyphs));
     // Keep the duration shape ahead of the count and tool mix when space gets tight.
-    const spark = durationSpark(tools, theme, glyphs);
-    if (spark) {
-      const chart = glyphs.chart ? themeText(theme, "accent", glyphs.chart + "  ") : "";
-      parts.push(chart + spark);
+    if (state.settings.groupSparkline) {
+      const spark = durationSpark(tools, theme, glyphs);
+      if (spark) {
+        const chart = glyphs.chart ? themeText(theme, "accent", glyphs.chart + "  ") : "";
+        parts.push(chart + spark);
+      }
     }
     parts.push(scope);
-    parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode));
+    parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode, state.settings.groupNestedTools));
     if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
     const head = themeText(theme, "dim", (reveal ? glyphs.open : glyphs.closed) + " ");
     headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
   }
-  // The rollup sits directly under the frame top: the card is the headline plus its rows,
-  // with no goal or phase prose between them.
+  // The milestone strip and rollup sit directly below the frame top, before call details.
+  const milestones = milestoneText(group, theme, glyphs, inner);
+  if (milestones) {
+    lines.push(milestones);
+    targets.set(lines.length - 1, GROUP_TARGET);
+  }
   if (headerLine) {
     lines.push(headerLine);
     targets.set(lines.length - 1, GROUP_TARGET);
@@ -273,7 +314,14 @@ export function paintGroup(
       const tail =
         node.kind === "thinking"
           ? themeText(theme, "dim", formatElapsed(node.duration ?? (node.status === "running" ? now - node.started : 0)))
-          : rowTail(node, theme, glyphs, state.settings.icons, state.settings.iconMode);
+          : rowTail(
+              node,
+              theme,
+              glyphs,
+              state.settings.icons,
+              state.settings.iconMode,
+              state.settings.groupNestedTools,
+            );
       const line = detail
         ? summaryLine(
             connector,
@@ -326,7 +374,6 @@ export function paintGroup(
 
   // One border around intent, rollup and calls: the group reads as a single object
   // instead of loose lines, and the frame keeps its width whatever the content is.
-  const inner = Math.max(8, width - 4);
   const border = (text: string) => themeText(theme, "dim", text);
   const body = (line: string): string => {
     const fitted = fitToolLine(line, inner);

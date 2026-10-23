@@ -145,6 +145,13 @@ export class ToolTree {
     this.stopWatch();
   }
 
+  /** Update presentation options and repaint every existing card. */
+  updateSettings(settings: Partial<TreeSettings>): void {
+    Object.assign(this.settings, settings);
+    for (const group of this.state.groups.values()) group.invalidate?.();
+    this.redraw();
+  }
+
   /** Drop every card, used when the session changes. */
   clear(): void {
     resetState(this.state);

@@ -8,11 +8,22 @@ import { GROUP_TARGET, ToolTree, paintGroup, type TreeGroup, type TreeRow, type 
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { summaryLine } from "../block-render.js";
 import { shimmerText } from "../tree-paint.js";
+import { taskMilestoneOf, taskMilestonesOf } from "../tree-model.js";
 import { composeSourceTool, type SourceToolDefinition } from "../tool-composition.js";
 
 /** Build settings with plain ASCII glyphs so assertions stay readable. */
 function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
-  return { mode: "turn", revealErrors: false, icons: false, iconMode: "ascii", window: 4, ...overrides };
+  return {
+    mode: "turn",
+    revealErrors: false,
+    icons: false,
+    iconMode: "ascii",
+    window: 4,
+    groupNestedTools: true,
+    groupProgress: true,
+    groupSparkline: true,
+    ...overrides,
+  };
 }
 
 /** Minimal pi component standing in for a renderer result. */
@@ -108,6 +119,46 @@ function lines(component: Component, width = 80): string[] {
   if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
   return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
+
+test("milestone annotations accept only bounded, uniquely identified phase plans", () => {
+  const code = [
+    "// task-milestones: inspect=Inspect; build=Build; verify=Verify",
+    "// task-milestone: build",
+  ].join("\n");
+  assert.deepEqual(taskMilestonesOf({ code }), [
+    { id: "inspect", label: "Inspect" },
+    { id: "build", label: "Build" },
+    { id: "verify", label: "Verify" },
+  ]);
+  assert.equal(taskMilestoneOf({ code }), "build");
+  assert.deepEqual(taskMilestonesOf({ taskMilestones: "plan=Plan;work=Work;verify=Verify" }), [
+    { id: "plan", label: "Plan" },
+    { id: "work", label: "Work" },
+    { id: "verify", label: "Verify" },
+  ]);
+  assert.equal(taskMilestoneOf({ taskMilestone: "build" }), "build");
+  assert.equal(taskMilestoneOf({ taskMilestone: "Bad id" }), undefined);
+
+  assert.deepEqual(taskMilestonesOf({ taskMilestones: "work=Work; verify=Verify" }), [
+    { id: "work", label: "Work" },
+    { id: "verify", label: "Verify" },
+  ]);
+  assert.equal(taskMilestonesOf({ taskMilestones: "a=A;b=B;c=C;d=D;e=E;f=F;verify=Verify" })?.length, 7);
+
+  for (const declaration of [
+    "a=A;b=B;c=C;d=D;e=E;f=F;g=G;h=H",
+    "plan=Plan;work=Work;check=Check",
+    "",
+    "Inspect=Inspect;build=Build;verify=Verify",
+    "same=Inspect;same=Build;verify=Verify",
+    "inspect=;build=Build;verify=Verify",
+    "not valid=Inspect;build=Build;verify=Verify",
+  ]) {
+    assert.equal(taskMilestonesOf({ taskMilestones: declaration }), undefined, declaration);
+  }
+  const bounded = taskMilestonesOf({ taskMilestones: "inspect=This milestone label is too long;build=Build;verify=Verify" });
+  assert.equal(bounded?.[0]?.label.length, 24);
+});
 
 test("composed tools require taskIntent and strip Grove metadata before execution", async () => {
   let received: unknown;
@@ -256,6 +307,39 @@ test("the agent milestone estimate repeats, and only a successful final call rea
   assert.match(stripAnsi(nextTask[1]!), /12%/, "a new task gets its own estimate");
 });
 
+test("milestone stepper advances monotonically and settles only after successful completion", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const phases = "inspect=Inspect; build=Build; verify=Verify";
+  const start = (id: string, milestone: string, progress: number, intent = "Implement retry safety") =>
+    tree.start({
+      toolCallId: id,
+      toolName: "read",
+      args: { taskIntent: intent, taskProgress: progress, taskMilestones: phases, taskMilestone: milestone },
+    });
+  const stepper = () => lines(tree.render(row("a")))[0]!;
+
+  start("a", "inspect", 20);
+  assert.match(stepper(), /\* Inspect - o Build - o Verify/);
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  start("b", "build", 55);
+  assert.match(stepper(), /x Inspect - \* Build - o Verify/);
+  tree.end({ toolCallId: "b", toolName: "read", result: { content: [] }, isError: false });
+  start("c", "inspect", 56);
+  assert.match(stepper(), /x Inspect - \* Build - o Verify/, "an out-of-order annotation cannot reopen a completed phase");
+  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
+  start("d", "verify", 100);
+  assert.match(stepper(), /x Inspect - x Build - \* Verify/);
+  tree.end({ toolCallId: "d", toolName: "read", result: { content: [] }, isError: false });
+  assert.match(stepper(), /x Inspect - x Build - x Verify/);
+
+  tree.start({
+    toolCallId: "e",
+    toolName: "read",
+    args: { taskIntent: "Review a different task", taskProgress: 12 },
+  });
+  assert.doesNotMatch(stepper(), /Inspect|Build|Verify/, "a new task clears the previous plan");
+});
+
 test("a 35 percent progress meter colors filled cells along the gradient", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Inspect retries", taskProgress: 35 } });
@@ -296,6 +380,92 @@ test("rollup places the call count after progress and the duration sparkline", (
     assert.ok(callCount > sparkline, `call count must follow the sparkline: ${header}`);
   } finally {
     Date.now = realNow;
+  }
+});
+
+test("progress and sparkline visibility can be disabled independently", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const progressOff = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupProgress: false }));
+    progressOff.start({
+      toolCallId: "progress-off",
+      toolName: "read",
+      args: { taskIntent: "Keep estimates independent", taskProgress: 35 },
+    });
+    now += 1_200;
+    progressOff.end({ toolCallId: "progress-off", toolName: "read", result: { content: [] }, isError: false });
+    const progressOffHeader = stripAnsi(lines(progressOff.render(row("progress-off", false, PROGRESS_THEME)))[0]!);
+    assert.doesNotMatch(progressOffHeader, /35%/);
+    assert.match(progressOffHeader, /\uf080/, "hiding the meter leaves the duration chart visible");
+
+    const sparklineOff = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupSparkline: false }));
+    sparklineOff.start({
+      toolCallId: "sparkline-off",
+      toolName: "read",
+      args: { taskIntent: "Keep estimates independent", taskProgress: 35 },
+    });
+    now += 900;
+    sparklineOff.end({ toolCallId: "sparkline-off", toolName: "read", result: { content: [] }, isError: false });
+    const sparklineOffHeader = stripAnsi(lines(sparklineOff.render(row("sparkline-off", false, PROGRESS_THEME)))[0]!);
+    assert.match(sparklineOffHeader, /35%/, "hiding the chart leaves the progress meter visible");
+    assert.doesNotMatch(sparklineOffHeader, /\uf080|[▁▂▃▄▅▆▇█]/);
+    assert.match(sparklineOffHeader, /1 call/);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("live presentation changes repaint existing cards", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    let redraws = 0;
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }), () => { redraws += 1; });
+    tree.start({
+      toolCallId: "live-settings",
+      toolName: "read",
+      args: { taskIntent: "Update existing presentation", taskProgress: 35 },
+    });
+    now += 1_200;
+    tree.end({ toolCallId: "live-settings", toolName: "read", result: { content: [] }, isError: false });
+    const before = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[0]!);
+    assert.match(before, /35%/);
+    assert.match(before, /\uf080/);
+    const redrawsBefore = redraws;
+
+    tree.updateSettings({ groupProgress: false, groupSparkline: false, window: 2 });
+    const after = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[0]!);
+    assert.doesNotMatch(after, /35%|\uf080|[▁▂▃▄▅▆▇█]/);
+    assert.ok(redraws > redrawsBefore, "the settings update invalidates mounted cards");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("hidden rollup metrics fit across narrow and wide card widths", () => {
+  const tree = new ToolTree(settings({
+    mode: "prompt",
+    groupNestedTools: false,
+    groupProgress: false,
+    groupSparkline: false,
+  }));
+  tree.start({
+    toolCallId: "a",
+    toolName: "read",
+    args: { taskIntent: "Keep a compact card", taskProgress: 70, reasoning: "inspect the summary" },
+  });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+
+  for (const theme of [plainTheme, PROGRESS_THEME, DURATION_THEME]) {
+    const card = tree.render(row("a", false, theme));
+    for (const width of [24, 27, 35, 40, 80]) {
+      const frame = card.render(width);
+      assert.ok(frame.every(line => visibleWidth(line) <= width), `line exceeds ${width} columns`);
+      assert.ok(frame.length > 0, `no card rendered at ${width} columns`);
+    }
   }
 });
 
@@ -801,6 +971,8 @@ test("clicking a codemode row reveals its nested steps", () => {
   assert.equal(before.length, 2);
   assert.match(before[0]!, /1 call/);
   assert.match(before[0]!, /codemode x1/);
+  assert.match(before[0]!, /bash x1/);
+  assert.match(before[0]!, /read x1/);
   // A branch row names the mix of steps it holds instead of a bare count.
   assert.match(before[1]!, /bash x1/);
   assert.match(before[1]!, /read x1/);
@@ -812,6 +984,29 @@ test("clicking a codemode row reveals its nested steps", () => {
   assert.equal(after.length, 4);
   assert.match(after[2]!, /list files/);
   assert.match(after[3]!, /read the entry/);
+});
+
+test("hiding nested counts preserves expandable child rows and failure markers", () => {
+  const tree = new ToolTree(settings({ mode: "prompt", groupNestedTools: false }));
+  tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
+  tree.start({
+    toolCallId: "c1",
+    toolName: "bash",
+    parentToolCallId: "c",
+    args: { reasoning: "run nested checks" },
+  });
+  tree.end({ toolCallId: "c1", toolName: "bash", result: { content: [] }, isError: true });
+
+  const card = tree.render(row("c"));
+  const collapsed = lines(card);
+  assert.match(collapsed[0]!, /codemode x1/, "top-level tool counts remain in the rollup");
+  assert.doesNotMatch(collapsed[0]!, /bash x1/, "nested counts are hidden from the summary strip");
+  assert.doesNotMatch(collapsed[1]!, /bash x1/, "nested counts are hidden from the codemode row");
+  assert.match(collapsed[1]!, /1 error/, "the parent failure marker is unaffected");
+
+  card.handleMouse?.(click(at(card, /─ .*build the card/)));
+  const expanded = lines(tree.render(row("c")));
+  assert.ok(expanded.some(line => /run nested checks/.test(line)), "nested rows remain expandable");
 });
 
 test("clicking the card title reveals one level without Pi expand-all", () => {

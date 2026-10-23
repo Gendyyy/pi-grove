@@ -16,7 +16,7 @@ export type PaintPhase = "call" | "result";
 /** The event kinds that can close a card. */
 export type PaintScope = "prompt" | "turn" | "message";
 
-/** Presentation settings owned by grove.json and resolved once at startup. */
+/** Presentation settings owned by grove.json and updated by the live settings controller. */
 export interface TreeSettings {
   mode: GroupMode;
   /** Opt in to showing failed nested steps while their parent card is collapsed. */
@@ -25,6 +25,12 @@ export interface TreeSettings {
   iconMode: IconMode;
   /** How many recent calls the collapsed card keeps visible. */
   window: number;
+  /** Show nested tool names and counts in compact codemode rows. */
+  groupNestedTools: boolean;
+  /** Show the agent progress estimate in the card rollup. */
+  groupProgress: boolean;
+  /** Show relative call durations in the card rollup. */
+  groupSparkline: boolean;
 }
 
 /** Lifecycle state of one tool call in the tree. */
@@ -68,6 +74,12 @@ export interface TreeNode {
   text?: string;
 }
 
+/** One declared phase of a model-authored task, rendered in its card stepper. */
+export interface TaskMilestone {
+  id: string;
+  label: string;
+}
+
 /** One turn or message boundary: the calls that share a card. */
 export interface TreeGroup {
   key: string;
@@ -81,6 +93,10 @@ export interface TreeGroup {
   intent?: string;
   /** Agent's subjective completion estimate, updated only at meaningful milestones. */
   progress?: number;
+  /** Declared ordered phases, one to seven, shared by calls advancing one task. */
+  milestones?: TaskMilestone[];
+  /** Current phase id; earlier phases are complete and later phases are pending. */
+  activeMilestoneId?: string;
   /** Top-level call awaiting successful completion before the card can reach 100%. */
   pendingCompletionId?: string;
   invalidate?: () => void;
@@ -126,17 +142,19 @@ export interface Glyphs {
   chart: string;
   /** Font Awesome percent cue beside the progress meter; empty in ASCII mode. */
   progress: string;
+  /** Completed milestone marker, with an ASCII fallback for plain consoles. */
+  check: string;
 }
 
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
   spin: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "bars", chart: "\uf080", progress: "",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", spark: "bars", chart: "\uf080", progress: "", check: "✓",
 };
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
   spin: "|/-\\",
-  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", spark: "ascii", chart: "", progress: "",
+  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", spark: "ascii", chart: "", progress: "", check: "x",
 };
 
 /** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
@@ -193,6 +211,55 @@ export function taskProgressOf(args: Record<string, unknown> | undefined): numbe
   return progress <= 100 ? progress : undefined;
 }
 
+const TASK_MILESTONE_ID = /^[a-z][a-z0-9-]{0,23}$/;
+
+/** Smallest and largest phase plan a card renders; one phase is enough for a small task. */
+export const TASK_MILESTONE_MIN = 1;
+export const TASK_MILESTONE_MAX = 7;
+/** Every plan closes on a verification phase, so a task cannot claim done without a check. */
+export const TASK_MILESTONE_FINAL = "verify";
+
+/** Recover a valid one-to-seven phase plan from composed args or a codemode comment. */
+export function taskMilestonesOf(args: Record<string, unknown> | undefined): TaskMilestone[] | undefined {
+  const direct = args?.taskMilestones;
+  const code = args?.code ?? args?.script;
+  const match = typeof code === "string"
+    ? code.match(/^\s*(?:\/\/|#)\s*task-milestones:\s*(.*)$/im)
+    : undefined;
+  const declaration = typeof direct === "string" && direct.trim() ? direct : match?.[1];
+  if (!declaration?.trim()) return undefined;
+  const entries = declaration.split(";");
+  if (entries.length < TASK_MILESTONE_MIN || entries.length > TASK_MILESTONE_MAX) return undefined;
+
+  const ids = new Set<string>();
+  const milestones: TaskMilestone[] = [];
+  for (const entry of entries) {
+    const separator = entry.indexOf("=");
+    if (separator < 0) return undefined;
+    const id = entry.slice(0, separator).trim();
+    const label = brief(entry.slice(separator + 1), 24);
+    if (!TASK_MILESTONE_ID.test(id) || ids.has(id) || !label) return undefined;
+    ids.add(id);
+    milestones.push({ id, label });
+  }
+  if (milestones.at(-1)?.id !== TASK_MILESTONE_FINAL) return undefined;
+  return milestones;
+}
+
+/** Recover the current phase id from composed args or a codemode comment. */
+export function taskMilestoneOf(args: Record<string, unknown> | undefined): string | undefined {
+  const direct = args?.taskMilestone;
+  let id = typeof direct === "string" ? direct.trim() : "";
+  if (!id) {
+    const code = args?.code ?? args?.script;
+    if (typeof code === "string") {
+      const match = code.match(/^\s*(?:\/\/|#)\s*task-milestone:\s*([a-z][a-z0-9-]{0,23})\s*$/im);
+      id = match?.[1] ?? "";
+    }
+  }
+  return TASK_MILESTONE_ID.test(id) ? id : undefined;
+}
+
 const TARGET_KEYS = ["path", "file_path", "filePath", "pattern", "query", "command", "cmd", "url", "name", "prompt"];
 
 /** Name the single value a call acts on, so a closed row still reads clearly. */
@@ -241,6 +308,16 @@ export function toolCounts(nodes: TreeNode[], counts = new Map<string, number>()
   return counts;
 }
 
+/** Count only the tools at one level, excluding nested descendants and reasoning rows. */
+function directToolCounts(nodes: TreeNode[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    if (node.kind === "thinking") continue;
+    counts.set(node.name, (counts.get(node.name) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** Paint the mix of tools inside one group, busiest first, with a bounded long tail. */
 export function toolBreakdown(
   nodes: TreeNode[],
@@ -249,8 +326,9 @@ export function toolBreakdown(
   kinds = 4,
   icons = false,
   iconMode: IconMode = "auto",
+  includeDescendants = true,
 ): string[] {
-  const counts = [...toolCounts(nodes)].sort(
+  const counts = [...(includeDescendants ? toolCounts(nodes) : directToolCounts(nodes))].sort(
     (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
   );
   // Each part is one glyph and a count once the font can name the tool itself.
@@ -292,17 +370,19 @@ export function errorCell(count: number, theme: GroveTheme, icons = false, iconM
   return themeText(theme, "error", count + (count === 1 ? " error" : " errors"));
 }
 
-/** Build the metadata tail of one row: scope, failures, outcome, and time. */
+/** Build the metadata tail of one row, optionally omitting its nested-tool breakdown. */
 export function rowTail(
   node: TreeNode,
   theme: GroveTheme,
   glyphs: Glyphs,
   icons = false,
   iconMode: IconMode = "auto",
+  showNestedBreakdown = true,
 ): string {
   const parts: string[] = [];
   // A branch row names the mix of steps it contains instead of a bare count.
-  if (node.children.length > 0) parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode));
+  if (showNestedBreakdown && node.children.length > 0)
+    parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode));
   const errors = node.children.filter(child => child.status === "error").length;
   if (errors > 0) parts.push(errorCell(errors, theme, icons, iconMode));
   // A branch row is summarized by its steps; a leaf row carries its own outcome.

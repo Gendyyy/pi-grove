@@ -7,8 +7,8 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
-import { taskIntentOf, taskProgressOf } from "./tree-model.js";
-import { ToolTree, type GroupMode, type TreeRow } from "./tool-tree.js";
+import { taskIntentOf, taskMilestoneOf, taskMilestonesOf, taskProgressOf } from "./tree-model.js";
+import { ToolTree, type GroupMode, type TreeRow, type TreeSettings } from "./tool-tree.js";
 
 interface ToolUiOptions {
   /** Tools whose behavior this extension composes. Codemode is always presentation-only. */
@@ -22,12 +22,28 @@ interface ToolUiOptions {
   groupRevealErrors: boolean;
   /** Recent calls kept visible in the collapsed card. */
   groupWindow: number;
+  groupNestedTools: boolean;
+  groupProgress: boolean;
+  groupSparkline: boolean;
   /** Where reasoning appears: a row of the card, pi own rows, or nowhere. */
   thinking: GroveThinking;
 }
+/** Settings that can be changed without rebuilding tool definitions or event handlers. */
+export type ToolUiLiveSettings = Pick<
+  ToolUiOptions,
+  "icons" | "iconMode" | "groupRevealErrors" | "groupWindow" | "groupNestedTools" | "groupProgress" | "groupSparkline"
+>;
+
+/** Runtime handle used by /grove to update the active presentation. */
+export interface ToolUiController {
+  /** Update mutable presentation settings and repaint existing cards. */
+  updateSettings(settings: Partial<ToolUiLiveSettings>): void;
+}
 const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
-When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line and a // task-progress: <0-100> line. Keep task-intent unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Estimate completion by your best judgment of how much of the requested task is done and how much remains; do not base it on tool-call count or invent a fixed denominator. Repeat the current integer estimate on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds. With // @options:, put that header first, then // reasoning:, // task-intent:, and // task-progress:.
+When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line and a // task-progress: <0-100> line. Keep task-intent unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Estimate completion by your best judgment of how much of the requested task is done and how much remains; do not base it on tool-call count or invent a fixed denominator. Repeat the current integer estimate on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds.
+Every top-level call also carries a phase plan: declare it once with // task-milestones: inspect=Inspect; build=Build; verify=Verify. A plan holds one to seven short labeled phases and always ends with verify, so even a small task declares its work plus a closing check; split the task into meaningful sequential phases rather than inventing filler. Use unique lowercase IDs of at most 24 characters, starting with a letter and followed only by lowercase letters, digits, or hyphens; labels are safely limited to 24 characters. Include // task-milestone: <id> on every top-level call, naming a phase from that plan. Advance the current id only after finishing that phase; Grove marks earlier phases complete and later ones pending. Keep the plan stable unless scope materially changes, then redeclare the full plan. A successful task-progress: 100 call completes all phases; phase state stays independent of the percentage.
+With // @options:, put that header first, then // reasoning:, // task-intent:, // task-progress:, and finally the // task-milestones: plan with its // task-milestone: id.
 `;
 
 /** Require a stable model-authored task title for grouped top-level codemode calls. */
@@ -40,11 +56,19 @@ export function codemodeGroupMetadataViolation(
     return "Grove blocked this codemode call: grouping requires a model-written // task-intent: <objective> line. Keep it stable for the same task, then retry.";
   if (taskProgressOf(event.input) === undefined)
     return "Grove blocked this codemode call: grouping requires the current // task-progress: <integer 0-100> estimate on every top-level call. Repeat it unchanged until a meaningful milestone, then retry.";
+  const milestones = taskMilestonesOf(event.input);
+  if (!milestones)
+    return "Grove blocked this codemode call: grouping requires a // task-milestones: <id>=<label> plan of one to seven short labeled phases whose last phase is verify. Split the task into meaningful phases, then retry.";
+  const milestoneId = taskMilestoneOf(event.input);
+  if (!milestoneId)
+    return "Grove blocked this codemode call: grouping requires // task-milestone: <id> naming the phase this call works on. Use an id from the declared plan, then retry.";
+  if (!milestones.some(milestone => milestone.id === milestoneId))
+    return "Grove blocked this codemode call: // task-milestone: must name a phase from the declared // task-milestones: plan. Fix the id, then retry.";
   return undefined;
 }
 
 /** Own presentation and bounded result metadata, never codemode's tool definition or activation. */
-export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
+export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUiController {
   // Extensions load before pi rebuilds the transcript on /reload, so patching here wins
   // the race that session_start loses. The call is idempotent and guarded.
   if (options.thinking !== "inline") void installThinkingFilter();
@@ -77,9 +101,25 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
       icons: options.icons,
       iconMode: options.iconMode,
       window: options.groupWindow,
+      groupNestedTools: options.groupNestedTools,
+      groupProgress: options.groupProgress,
+      groupSparkline: options.groupSparkline,
     },
     redraw,
   );
+  const updateSettings = (settings: Partial<ToolUiLiveSettings>): void => {
+    Object.assign(options, settings);
+    const treeSettings: Partial<TreeSettings> = {
+      ...(settings.icons === undefined ? {} : { icons: settings.icons }),
+      ...(settings.iconMode === undefined ? {} : { iconMode: settings.iconMode }),
+      ...(settings.groupRevealErrors === undefined ? {} : { revealErrors: settings.groupRevealErrors }),
+      ...(settings.groupWindow === undefined ? {} : { window: settings.groupWindow }),
+      ...(settings.groupNestedTools === undefined ? {} : { groupNestedTools: settings.groupNestedTools }),
+      ...(settings.groupProgress === undefined ? {} : { groupProgress: settings.groupProgress }),
+      ...(settings.groupSparkline === undefined ? {} : { groupSparkline: settings.groupSparkline }),
+    };
+    tree.updateSettings(treeSettings);
+  };
   const observed = (name: string) => name === "codemode" || options.tools.has(name);
   const stopTimer = () => {
     if (timer !== undefined) clearInterval(timer);
@@ -227,8 +267,15 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
   });
   // With grouping on, the tree paints codemode like any other call; the rich card is
   // only the fallback for group "off", so neither path is dead or double maintained.
-  const codemode =
-    options.group === "off" ? nested.renderers(options.icons, options.iconMode) : basicRenderers("codemode");
+  const nestedRenderers = (): ToolRenderers => nested.renderers(options.icons, options.iconMode);
+  const codemode: ToolRenderers = options.group === "off"
+    ? {
+      renderShell: "self",
+      renderCall: (args, theme, context) => nestedRenderers().renderCall!(args, theme, context),
+      renderResult: (result, renderOptions, theme, context) =>
+        nestedRenderers().renderResult!(result, renderOptions, theme, context),
+    }
+    : basicRenderers("codemode");
   const renderers = new Map<string, ToolRenderers>([
     ...[...options.tools].map(name => [name, basicRenderers(name)] as const),
     ["codemode", codemode],
@@ -283,4 +330,5 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): void {
     });
   }
   pi.registerToolRenderer((name, next) => renderers.get(name) ?? next());
+  return { updateSettings };
 }
