@@ -11,6 +11,8 @@ import { hasToolGlyph, markFor, toolWord } from "../icons.js";
 import { plainTheme } from "../theme.js";
 
 const READ = "\uf15c";
+const CODEMODE = "\uf121";
+const BASH = "\uf120";
 const CHECK = "\uf00c";
 const CROSS = "\uf00d";
 const STOP = "\uf05e";
@@ -28,6 +30,7 @@ function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> =
     groupProgress: true,
     groupSparkline: true,
     groupGutter: true,
+    groupToolNames: true,
     ...overrides,
   };
 }
@@ -55,6 +58,32 @@ test("a nerd font adds the tool glyph and still names the tool", () => {
   assert.match(painted[0]!, /1/);
   assert.match(painted[1]!, new RegExp(READ));
   assert.match(painted[1]!, /read/);
+});
+
+test("built-in names can be replaced by icons without hiding custom names", () => {
+  const tree = new ToolTree(settings("nerd", { groupToolNames: false }));
+  tree.boundary("turn");
+  tree.start({ toolCallId: "code", toolName: "codemode", args: {} });
+  tree.start({ toolCallId: "child", toolName: "bash", parentToolCallId: "code", args: {} });
+  tree.start({ toolCallId: "custom", toolName: "my_custom_tool", args: {} });
+  const output = lines(tree, "code").join("\n");
+
+  assert.ok(output.includes(CODEMODE), JSON.stringify(output));
+  assert.ok(output.includes(BASH), JSON.stringify(output));
+  assert.doesNotMatch(output, /codemode|bash/);
+  assert.match(output, /my_custom_tool/, "custom names stay readable");
+
+  const iconsOff = new ToolTree(settings("nerd", { groupToolNames: false, icons: false }));
+  iconsOff.start({ toolCallId: "bash", toolName: "bash", args: {} });
+  const nerdOnly = lines(iconsOff, "bash").join("\n");
+  assert.ok(nerdOnly.includes(BASH), JSON.stringify(nerdOnly));
+  assert.doesNotMatch(nerdOnly, /bash/);
+
+  const ascii = new ToolTree(settings("ascii", { groupToolNames: false, icons: false }));
+  ascii.start({ toolCallId: "ascii", toolName: "codemode", args: {} });
+  const asciiOnly = lines(ascii, "ascii").join("\n");
+  assert.match(asciiOnly, /\[<>\]/);
+  assert.doesNotMatch(asciiOnly, /codemode/);
 });
 
 test("a Nerd Font percent icon sits beside the progress meter", () => {

@@ -114,6 +114,7 @@ function settings(): TreeSettings {
     groupProgress: true,
     groupSparkline: true,
     groupGutter: true,
+    groupToolNames: true,
   };
 }
 

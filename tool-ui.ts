@@ -23,6 +23,7 @@ interface ToolUiOptions {
   /** Recent calls kept visible in the collapsed card. */
   groupWindow: number;
   groupNestedTools: boolean;
+  groupToolNames: boolean;
   groupProgress: boolean;
   groupSparkline: boolean;
   groupGutter: boolean;
@@ -37,6 +38,7 @@ export type ToolUiLiveSettings = Pick<
   | "groupRevealErrors"
   | "groupWindow"
   | "groupNestedTools"
+  | "groupToolNames"
   | "groupProgress"
   | "groupSparkline"
   | "groupGutter"
@@ -110,6 +112,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       iconMode: options.iconMode,
       window: options.groupWindow,
       groupNestedTools: options.groupNestedTools,
+      groupToolNames: options.groupToolNames,
       groupProgress: options.groupProgress,
       groupSparkline: options.groupSparkline,
       groupGutter: options.groupGutter,
@@ -124,6 +127,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       ...(settings.groupRevealErrors === undefined ? {} : { revealErrors: settings.groupRevealErrors }),
       ...(settings.groupWindow === undefined ? {} : { window: settings.groupWindow }),
       ...(settings.groupNestedTools === undefined ? {} : { groupNestedTools: settings.groupNestedTools }),
+      ...(settings.groupToolNames === undefined ? {} : { groupToolNames: settings.groupToolNames }),
       ...(settings.groupProgress === undefined ? {} : { groupProgress: settings.groupProgress }),
       ...(settings.groupSparkline === undefined ? {} : { groupSparkline: settings.groupSparkline }),
       ...(settings.groupGutter === undefined ? {} : { groupGutter: settings.groupGutter }),

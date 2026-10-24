@@ -121,6 +121,7 @@ export function createGroveExtension(
         case "groupWindow": toolUi?.updateSettings({ groupWindow: settings.groupWindow }); return;
         case "groupRevealErrors": toolUi?.updateSettings({ groupRevealErrors: settings.groupRevealErrors }); return;
         case "groupNestedTools": toolUi?.updateSettings({ groupNestedTools: settings.groupNestedTools }); return;
+        case "groupToolNames": toolUi?.updateSettings({ groupToolNames: settings.groupToolNames }); return;
         case "groupProgress": toolUi?.updateSettings({ groupProgress: settings.groupProgress }); return;
         case "groupSparkline": toolUi?.updateSettings({ groupSparkline: settings.groupSparkline }); return;
         case "groupGutter": toolUi?.updateSettings({ groupGutter: settings.groupGutter }); return;
@@ -313,6 +314,7 @@ export function createGroveExtension(
       groupRevealErrors: settings.groupRevealErrors,
       groupWindow: settings.groupWindow,
       groupNestedTools: settings.groupNestedTools,
+      groupToolNames: settings.groupToolNames,
       groupProgress: settings.groupProgress,
       groupSparkline: settings.groupSparkline,
       groupGutter: settings.groupGutter,

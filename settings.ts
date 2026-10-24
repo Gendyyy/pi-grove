@@ -28,6 +28,7 @@ export interface GroveSettings {
   groupWindow: number;
   groupRevealErrors: boolean;
   groupNestedTools: boolean;
+  groupToolNames: boolean;
   groupProgress: boolean;
   groupSparkline: boolean;
   groupGutter: boolean;
@@ -98,6 +99,14 @@ export const SETTINGS: readonly SettingSpec[] = [
     fallback: true,
     label: "Nested tool counts",
     summary: "show nested tool names and counts inline",
+  },
+  {
+    key: "groupToolNames",
+    kind: "boolean",
+    apply: "live",
+    fallback: true,
+    label: "Built-in tool names",
+    summary: "show built-in tool names beside their icons",
   },
   {
     key: "groupProgress",
@@ -206,6 +215,7 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     groupWindow: readNumber(settingSpec("groupWindow"), raw.groupWindow, 4),
     groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors, false),
     groupNestedTools: readFlag(settingSpec("groupNestedTools"), raw.groupNestedTools, true),
+    groupToolNames: readFlag(settingSpec("groupToolNames"), raw.groupToolNames, true),
     groupProgress: readFlag(settingSpec("groupProgress"), raw.groupProgress, true),
     groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline, true),
     groupGutter: readFlag(settingSpec("groupGutter"), raw.groupGutter, true),
@@ -238,6 +248,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { words: ["group", "window"], keys: ["groupWindow"] },
   { words: ["group", "errors"], keys: ["groupRevealErrors"] },
   { words: ["group", "nested"], keys: ["groupNestedTools"] },
+  { words: ["group", "tool-names"], keys: ["groupToolNames"] },
   { words: ["group", "progress"], keys: ["groupProgress"] },
   { words: ["group", "sparkline"], keys: ["groupSparkline"] },
   { words: ["group", "gutter"], keys: ["groupGutter"] },

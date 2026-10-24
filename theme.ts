@@ -1,5 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { glyphWords, markFor, toolWord, type IconMode } from "./icons.js";
+import { glyphWords, markFor, toolIcon, toolWord, type IconMode } from "./icons.js";
 
 export type GroveTheme = Pick<Theme, "style"> & {
   /** Optional active palette used to blend progress cells; plain formatters may omit it. */
@@ -27,9 +27,17 @@ export function toolColor(name: string): Foreground {
   return "accent";
 }
 
-/** One cell for a tool: its glyph when the font has one, its word otherwise. */
-export function toolLabel(name: string, theme?: GroveTheme, icons = true, iconMode: IconMode = "auto"): string {
-  return themeText(theme, toolColor(name), icons ? toolWord(name, iconMode) : name, true);
+/** Name a tool, or show its dedicated glyph when built-in names are hidden. */
+export function toolLabel(
+  name: string,
+  theme?: GroveTheme,
+  icons = true,
+  iconMode: IconMode = "auto",
+  showBuiltinNames = true,
+): string {
+  const iconOnly = showBuiltinNames ? undefined : toolIcon(name, iconMode);
+  const label = iconOnly ?? (icons ? toolWord(name, iconMode) : name);
+  return themeText(theme, toolColor(name), label, true);
 }
 
 export function metric(theme: GroveTheme | undefined, value: string | number, unit: string): string {

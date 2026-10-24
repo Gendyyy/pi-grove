@@ -36,12 +36,13 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | --- | --- | --- | --- |
 | `enabled` | on / off | on | render grove at all |
 | `mode` | default / reasoning / result | reasoning | what a row leads with |
-| `icons` | on / off | on | replace tool words with glyphs |
+| `icons` | on / off | on | add glyphs beside tool words |
 | `iconMode` | auto / nerd / ascii | auto | whether the font can draw them |
 | `group` | prompt / turn / message / off | prompt | where one card ends |
 | `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
+| `groupToolNames` | on / off | on | show built-in tool names or icons only |
 | `groupProgress` | on / off | on | show the estimate as a meter, with the phase plan when one is declared |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
 | `groupGutter` | on / off | on | show phase markers and their spine links; calls remain a branch list either way |
@@ -125,6 +126,9 @@ elapsed interval, not the host-reported execution duration. `/grove group progre
 the meter, not milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
 `/grove group nested off` hides nested tool names/counts from both the summary strip and codemode
 rows while preserving top-level tool counts, expandable child rows, and parent failure markers.
+`/grove group tool-names off` replaces recognized built-in names (`codemode`, `bash`, `read`,
+`write`, and others) with their selected Nerd or ASCII icons in rows and tool-mix summaries.
+Custom tool names remain visible; this icon-only mode still shows a glyph when `icons` is off.
 
 The card owns its background instead of borrowing one row's result: it stays pending while any
 call runs, stays neutral when calls succeed or only some of them fail, and turns red only when
@@ -133,12 +137,13 @@ marker and the error count, so the block never shouts about work that partly suc
 
 ## Glyphs
 
-`icons` shortens the card without hiding what it says. With a Nerd Font a tool gets a glyph
+`icons` adds a glyph without hiding what the row says. With a Nerd Font a tool gets a glyph
 in its own colour beside its name, so the row still reads `  read`, `  codemode`, `  bash` with
-the two-cell gap a patched glyph needs so it never touches the word; one
-outcome word becomes a single mark, and a count keeps its number. The tool word is never
-dropped for its glyph, and the rollup names tools in words (`read ×2 · bash ×1`) so the mix
-is readable without the font. `auto` turns glyphs on only when the terminal can draw them;
+the two-cell gap a patched glyph needs so it never touches the word. Set `groupToolNames` off
+to use the glyph alone for recognized built-ins; custom tool names remain words. The selected
+icon mode supplies the icon even when `icons` is off. Outcome words become a single mark,
+and counts keep their number. With names enabled, the tool word is never dropped for its glyph;
+the rollup names tools in words (`read ×2 · bash ×1`) so the mix stays readable without the font. `auto` turns glyphs on only when the terminal can draw them;
 force `ascii` to keep every word.
 
 A live call breathes its marker every 100 ms, exactly like the active phase marker, while the
@@ -184,13 +189,14 @@ option above. Enter cycles a value or opens a submenu, typing filters, Escape cl
 /grove group turn           change card boundaries (reload required)
 /grove group window 6       numbers are clamped to their range
 /grove group nested off      hide inline nested names/counts
+/grove group tool-names off  show built-ins as icons only
 /grove group progress off    hide the progress meter
 /grove group sparkline off   hide duration bars from the rollup
 /grove thinking label Plan  free text, quoted output, empty hides the label
 /grove on | off | toggle
 ```
 
-Tool icons, icon set, visible-call window, failure visibility, nested counts, progress,
+Tool icons, built-in tool names, icon set, visible-call window, failure visibility, nested counts, progress,
 duration bars, and the thinking label apply immediately. Enabled state, row-label mode,
 grouping, and reasoning placement require Grove to reload because they change startup-time
 tool composition or event behavior. The settings panel labels each option with its policy.

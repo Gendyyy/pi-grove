@@ -17,6 +17,7 @@ const settings: TreeSettings = {
   groupProgress: true,
   groupSparkline: true,
   groupGutter: true,
+  groupToolNames: true,
 };
 const inner = () => ({ render: () => ["inner"], invalidate: () => {} });
 const row = (id: string, rowTheme: GroveTheme = theme): TreeRow => ({ toolCallId: id, inner: inner(), theme: rowTheme, expanded: false, invalidate: () => {} });

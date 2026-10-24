@@ -5,7 +5,7 @@
  */
 import { stripVTControlCharacters } from "node:util";
 import { formatElapsed, summaryLine, summarizeToolResult } from "./block-render.js";
-import { markFor, resolveIconMode, toolWord, type IconMode } from "./icons.js";
+import { markFor, resolveIconMode, toolIcon, type IconMode } from "./icons.js";
 import { metric, paintSummary, themeText, toolColor, type Foreground, type GroveTheme } from "./theme.js";
 /** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
 export type GroupMode = "prompt" | "turn" | "message" | "off";
@@ -27,6 +27,8 @@ export interface TreeSettings {
   window: number;
   /** Show nested tool names and counts in compact codemode rows. */
   groupNestedTools: boolean;
+  /** Show names for tools with dedicated Grove icons. */
+  groupToolNames: boolean;
   /** Show the agent progress estimate in the card rollup. */
   groupProgress: boolean;
   /** Show relative call durations in the card rollup. */
@@ -370,16 +372,18 @@ export function toolBreakdown(
   icons = false,
   iconMode: IconMode = "auto",
   includeDescendants = true,
+  showBuiltinNames = true,
 ): string[] {
   const counts = [...(includeDescendants ? toolCounts(nodes) : directToolCounts(nodes))].sort(
     (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
   );
   // Each part is one glyph and a count once the font can name the tool itself.
-  const parts = counts.slice(0, kinds).map(([name, count]) =>
-    themeText(theme, toolColor(name), name) +
-    themeText(theme, "dim", " " + glyphs.times) +
-    themeText(theme, "muted", String(count)),
-  );
+  const parts = counts.slice(0, kinds).map(([name, count]) => {
+    const label = showBuiltinNames ? name : toolIcon(name, iconMode) ?? name;
+    return themeText(theme, toolColor(name), label) +
+      themeText(theme, "dim", " " + glyphs.times) +
+      themeText(theme, "muted", String(count));
+  });
   if (counts.length > kinds) parts.push(themeText(theme, "dim", "+" + (counts.length - kinds)));
   return parts;
 }
@@ -443,11 +447,12 @@ export function rowTail(
   showNestedBreakdown = true,
   durationRail = "",
   elapsedMs = node.duration ?? (node.status === "running" ? Date.now() - node.started : 0),
+  showBuiltinNames = true,
 ): { summary: string; duration: string } {
   const parts: string[] = [];
   // A codemode row names the mix of steps it contains instead of a bare count.
   if (showNestedBreakdown && node.children.length > 0)
-    parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode));
+    parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode, true, showBuiltinNames));
   // A script that called no tool has nothing to open, so the row says so rather than looking
   // like every expandable row whose click did nothing.
   if (showNestedBreakdown && node.name === "codemode" && node.children.length === 0)

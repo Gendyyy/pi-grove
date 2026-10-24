@@ -550,7 +550,7 @@ export function paintGroup(
       }
     }
     parts.push(scope);
-    parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode, state.settings.groupNestedTools));
+    parts.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode, state.settings.groupNestedTools, state.settings.groupToolNames));
     if (errors > 0) parts.push(errorCell(errors, theme, state.settings.icons, state.settings.iconMode));
     const head = themeText(theme, "dim", (reveal ? glyphs.open : glyphs.closed) + " ");
     headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
@@ -598,7 +598,7 @@ export function paintGroup(
       const label =
         node.kind === "thinking"
           ? themeText(theme, "muted", "thinking")
-          : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode);
+          : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode, state.settings.groupToolNames);
       const markText = mark.pulse
         ? pulseText(mark.glyph, theme, now, mark.pulse)
         : themeText(theme, mark.color, mark.glyph);
@@ -621,6 +621,7 @@ export function paintGroup(
             state.settings.groupNestedTools,
             rail,
             elapsed,
+            state.settings.groupToolNames,
           );
       const separator = themeText(theme, "dim", DOT);
       const durationSuffix = rowTailParts.summary

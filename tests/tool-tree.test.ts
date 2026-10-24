@@ -23,6 +23,7 @@ function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
     groupProgress: true,
     groupSparkline: true,
     groupGutter: true,
+    groupToolNames: true,
     ...overrides,
   };
 }

@@ -60,6 +60,11 @@ export function hasToolGlyph(name: string): boolean {
   return Object.hasOwn(glyphs, name);
 }
 
+/** Return a dedicated glyph only for known built-in tools, preserving custom names. */
+export function toolIcon(name: string, mode: IconMode = "auto"): string | undefined {
+  return hasToolGlyph(name) ? iconFor(name, mode) : undefined;
+}
+
 /** The glyph standing in for one status word, or undefined when words must stay. */
 export function markFor(word: string, mode: IconMode = "auto"): string | undefined {
   if (!glyphWords(mode)) return undefined;

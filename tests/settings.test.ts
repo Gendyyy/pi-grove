@@ -52,7 +52,7 @@ test("settings classify startup composition separately from live presentation", 
   const reload = SETTINGS.filter(spec => spec.apply === "reload").map(spec => spec.key);
   const live = SETTINGS.filter(spec => spec.apply === "live").map(spec => spec.key);
   assert.deepEqual(reload, ["enabled", "mode", "group", "thinking"]);
-  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupProgress", "groupSparkline", "groupGutter", "thinkingLabel"]);
+  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupToolNames", "groupProgress", "groupSparkline", "groupGutter", "thinkingLabel"]);
   const rows = panelRows(readSettings("/nonexistent/grove.json"));
   assert.match(rows.find(row => row.key === "groupProgress")?.description ?? "", /applies immediately/);
   assert.match(rows.find(row => row.key === "group")?.description ?? "", /requires Grove reload/);
@@ -70,10 +70,12 @@ test("visibility defaults preserve current output and nested error visibility st
   assert.equal(settings.groupRevealErrors, false);
   assert.equal(readSettings(await scratch({ groupRevealErrors: true })).groupRevealErrors, true);
   assert.equal(settings.groupNestedTools, true);
+  assert.equal(settings.groupToolNames, true);
   assert.equal(settings.groupProgress, true);
   assert.equal(settings.groupSparkline, true);
-  const hidden = readSettings(await scratch({ groupNestedTools: false, groupProgress: false, groupSparkline: false }));
+  const hidden = readSettings(await scratch({ groupNestedTools: false, groupToolNames: false, groupProgress: false, groupSparkline: false }));
   assert.equal(hidden.groupNestedTools, false);
+  assert.equal(hidden.groupToolNames, false);
   assert.equal(hidden.groupProgress, false);
   assert.equal(hidden.groupSparkline, false);
   assert.equal(settings.thinking, "off");
@@ -89,6 +91,7 @@ test("stored junk never reaches the renderer", async () => {
     group: "forever",
     groupWindow: 99,
     groupNestedTools: "maybe",
+    groupToolNames: "maybe",
     groupProgress: "maybe",
     groupSparkline: "maybe",
     thinking: "loud",
@@ -102,6 +105,7 @@ test("stored junk never reaches the renderer", async () => {
   assert.equal(settings.group, "prompt");
   assert.equal(settings.groupWindow, 32);
   assert.equal(settings.groupNestedTools, true);
+  assert.equal(settings.groupToolNames, true);
   assert.equal(settings.groupProgress, true);
   assert.equal(settings.groupSparkline, true);
   assert.equal(settings.thinking, "off");
@@ -129,6 +133,7 @@ test("the longest command words win", () => {
   const errors = resolveCommand(["group", "errors", "off"]);
   assert.deepEqual(errors?.command.keys, ["groupRevealErrors"]);
   assert.deepEqual(resolveCommand(["group", "nested", "off"])?.command.keys, ["groupNestedTools"]);
+  assert.deepEqual(resolveCommand(["group", "tool-names", "off"])?.command.keys, ["groupToolNames"]);
   assert.deepEqual(resolveCommand(["group", "progress", "off"])?.command.keys, ["groupProgress"]);
   assert.deepEqual(resolveCommand(["group", "sparkline", "off"])?.command.keys, ["groupSparkline"]);
   const label = resolveCommand(["thinking", "label", "warming", "up"]);
@@ -151,6 +156,9 @@ test("values are validated before they are saved", () => {
   assert.equal(clamped.ok && clamped.value, 32);
   const nested = run("group nested off");
   assert.equal(nested.ok && nested.key, "groupNestedTools");
+  const toolNames = run("group tool-names off");
+  assert.equal(toolNames.ok && toolNames.key, "groupToolNames");
+  assert.equal(toolNames.ok && toolNames.value, false);
   const progress = run("group progress off");
   assert.equal(progress.ok && progress.key, "groupProgress");
   const sparkline = run("group sparkline off");
@@ -166,6 +174,7 @@ test("saveSetting writes the key it names and round-trips", async () => {
   const path = await scratch({ mode: "default" });
   await saveSetting("groupWindow", 2, path);
   await saveSetting("groupNestedTools", false, path);
+  await saveSetting("groupToolNames", false, path);
   await saveSetting("groupProgress", false, path);
   await saveSetting("groupSparkline", false, path);
   await saveSetting("thinkingLabel", "", path);
@@ -173,6 +182,7 @@ test("saveSetting writes the key it names and round-trips", async () => {
   const settings = readSettings(path);
   assert.equal(settings.groupWindow, 2);
   assert.equal(settings.groupNestedTools, false);
+  assert.equal(settings.groupToolNames, false);
   assert.equal(settings.groupProgress, false);
   assert.equal(settings.groupSparkline, false);
   assert.equal(settings.thinkingLabel, "");
@@ -190,6 +200,7 @@ test("labels, status lines and usage all come from the table", () => {
   assert.match(usageText(), /group progress/);
   assert.ok(completions().includes("group window status"));
   assert.ok(completions().includes("group nested off"));
+  assert.ok(completions().includes("group tool-names off"));
   assert.ok(completions().includes("group progress off"));
   assert.ok(completions().includes("group sparkline off"));
   assert.ok(completions().includes("thinking label "));
@@ -214,7 +225,7 @@ test("every option becomes one panel row with a label and a value to cycle", () 
 });
 
 test("boolean panel rows keep cycling through Space and Enter", () => {
-  const row = panelRows(readSettings("/nonexistent/grove.json")).find(row => row.key === "groupProgress");
+  const row = panelRows(readSettings("/nonexistent/grove.json")).find(row => row.key === "groupToolNames");
   assert.ok(row?.choices);
   const item = {
     id: row.key,
@@ -252,15 +263,15 @@ test("panel persistence applies live settings and flags lifecycle changes", asyn
     liveChanges.push([key, value]);
   };
 
-  const reloadForLiveSetting = await persistPanelSetting("groupProgress", false, path, onLiveChange, message => warnings.push(message));
+  const reloadForLiveSetting = await persistPanelSetting("groupToolNames", false, path, onLiveChange, message => warnings.push(message));
   assert.equal(reloadForLiveSetting, false);
-  assert.deepEqual(liveChanges, [["groupProgress", false]]);
-  assert.equal(readSettings(path).groupProgress, false);
+  assert.deepEqual(liveChanges, [["groupToolNames", false]]);
+  assert.equal(readSettings(path).groupToolNames, false);
 
   const reloadForGrouping = await persistPanelSetting("group", "turn", path, onLiveChange, message => warnings.push(message));
   assert.equal(reloadForGrouping, true);
   assert.equal(readSettings(path).group, "turn");
-  assert.deepEqual(liveChanges, [["groupProgress", false]], "reload-only options do not use the live callback");
+  assert.deepEqual(liveChanges, [["groupToolNames", false]], "reload-only options do not use the live callback");
   assert.deepEqual(warnings, []);
 });
 
