@@ -40,7 +40,7 @@ export function fitToolLine(line: string, width: number): string {
   return `${truncateToWidth(head, max - tailWidth - 1, "…")} ${tail}`;
 }
 
-/** Fit semantic fields before flattening ANSI; formatting must preserve visible width. */
+/** Fit semantic fields before flattening ANSI and keep an optional suffix on the right edge. */
 export function summaryLine(
   prefix: string,
   detail: string,
@@ -48,6 +48,7 @@ export function summaryLine(
   summary: string,
   width = Infinity,
   formatDetail?: (text: string) => string,
+  rightSuffix = "",
 ): string {
   const join = (body: string, tail: string) =>
     prefix +
@@ -55,13 +56,39 @@ export function summaryLine(
     separator +
     tail;
   const full = join(detail, summary);
-  if (visibleWidth(full) <= width) return full;
+  if (!rightSuffix) {
+    if (visibleWidth(full) <= width) return full;
+    const max = Math.max(1, width);
+    const fixed = visibleWidth(prefix) + visibleWidth(separator);
+    if (fixed + 2 > max) return truncateToWidth(prefix, max, "…");
+    const tail = truncateToWidth(summary, max - fixed, "…");
+    const room = max - fixed - visibleWidth(tail) - (prefix.trim() ? 1 : 0);
+    return join(room > 1 ? truncateToWidth(detail, room, "…") : "", tail);
+  }
+  if (!Number.isFinite(width)) return full + rightSuffix;
+
   const max = Math.max(1, width);
-  const fixed = visibleWidth(prefix) + visibleWidth(separator);
-  if (fixed + 2 > max) return truncateToWidth(prefix, max, "…");
-  const tail = truncateToWidth(summary, max - fixed, "…");
-  const room = max - fixed - visibleWidth(tail) - (prefix.trim() ? 1 : 0);
-  return join(room > 1 ? truncateToWidth(detail, room, "…") : "", tail);
+  const separatorWidth = visibleWidth(separator);
+  const suffixWidth = visibleWidth(rightSuffix);
+  const fixed = visibleWidth(prefix) + separatorWidth;
+  if (visibleWidth(full) + suffixWidth <= max)
+    return full + " ".repeat(max - visibleWidth(full) - suffixWidth) + rightSuffix;
+
+  if (fixed + suffixWidth >= max) {
+    if (max <= separatorWidth) return truncateToWidth(rightSuffix, max, "…");
+    const fittedSuffix = truncateToWidth(rightSuffix, max - separatorWidth, "…");
+    const prefixBudget = max - separatorWidth - visibleWidth(fittedSuffix);
+    return (prefixBudget > 0 ? truncateToWidth(prefix, prefixBudget, "…") : "") +
+      separator +
+      fittedSuffix;
+  }
+
+  const tail = truncateToWidth(summary, max - fixed - suffixWidth, "…");
+  const room =
+    max - fixed - suffixWidth - visibleWidth(tail) - (prefix.trim() ? 1 : 0);
+  const beforeSuffix = join(room > 1 ? truncateToWidth(detail, room, "…") : "", tail);
+  const gap = Math.max(0, max - visibleWidth(beforeSuffix) - suffixWidth);
+  return beforeSuffix + " ".repeat(gap) + rightSuffix;
 }
 
 /**

@@ -1,7 +1,7 @@
 // State markers on grouped rows: the dot reports the call state instead of an expand arrow.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ToolTree, GROUP_TARGET, PHASES_TARGET, type TreeRow, type TreeSettings } from "../tool-tree.js";
+import { ToolTree, GROUP_TARGET, PHASES_TARGET, milestoneTarget, type TreeRow, type TreeSettings } from "../tool-tree.js";
 import { colorToRgb, rgbColor, visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { PULSE_MS } from "../tree-paint.js";
@@ -220,19 +220,34 @@ test("the meter needle breathes while a call is running", () => {
   assert.notEqual(mid, "rgb(80,80,80)▰", "the pulse quiets toward muted without switching the cell off");
 });
 test("codemode marks partial nested failures orange without revealing them", () => {
-  const rows = painted(codemodeWithOutcomes([true, false]));
-  const codemode = rows.find(line => line.includes("codemode"));
-  assert.ok(codemode);
+  const rows = painted(codemodeWithOutcomes([true, false]), WIDE);
+  const codemode = rows.find(line => /\[\w+\]\* \[\w+\]codemode/.test(line));
+  assert.ok(codemode, "the call row carries the nested outcome");
   assert.match(codemode, /\[warning\]\*/);
   assert.doesNotMatch(rows.join("\n"), /nested step/);
 });
 
 test("codemode marks all nested failures red without revealing them", () => {
-  const rows = painted(codemodeWithOutcomes([true, true]));
-  const codemode = rows.find(line => line.includes("codemode"));
-  assert.ok(codemode);
+  const rows = painted(codemodeWithOutcomes([true, true]), WIDE);
+  const codemode = rows.find(line => /\[\w+\]\* \[\w+\]codemode/.test(line));
+  assert.ok(codemode, "the call row carries the nested outcome");
   assert.match(codemode, /\[error\]\*/);
   assert.doesNotMatch(rows.join("\n"), /nested step/);
+});
+
+test("a codemode row with no nested call says so instead of looking expandable", () => {
+  const tree = new ToolTree(settings);
+  tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "list the tools" } });
+  tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: false, durationMs: 200 });
+  const row = painted(tree, WIDE).find(line => line.includes("list the tools"));
+  assert.ok(row, "the card paints the codemode row");
+  assert.match(row, /no calls/, "the row names its empty step list");
+
+  const quiet = new ToolTree({ ...settings, groupNestedTools: false });
+  quiet.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "list the tools" } });
+  quiet.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: false, durationMs: 200 });
+  const quietRow = painted(quiet, WIDE).find(line => line.includes("list the tools")) ?? "";
+  assert.doesNotMatch(quietRow, /no calls/, "hiding nested detail hides the empty-list note too");
 });
 
 test("a settled call shows a filled dot in its status colour", () => {
@@ -267,7 +282,7 @@ test("a running call breathes its marker instead of cycling frames", () => {
     const marker = (offset: number): string => {
       Date.now = () => base + offset;
       // The detail text is the narrowest thing on the row, so locate it by the tool label.
-      const row = painted(tree, 96, paletteTheme()).find(line => line.includes("rgb(") && line.includes("bash"));
+      const row = painted(tree, 400, paletteTheme()).find(line => line.includes("rgb(") && line.includes("bash"));
       assert.ok(row, "expected the live row in the painted card");
       const found = /rgb\(\d+,\d+,\d+\)\*/.exec(row);
       assert.ok(found, "expected a breathing marker in " + JSON.stringify(row));
@@ -369,7 +384,7 @@ function twoPhases(gutterSettings: TreeSettings = settings): ToolTree {
   return tree;
 }
 
-test("phase and call markers form one sequence with links between every step", () => {
+test("phase diamonds share a spine while calls remain in branch lists", () => {
   const tree = twoPhases({ ...settings, iconMode: "nerd" });
   const lines = painted(tree, WIDE, plainTheme);
   const markers = lines.filter(line => /(?:◆|◇) (?:Inspect|Build|Verify)|● bash/.test(line));
@@ -377,14 +392,84 @@ test("phase and call markers form one sequence with links between every step", (
     "◆ Inspect", "● bash", "● bash", "◆ Build", "● bash", "◆ Verify",
   ]);
   const connectors = lines.filter(isConnectorLine);
-  assert.equal(connectors.length, markers.length - 1, "there is exactly one standalone link between adjacent markers");
+  assert.equal(connectors.length, 2, "only adjacent phase diamonds share standalone spine links");
 
   const rendered = card(tree, "a", plainTheme).render(WIDE).map(plain);
   const buildY = rendered.findIndex(line => line.includes("◆ Build"));
   const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
-  assert.equal(targetAt(buildY), PHASES_TARGET, "a phase marker remains a plan click target");
-  card(tree, "a", plainTheme).handleMouse?.(click(buildY));
-  assert.ok(card(tree, "a", plainTheme).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("Verify") && line.includes("→")), "clicking a phase marker opens the plan");
+  assert.equal(targetAt(buildY), milestoneTarget("build"), "each phase marker owns a phase-scoped expansion target");
+});
+
+test("a phase click reveals its direct codemode rows without opening nested steps", () => {
+  const tree = new ToolTree({ ...settings, window: 2, iconMode: "nerd" });
+  /** Start one top-level codemode call assigned to a declared phase. */
+  const startCodemode = (id: string, milestone: string, progress: number): void => {
+    tree.start({
+      toolCallId: id,
+      toolName: "codemode",
+      args: {
+        taskIntent: "Inspect and build safely",
+        taskProgress: progress,
+        taskMilestones: PLAN,
+        taskMilestone: milestone,
+      },
+    });
+  };
+  /** Attach one nested call so the test can distinguish disclosure from recursive expansion. */
+  const addNestedCall = (id: string, parent: string, toolName: string): void => {
+    tree.start({ toolCallId: id, toolName, parentToolCallId: parent, args: { reasoning: "phase call" } });
+    tree.end({ toolCallId: id, toolName, result: { content: [] }, isError: false });
+  };
+  /** Finish a codemode row after recording its nested call. */
+  const addCodemode = (id: string, milestone: string, progress: number, child: string): void => {
+    startCodemode(id, milestone, progress);
+    addNestedCall(id + "-child", id, child);
+    tree.end({ toolCallId: id, toolName: "codemode", result: { content: [] }, isError: false });
+  };
+
+  addCodemode("inspect-read", "inspect", 10, "read");
+  addCodemode("inspect-grep", "inspect", 20, "grep");
+  addCodemode("inspect-write", "inspect", 30, "write");
+  addCodemode("build-test", "build", 55, "test");
+  addCodemode("build-lint", "build", 65, "lint");
+  addCodemode("build-types", "build", 75, "typecheck");
+
+  const component = () => card(tree, "inspect-read", plainTheme);
+  const rendered = () => component().render(WIDE).map(plain);
+  const codemodeRows = () => rendered().filter(line => line.includes("● codemode ·"));
+  const hasExpandedChild = (name: string): boolean =>
+    rendered().some(line => line.includes("●") && line.includes(name + " · phase call"));
+  const planIsOpen = () => rendered().some(line =>
+    line.includes("Inspect") && line.includes("Verify") && (line.includes("->") || line.includes("→")),
+  );
+  assert.equal(codemodeRows().length, 2, "the rolling window initially shows only the newest calls");
+
+  const inspectY = rendered().findIndex(line => line.includes("◆ Inspect"));
+  assert.ok(inspectY >= 0);
+  assert.equal((tree as unknown as { targetAt(index: number): string | undefined }).targetAt(inspectY), milestoneTarget("inspect"));
+  component().handleMouse?.({ ...click(inspectY), width: WIDE });
+  let calls = codemodeRows();
+  assert.equal(calls.length, 5, "the selected phase's three direct rows appear alongside the rolling window");
+  assert.ok(calls.some(line => line.includes("read ×1")));
+  assert.ok(calls.some(line => line.includes("grep ×1")));
+  assert.equal(hasExpandedChild("read") || hasExpandedChild("grep"), false, "showing codemodes does not open their nested tools");
+  assert.equal(planIsOpen(), false, "phase expansion does not also open the full plan");
+
+  const readY = rendered().findIndex(line => line.includes("● codemode · read ×1"));
+  assert.ok(readY >= 0, "the revealed codemode row remains individually clickable");
+  component().handleMouse?.({ ...click(readY), width: WIDE });
+  assert.equal(hasExpandedChild("read"), true, "clicking the codemode row expands its nested call");
+  assert.equal(hasExpandedChild("grep"), false, "other codemode rows remain collapsed");
+
+  component().handleMouse?.({ ...click(inspectY), width: WIDE });
+  assert.equal(codemodeRows().length, 2, "a second click restores the rolling window");
+
+  const buildY = rendered().findIndex(line => line.includes("◆ Build"));
+  component().handleMouse?.({ ...click(buildY), width: WIDE });
+  calls = codemodeRows();
+  assert.equal(calls.length, 3, "another phase reveals only its own hidden direct call");
+  assert.ok(calls.every(line => line.includes("test ×1") || line.includes("lint ×1") || line.includes("typecheck ×1")));
+  assert.equal(hasExpandedChild("test") || hasExpandedChild("lint") || hasExpandedChild("typecheck"), false);
 });
 
 test("a stale phase declaration stays with the latest completed phase in the timeline", () => {
@@ -393,7 +478,7 @@ test("a stale phase declaration stays with the latest completed phase in the tim
   step(tree, "b", "build", 55);
   step(tree, "c", "inspect", 45);
 
-  const lines = painted(tree, WIDE);
+  const lines = painted(tree, WIDE, plainTheme);
   const inspectAt = lines.findIndex(line => line.includes("Inspect") && /1 .*call/.test(line));
   const buildAt = lines.findIndex(line => line.includes("Build") && /2 .*calls/.test(line));
   const calls = lines.flatMap((line, index) =>
@@ -405,11 +490,12 @@ test("a stale phase declaration stays with the latest completed phase in the tim
   assert.ok(calls[1]! < calls[2]!, "the calls retain their transcript order");
 });
 
-test("phase gutter hides phase markers but preserves links between calls", () => {
-  const tree = twoPhases({ ...settings, groupGutter: false });
+test("phase gutter hides phase markers and leaves calls as branches", () => {
+  const tree = twoPhases({ ...settings, groupGutter: false, iconMode: "nerd" });
   const lines = painted(tree, 60, plainTheme);
   assert.equal(lines.some(line => /◆ (?:Inspect|Build|Verify)/.test(line)), false, "the existing phase-gutter option still hides phase markers");
-  assert.equal(lines.filter(isConnectorLine).length, 2, "the call timeline remains connected");
+  assert.equal(lines.filter(isConnectorLine).length, 0, "hidden phases do not leave a detached spine");
+  assert.equal(lines.filter(line => /^ │ [├└] ●/.test(line)).length, 3, "calls remain a branch list");
 });
 
 test("a completed phase marker turns green when the plan moves on", () => {
@@ -422,18 +508,19 @@ test("a completed phase marker turns green when the plan moves on", () => {
   assert.match(phaseMarker(), /\[success\]\* Build/, "the completed phase marker reads as history");
 });
 
-test("a completed phase turns its connector green while a live phase stays active", () => {
+test("a completed phase turns its phase-spine link green", () => {
   const tree = twoPhases();
   const buildLink = () => {
     const lines = card(tree).render(WIDE).map(plain);
-    const build = lines.findIndex(line => line.includes("Build") && line.includes("call"));
-    return lines[build + 1] ?? "";
+    // The link immediately before Verify joins the preceding Build phase to the next diamond.
+    const verify = lines.findIndex(line => /\* Verify/.test(line));
+    return lines[verify - 1] ?? "";
   };
   assert.match(buildLink(), /\[accent\]\|/, "the active phase keeps its outgoing link active");
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");
-  assert.match(buildLink(), /\[success\]\|/, "the completed phase's outgoing link turns green");
+  assert.match(buildLink(), /\[success\]\|/, "the completed phase's spine link turns green");
 });
 
 test("phase call counts do not reveal nested totals hidden from codemode summaries", () => {
@@ -449,9 +536,81 @@ test("phase call counts do not reveal nested totals hidden from codemode summari
   }
   tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: false, durationMs: 200 });
 
-  const phase = painted(tree, WIDE).find(line => line.includes("Inspect") && line.includes("call")) ?? "";
+  const phase = painted(tree, WIDE, plainTheme).find(line => line.includes("Inspect") && line.includes("call")) ?? "";
   assert.match(phase, /1 .*call/, "phase count describes its direct codemode row");
   assert.doesNotMatch(phase, /3 .*calls/, "hidden nested tools do not leak through the phase rollup");
+  const styledPhase = painted(tree, WIDE).find(line => line.includes("Inspect") && line.includes("call")) ?? "";
+  assert.match(styledPhase, /\[dim\]1 calls?/, "the phase count and its unit share the dim role");
+});
+
+test("tool duration bars align to the right edge for different labels", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree({ ...settings, iconMode: "nerd" });
+    step(tree, "a", "inspect", 15);
+    now += 2_000;
+    settle(tree, "a");
+    tree.start({
+      toolCallId: "b",
+      toolName: "very_long_tool",
+      args: { taskIntent: "Implement retry safety", taskProgress: 20, taskMilestones: PLAN, taskMilestone: "inspect" },
+    });
+    now += 3_000;
+    tree.end({ toolCallId: "b", toolName: "very_long_tool", result: { content: [] }, isError: false, durationMs: 4 });
+
+    const lines = painted(tree, 80, plainTheme);
+    const rows = lines.filter(line => line.includes("● bash") || line.includes("● very_long_tool"));
+    assert.equal(rows.length, 2, "both tools have a painted row");
+    const railStarts = rows.map(line => {
+      const rail = /[━─]+(?= · (?:<\d+s|\d+s) │$)/.exec(line);
+      assert.ok(rail, "duration rail and elapsed time sit immediately before the right frame");
+      return visibleWidth(line.slice(0, rail.index));
+    });
+    assert.equal(railStarts[0], railStarts[1], "equal-width elapsed labels put each rail in the same column");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("calls hang off their phase as a branch inside the timeline", () => {
+  const tree = new ToolTree({ ...settings, iconMode: "nerd" });
+  tree.start({ toolCallId: "a", toolName: "bash", args: { taskIntent: "Fix retries", taskProgress: 20, taskMilestones: PLAN, taskMilestone: "inspect" } });
+  settle(tree, "a");
+  tree.start({ toolCallId: "b", toolName: "bash", args: { taskProgress: 40, taskMilestones: PLAN, taskMilestone: "inspect" } });
+  settle(tree, "b");
+  tree.start({ toolCallId: "c", toolName: "bash", args: { taskProgress: 60, taskMilestones: PLAN, taskMilestone: "build" } });
+  settle(tree, "c");
+  tree.start({ toolCallId: "d", toolName: "bash", args: { taskProgress: 80, taskMilestones: PLAN, taskMilestone: "build" } });
+  settle(tree, "d");
+
+  const rows = painted(tree, 70, plainTheme);
+  const at = (needle: string) => rows.find(line => line.includes(needle)) ?? "";
+  // Calls follow their phase directly; only the phase-to-phase spine gets a blank link row.
+  const inspect = rows.findIndex(line => line.includes("◆ Inspect"));
+  assert.ok(inspect >= 0);
+  assert.match(rows[inspect + 1] ?? "", /^ │ ├ ●/, "the first call attaches directly as a branch");
+  const build = rows.findIndex(line => line.includes("◆ Build"));
+  assert.ok(isConnectorLine(rows[build - 1] ?? ""), "the phase spine reconnects before the next diamond");
+  // The last call of a phase closes that phase's branch, not the card's.
+  const calls = rows.filter(line => /^ │ [├└] ●/.test(line));
+  assert.equal(calls.length, 4, "every call hangs off a branch");
+  assert.match(calls[0] ?? "", /^ │ ├ ●/, "an earlier call keeps the branch open");
+  assert.equal(calls.filter(line => line.includes("└")).length, 2, "one branch closes per phase");
+  assert.ok(
+    rows.findIndex(line => line.includes("◆ Build")) > rows.findIndex(line => line.includes("└")),
+    "the closing branch comes before the next phase",
+  );
+});
+
+test("completed calls color their branch glyph green", () => {
+  const tree = new ToolTree({ ...settings, iconMode: "nerd" });
+  step(tree, "a", "inspect", 20);
+  settle(tree, "a");
+
+  const calls = painted(tree, WIDE).filter(line => /\[success\][├└] \[success\]●/.test(line));
+  assert.equal(calls.length, 1, "the completed call's branch glyph uses the success color");
 });
 
 test("phase and call duration rails show elapsed time and fit narrow widths", () => {

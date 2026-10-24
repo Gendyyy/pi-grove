@@ -10,6 +10,7 @@ import { plainTheme } from "./theme.js";
 import {
   GROUP_TARGET,
   PHASES_TARGET,
+  MILESTONE_TARGET_PREFIX,
   MAX_CHILDREN,
   MAX_GROUPS,
   MAX_GROUPS_TOTAL,
@@ -102,6 +103,7 @@ function updateGroupIntent(group: TreeGroup, intent: string): boolean {
   group.pendingCompletionId = undefined;
   group.phaseBounds = undefined;
   group.openPhases = undefined;
+  group.expandedMilestones = undefined;
   return true;
 }
 
@@ -518,7 +520,13 @@ export function toggleTarget(state: TreeState, group: TreeGroup, target: string)
   if (target === GROUP_TARGET) group.openAll = !group.openAll;
   // The meter line owns the plan gesture, so the border stays the row gesture.
   else if (target === PHASES_TARGET) group.openPhases = !group.openPhases;
-  else if (state.expanded.has(target)) state.expanded.delete(target);
+  else if (target.startsWith(MILESTONE_TARGET_PREFIX)) {
+    const id = target.slice(MILESTONE_TARGET_PREFIX.length);
+    if (!group.milestones?.some(milestone => milestone.id === id)) return;
+    group.expandedMilestones ??= new Set();
+    if (group.expandedMilestones.has(id)) group.expandedMilestones.delete(id);
+    else group.expandedMilestones.add(id);
+  } else if (state.expanded.has(target)) state.expanded.delete(target);
   else state.expanded.add(target);
 }
 

@@ -78,13 +78,13 @@ test("a reasoning row never counts as a tool call", () => {
 
   const painted = lines(tree.render(row("c1")));
   // The headline counts one call, not two: reasoning is narration, never a call.
-  assert.equal(painted.length, 4);
+  assert.equal(painted.length, 3);
   assert.match(painted[0]!, /1 call/);
   assert.match(painted[1]!, /thinking/);
   // Collapsed, a reasoning row is just its label: the text waits behind a click.
   assert.doesNotMatch(painted[1]!, /schema/);
   assert.doesNotMatch(painted[1]!, /words/);
-  assert.match(painted[3]!, /read/);
+  assert.match(painted[2]!, /read/);
 });
 
 test(

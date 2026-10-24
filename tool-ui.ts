@@ -7,7 +7,7 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
-import { taskIntentOf, taskMilestoneOf, taskMilestonesOf, taskProgressOf } from "./tree-model.js";
+import { taskIntentOf, taskMilestoneOf, taskMilestonesOf, taskProgressOf, toneBackground } from "./tree-model.js";
 import { ToolTree, type GroupMode, type TreeRow, type TreeSettings } from "./tool-tree.js";
 
 interface ToolUiOptions {
@@ -317,7 +317,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
           phase: "call",
           expanded: context.expanded,
           invalidate: context.invalidate,
-          background: text => theme.bg("toolPendingBg", text),
+          background: text => theme.bg(toneBackground(tree.tone(context.toolCallId)), text),
           outputPad: context.outputPad,
         });
       },
@@ -333,7 +333,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
           phase: "result",
           expanded: options.expanded,
           invalidate: context.invalidate,
-          background: text => theme.bg(context.isError ? "toolErrorBg" : "toolSuccessBg", text),
+          background: text => theme.bg(toneBackground(tree.tone(context.toolCallId)), text),
           outputPad: context.outputPad,
         });
       },

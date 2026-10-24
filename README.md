@@ -10,7 +10,9 @@ narration instead of a stack of boxes.
 ```
 
 Click the header to reveal every row, click a row to open one level, click again to close.
-Nothing opens by default; the headline stays compact above the tool details.
+The connector line under a row belongs to that row, so a click just below it opens the same
+level; a repeat click inside one gesture never undoes the first. Nothing opens by default; the
+headline stays compact above the tool details.
 
 ## Install
 
@@ -42,7 +44,7 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
 | `groupProgress` | on / off | on | show the estimate as a meter, with the phase plan when one is declared |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
-| `groupGutter` | on / off | on | show phase markers in the timeline; tool calls stay linked either way |
+| `groupGutter` | on / off | on | show phase markers and their spine links; calls remain a branch list either way |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
@@ -89,18 +91,18 @@ is transcript-backed and independent of the percentage, and a successful final `
 While a call is live, the needle's own cell breathes between the accent and muted roles on a cosine curve
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
-The rows below the rollup form a timeline. Each declared phase gets a diamond marker; each call gets a fixed-size circle. A separate connector row links every adjacent marker in the same column. The connector turns green when the phase or call before it completes, while a live call keeps its breathing marker and active link. Every phase and call keeps a proportional side-duration bar and elapsed label. Phase markers remain visible when the meter plan is closed; clicking a phase marker or the meter opens the full plan. `groupGutter` hides phase markers, while calls remain connected.
+The rows below the rollup form a timeline of phases, and calls inside each phase hang off it as a branch. Each declared phase gets a diamond marker; its calls follow directly as fixed-size circles beside `├` or `└` branch glyphs. The last call of a phase closes that phase's branch. One connector row links each phase diamond to the next; there are no blank connector rows between calls. A completed phase turns its outgoing spine link green, and each call colors its own branch glyph by outcome, while a live call keeps its breathing marker. A phase row is a boundary rather than one more call: its diamond and name are bold, and a dim rule carries the name out to the phase's own call count and elapsed time. Every phase and call keeps a proportional side-duration bar and elapsed label aligned to the card's right edge, and the rule is the first thing dropped when a card is too narrow to hold it. Phase markers remain visible when the meter plan is closed; clicking a phase marker reveals all direct calls assigned to that phase, including calls outside the rolling window, without opening their nested steps. Click a codemode row to reveal its nested calls; clicking the meter opens the full plan. `groupGutter` hides phase markers and their spine links, while calls remain a branch list with outcome-colored glyphs.
 
 There are no Goal or Now sections and no group status chip. By default, the headline places progress first, then the duration sparkline, then the call count and tool mix.
 
 ```
 ╭─ Make payment retries safe ───────────────────────────╮
 │ ▸   ▰▱▱▱▱▱▱▱▱▱   6% ·   ▃█ · 2 calls · bash ×1 · codemode ×1 │
-│ ◆ Inspect · 1 call · ━━━───── · 2s                   │
+│ ◆ Inspect ───────── · 1 call · ━━━───── · 2s          │
 │ │                                                     │
 │ ● codemode · read the classify docs · ━─────── · 1s   │
 │ │                                                     │
-│ ◆ Build · 1 call · ━━━━━━━━ · 4s                     │
+│ ◆ Build ─────────── · 1 call · ━━━━━━━━ · 4s          │
 │ │                                                     │
 │ ● bash · run the model tests · ━━━━━━━━ · 4s          │
 ╰───────────────────────────────────────────────────────╯
@@ -123,6 +125,11 @@ elapsed interval, not the host-reported execution duration. `/grove group progre
 the meter, not milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
 `/grove group nested off` hides nested tool names/counts from both the summary strip and codemode
 rows while preserving top-level tool counts, expandable child rows, and parent failure markers.
+
+The card owns its background instead of borrowing one row's result: it stays pending while any
+call runs, stays neutral when calls succeed or only some of them fail, and turns red only when
+every call in the card failed. A partial failure is still visible through the parent's warning
+marker and the error count, so the block never shouts about work that partly succeeded.
 
 ## Glyphs
 

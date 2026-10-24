@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { CODEMODE_GROUP_GUIDANCE, codemodeGroupMetadataViolation, registerToolUi } from "../tool-ui.js";
 
 const script = (...lines: string[]) => lines.join("\n");
@@ -131,4 +131,82 @@ test("Pi-agent guidance keeps task identity as the sole border title", () => {
   assert.match(CODEMODE_GROUP_GUIDANCE, /task-milestone: <id>.*every top-level call/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /@options:.*reasoning:.*task-intent:.*task-progress:/s);
   assert.doesNotMatch(CODEMODE_GROUP_GUIDANCE, /group-phase/);
+});
+
+const uiOptions = {
+  tools: new Set<string>(["bash"]),
+  mode: "reasoning" as const,
+  icons: false,
+  iconMode: "ascii" as const,
+  group: "prompt" as const,
+  groupRevealErrors: true,
+  groupWindow: 5,
+  groupNestedTools: true,
+  groupProgress: true,
+  groupSparkline: true,
+  groupGutter: true,
+  thinking: "inline" as const,
+};
+
+/**
+ * Render the card for a run of calls and report which host background role it asked for:
+ * the card is one paint borrowed by its first row, so this is what the block actually wears.
+ */
+function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
+  const handlers = new Map<string, (event: unknown, context?: unknown) => unknown>();
+  let resolve: ((name: string, next: () => unknown) => unknown) | undefined;
+  const pi = {
+    on(name: string, handler: (event: unknown, context?: unknown) => unknown) {
+      handlers.set(name, handler);
+      return () => {};
+    },
+    registerToolRenderer(fn: (name: string, next: () => unknown) => unknown) {
+      resolve = fn;
+    },
+  } as unknown as ExtensionAPI;
+  registerToolUi(pi, uiOptions);
+  outcomes.forEach((outcome, index) => {
+    const id = "call-" + index;
+    const args = { command: "run step " + index };
+    handlers.get("tool_execution_start")?.({ toolCallId: id, toolName: "bash", args });
+    handlers.get("tool_execution_end")?.({
+      toolCallId: id,
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "step " + index }] },
+      isError: outcome === "error",
+      durationMs: 120,
+    });
+  });
+  const roles: string[] = [];
+  const theme = {
+    style: (text: string) => text,
+    bg: (role: string, text: string) => {
+      roles.push(role);
+      return text;
+    },
+  };
+  const renderers = resolve?.("bash", () => ({})) as ToolRenderers | undefined;
+  const card = renderers?.renderResult!(
+    { content: [{ type: "text", text: "step 0" }], details: undefined },
+    { isPartial: false, expanded: false },
+    theme as never,
+    {
+      toolCallId: "call-0",
+      args: { command: "run step 0" },
+      isError: outcomes[0] === "error",
+      durationMs: 120,
+      outputPad: 1,
+      expanded: false,
+      invalidate: () => {},
+    } as never,
+  );
+  const painted = (card as { render(width: number): string[] }).render(96);
+  assert.ok(painted.length > 0, "the first row paints the card");
+  return [...new Set(roles)];
+}
+
+test("the card background describes the whole card, not its first call", () => {
+  assert.deepEqual(cardBackgrounds(["error", "ok"]), ["toolSuccessBg"]);
+  assert.deepEqual(cardBackgrounds(["ok", "error"]), ["toolSuccessBg"]);
+  assert.deepEqual(cardBackgrounds(["error", "error"]), ["toolErrorBg"]);
 });

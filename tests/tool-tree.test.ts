@@ -1078,23 +1078,67 @@ test("clicking the card title reveals one level without Pi expand-all", () => {
   assert.doesNotMatch(revealed.join(" "), /list files/);
 });
 
-test("clicking a timeline connector does not trigger Pi expand-all", () => {
-  const tree = new ToolTree(settings());
-  tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
+test("clicking the phase spine link reveals that phase's direct calls", () => {
+  const tree = new ToolTree({ ...settings(), window: 1, iconMode: "nerd" });
+  const milestones = "inspect=Inspect;build=Build;verify=Verify";
+  tree.start({
+    toolCallId: "c",
+    toolName: "codemode",
+    args: {
+      taskIntent: "Inspect then build",
+      taskProgress: 20,
+      taskMilestones: milestones,
+      taskMilestone: "inspect",
+      code: "// reasoning: inspect request",
+    },
+  });
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
-  tree.start({ toolCallId: "d", toolName: "bash", args: { reasoning: "run the tests" } });
+  tree.start({
+    toolCallId: "c2",
+    toolName: "bash",
+    args: { taskProgress: 40, taskMilestones: milestones, taskMilestone: "inspect", reasoning: "confirm request" },
+  });
+  tree.start({
+    toolCallId: "d",
+    toolName: "bash",
+    args: { taskProgress: 60, taskMilestones: milestones, taskMilestone: "build", reasoning: "run tests" },
+  });
   let piExpanded = false;
   const card = tree.render(row("c", piExpanded));
   const hostRegion = new MouseRegion(card, () => {
     piExpanded = !piExpanded;
     return { handled: true };
   });
-  const connectorY = card.render(80).map(stripAnsi).findIndex(line => /^\s*\| \|\s+\|$/.test(line));
-  assert.ok(connectorY > 0, "the timeline has a standalone connector row");
+  const before = card.render(80).map(stripAnsi);
+  const buildY = before.findIndex(line => line.includes("◆ Build"));
+  const connectorY = buildY - 1;
+  assert.ok(buildY > 0 && /^\s*[│|] [│|]\s+[│|]$/.test(before[connectorY] ?? ""), "the phase spine links Inspect to Build");
 
   assert.equal(hostRegion.handleMouse(click(connectorY))?.handled, true);
-  assert.equal(piExpanded, false, "decorative links consume the click without changing Pi's expansion state");
-  assert.doesNotMatch(lines(tree.render(row("c", piExpanded))).join(" "), /list files/, "the nested child remains collapsed");
+  assert.equal(piExpanded, false, "the phase link is Grove's, so Pi never expands the card");
+  const revealed = lines(tree.render(row("c", piExpanded))).join(" ");
+  assert.match(revealed, /inspect request/, "the link reveals calls assigned to Inspect");
+  assert.doesNotMatch(revealed, /list files/, "a phase link does not recursively open codemode children");
+});
+
+test("the second click of a double click never undoes the reveal", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
+  tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
+  const card = tree.render(row("c"));
+  const hostRegion = new MouseRegion(card, () => ({ handled: true }));
+  const rowY = at(card, /build the card/);
+  assert.ok(rowY > 0, "the card paints its codemode row");
+
+  assert.equal(hostRegion.handleMouse({ ...click(rowY), clickCount: 2 })?.handled, true);
+  assert.doesNotMatch(
+    lines(tree.render(row("c"))).join(" "),
+    /list files/,
+    "a repeated click is one gesture and leaves the row as it was",
+  );
+
+  assert.equal(hostRegion.handleMouse(click(rowY))?.handled, true);
+  assert.match(lines(tree.render(row("c"))).join(" "), /list files/, "a fresh single click still opens the row");
 });
 
 test("the header reveals every row but opens no level", () => {

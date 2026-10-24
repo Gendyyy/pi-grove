@@ -111,6 +111,8 @@ export interface TreeGroup {
   phaseBounds?: number[];
   /** True while the full plan is expanded under the meter. */
   openPhases?: boolean;
+  /** Phase ids whose nested call rows are expanded from their timeline marker. */
+  expandedMilestones?: Set<string>;
   invalidate?: () => void;
 }
 
@@ -118,8 +120,13 @@ export interface TreeGroup {
 export const GROUP_TARGET = "@group";
 /** Click target that toggles the phase plan under the meter; one line, one meaning. */
 export const PHASES_TARGET = "@phases";
-/** Non-interactive painted row that consumes clicks instead of falling through to Pi. */
-export const DECORATION_TARGET = "@decoration";
+/** Prefix for a click target that expands only the calls assigned to one phase. */
+export const MILESTONE_TARGET_PREFIX = "@milestone:";
+
+/** Name the click target for one phase marker. */
+export function milestoneTarget(id: string): string {
+  return MILESTONE_TARGET_PREFIX + id;
+}
 
 export const MAX_ROWS = 64;
 export const MAX_CHILDREN = 32;
@@ -386,6 +393,26 @@ export function countErrors(nodes: TreeNode[]): number {
   );
 }
 
+/** Background tone a card wears, read from the card itself rather than one borrowed row. */
+export type CardTone = "pending" | "success" | "error";
+
+/**
+ * Read one card's tone from its own calls: a live call keeps the card pending, only a card
+ * whose every call failed turns red, and a mix of failures and successes stays neutral.
+ */
+export function groupTone(rows: readonly TreeNode[]): CardTone {
+  const calls = rows.filter(row => row.kind !== "thinking");
+  if (calls.some(row => row.status === "running")) return "pending";
+  if (calls.length > 0 && calls.every(row => row.status === "error")) return "error";
+  return "success";
+}
+
+/** Host background role that carries a card tone. */
+export function toneBackground(tone: CardTone): "toolPendingBg" | "toolSuccessBg" | "toolErrorBg" {
+  if (tone === "pending") return "toolPendingBg";
+  return tone === "error" ? "toolErrorBg" : "toolSuccessBg";
+}
+
 /** Count tool calls anywhere in the subtree, excluding reasoning rows. */
 export function countToolCalls(nodes: TreeNode[]): number {
   return nodes.reduce(
@@ -406,7 +433,7 @@ export function errorCell(count: number, theme: GroveTheme, icons = false, iconM
   return themeText(theme, "error", count + (count === 1 ? " error" : " errors"));
 }
 
-/** Build one row's metadata tail, placing its optional duration rail before elapsed time. */
+/** Split one row's metadata from its optional duration rail and elapsed label. */
 export function rowTail(
   node: TreeNode,
   theme: GroveTheme,
@@ -415,11 +442,16 @@ export function rowTail(
   iconMode: IconMode = "auto",
   showNestedBreakdown = true,
   durationRail = "",
-): string {
+  elapsedMs = node.duration ?? (node.status === "running" ? Date.now() - node.started : 0),
+): { summary: string; duration: string } {
   const parts: string[] = [];
   // A codemode row names the mix of steps it contains instead of a bare count.
   if (showNestedBreakdown && node.children.length > 0)
     parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode));
+  // A script that called no tool has nothing to open, so the row says so rather than looking
+  // like every expandable row whose click did nothing.
+  if (showNestedBreakdown && node.name === "codemode" && node.children.length === 0)
+    parts.push(themeText(theme, "dim", "no calls"));
   const errors = node.children.filter(child => child.status === "error").length;
   if (errors > 0) parts.push(errorCell(errors, theme, icons, iconMode));
   // A codemode row is summarized by its steps; a leaf row carries its own outcome.
@@ -427,9 +459,11 @@ export function rowTail(
     parts.push(paintSummary(node.name, node.summary, node.status, theme, icons, iconMode));
   else if (node.children.length === 0)
     parts.push(paintSummary(node.name, node.status === "running" ? "running" : node.status, node.status, theme, icons, iconMode));
-  const elapsed = node.duration ?? (node.status === "running" ? Date.now() - node.started : 0);
-  if (durationRail) parts.push(durationRail);
-  parts.push(themeText(theme, "dim", formatElapsed(elapsed)));
-  return parts.join(themeText(theme, "dim", DOT));
+  const separator = themeText(theme, "dim", DOT);
+  return {
+    summary: parts.join(separator),
+    duration: (durationRail ? durationRail + separator : "") +
+      themeText(theme, "dim", formatElapsed(elapsedMs)),
+  };
 }
 
