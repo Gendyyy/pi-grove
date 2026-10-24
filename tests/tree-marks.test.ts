@@ -613,6 +613,88 @@ test("completed calls color their branch glyph green", () => {
   assert.equal(calls.length, 1, "the completed call's branch glyph uses the success color");
 });
 
+test("phase totals and tool calls share one card-relative linear duration scale", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree({ ...settings, iconMode: "nerd" });
+    step(tree, "a", "inspect", 20);
+    now += 5_000;
+    settle(tree, "a");
+    step(tree, "b", "build", 55);
+    now += 5_000;
+    settle(tree, "b");
+    step(tree, "c", "build", 60);
+    now += 4_000;
+    settle(tree, "c");
+
+    const lines = painted(tree, 100, plainTheme);
+    /** Count filled cells in the row's fixed-width duration rail. */
+    const filledCells = (line: string): number => {
+      const rail = /[━─]+(?= · \d+s │$)/.exec(line)?.[0];
+      assert.ok(rail, `duration rail is missing from: ${line}`);
+      return [...rail].filter(cell => cell === "━").length;
+    };
+    const inspect = lines.find(line => line.includes("◆ Inspect") && line.includes("5s"));
+    const build = lines.find(line => line.includes("◆ Build") && line.includes("9s"));
+    const tool = lines.find(line => line.includes("● bash") && line.includes("5s"));
+    assert.ok(inspect && build && tool, "both phase totals and a 5s tool row are visible");
+    assert.equal(filledCells(inspect), 4, "5s fills about 56% of an eight-cell rail against 9s");
+    assert.equal(filledCells(build), 8, "the longest phase total fills the shared rail");
+    assert.equal(filledCells(tool), 4, "tool rows use the same scale as phase totals");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("the duration scale includes calls outside the collapsed window", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree({
+      ...settings,
+      window: 1,
+      groupProgress: false,
+      groupGutter: false,
+      iconMode: "nerd",
+    });
+    tree.start({
+      toolCallId: "old",
+      toolName: "old_tool",
+      args: { taskIntent: "Compare elapsed work", taskProgress: 20, taskMilestones: PLAN, taskMilestone: "inspect" },
+    });
+    now += 9_000;
+    tree.end({ toolCallId: "old", toolName: "old_tool", result: { content: [] }, isError: false, durationMs: 1 });
+    tree.start({
+      toolCallId: "new",
+      toolName: "new_tool",
+      args: { taskProgress: 60, taskMilestones: PLAN, taskMilestone: "build" },
+    });
+    now += 5_000;
+    tree.end({ toolCallId: "new", toolName: "new_tool", result: { content: [] }, isError: false, durationMs: 1 });
+
+    const lines = card(tree, "old", plainTheme).render(WIDE).map(plain);
+    const current = lines.find(line => line.includes("new_tool") && line.includes("5s"));
+    assert.ok(current, "the most recent tool remains visible");
+    assert.doesNotMatch(
+      lines.filter(line => line.includes("●")).join(" "),
+      /old_tool/,
+      "the older tool row is outside the visible window",
+    );
+    const rail = /[━─]+(?= · 5s │$)/.exec(current)?.[0];
+    assert.ok(rail, "the visible row retains its rail and elapsed label");
+    assert.equal(
+      [...rail].filter(cell => cell === "━").length,
+      4,
+      "the hidden 9s call still sets the card scale for the visible 5s call",
+    );
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test("phase and call duration rails show elapsed time and fit narrow widths", () => {
   const realNow = Date.now;
   let now = 10_000;
@@ -627,9 +709,9 @@ test("phase and call duration rails show elapsed time and fit narrow widths", ()
     settle(tree, "b");
 
     const lines = painted(tree, 100, plainTheme);
-    const phase = lines.find(line => line.includes("◆ Inspect"));
+    const phase = lines.find(line => line.includes("◆ Build"));
     const call = lines.find(line => line.includes("● bash") && line.includes("3s"));
-    assert.ok(phase && phase.includes("3s"), "phase summary includes its accumulated elapsed time");
+    assert.ok(phase && phase.includes("1s"), "the shorter phase summary includes its accumulated elapsed time");
     assert.ok(phase.includes("━") && phase.includes("─"), "phase summary has a filled and remaining duration rail");
     assert.ok(call && call.includes("3s"), "call summary retains its elapsed label beside the rail");
 

@@ -53,8 +53,6 @@ const SPARK_BAR_COLORS = [
 const SPARK_FLOOR_MS = 50;
 const SPARK_CEIL_MS = 10_000;
 
-/** Side-rail scale from the approved mock; longer work fills the track at 6.2 seconds. */
-const SIDE_DURATION_MAX_MS = 6_200;
 /** Maximum visible width of each per-row elapsed-time rail. */
 const SIDE_DURATION_MAX_CELLS = 8;
 
@@ -96,16 +94,26 @@ function elapsedFor(node: TreeNode, now: number): number {
   return node.duration ?? (node.status === "running" ? Math.max(0, now - node.started) : 0);
 }
 
-/** Paint a responsive duration track whose filled portion is proportional to elapsed time. */
+/** Find the longest elapsed interval across every call and reasoning row in the card. */
+function longestElapsed(nodes: readonly TreeNode[], now: number): number {
+  let longest = 0;
+  for (const node of nodes)
+    longest = Math.max(longest, elapsedFor(node, now), longestElapsed(node.children, now));
+  return longest;
+}
+
+/** Paint a responsive duration track against the longest interval in its card. */
 function sideDurationRail(
   elapsed: number,
+  scale: number,
   width: number,
   theme: GroveTheme,
   glyphs: Glyphs,
   color: Foreground,
 ): string {
   const cells = Math.max(2, Math.min(SIDE_DURATION_MAX_CELLS, Math.floor(width / 9)));
-  const filled = Math.round(Math.min(1, elapsed / SIDE_DURATION_MAX_MS) * cells);
+  const fraction = scale > 0 ? Math.max(0, elapsed) / scale : 0;
+  const filled = Math.round(Math.min(1, fraction) * cells);
   const fill = glyphs.spark === "ascii" ? "#" : "━";
   return themeText(theme, color, fill.repeat(filled)) +
     themeText(theme, "muted", glyphs.h.repeat(cells - filled));
@@ -393,17 +401,33 @@ export function paintGroup(
   // counts apply to tool rows only; reasoning from the window start onward stays in
   // place, which keeps each thought directly above the action it led to.
   const tools = group.rows.filter(row => row.kind !== "thinking");
-  const plan = state.settings.groupGutter ? group.milestones ?? [] : [];
-  const displayPhaseByCall = new Map<string, string>();
+  const phasePlan = group.milestones ?? [];
+  const plan = state.settings.groupGutter ? phasePlan : [];
+  const phaseByCall = new Map<string, string>();
   let latestObservedPhase = -1;
   for (const node of tools) {
     if (!node.milestone) continue;
-    const declaredIndex = plan.findIndex(phase => phase.id === node.milestone);
+    const declaredIndex = phasePlan.findIndex(phase => phase.id === node.milestone);
     if (declaredIndex < 0) continue;
     latestObservedPhase = Math.max(latestObservedPhase, declaredIndex);
-    const phase = plan[latestObservedPhase];
-    if (phase) displayPhaseByCall.set(node.id, phase.id);
+    const phase = phasePlan[latestObservedPhase];
+    if (phase) phaseByCall.set(node.id, phase.id);
   }
+  const displayPhaseByCall = state.settings.groupGutter ? phaseByCall : new Map<string, string>();
+  const durationNow = Date.now();
+  const phaseElapsedById = new Map<string, number>();
+  for (const phase of phasePlan) {
+    const elapsed = tools.reduce(
+      (total, node) =>
+        phaseByCall.get(node.id) === phase.id ? total + elapsedFor(node, durationNow) : total,
+      0,
+    );
+    phaseElapsedById.set(phase.id, elapsed);
+  }
+  const durationScale = Math.max(
+    longestElapsed(group.rows, durationNow),
+    ...phaseElapsedById.values(),
+  );
 
   const truncated = !reveal && tools.length > limit;
   const windowVisible = truncated ? tools.slice(-limit) : tools;
@@ -473,8 +497,7 @@ export function paintGroup(
     const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
     // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
     const calls = phaseRows.length;
-    const now = Date.now();
-    const elapsed = phaseRows.reduce((total, node) => total + elapsedFor(node, now), 0);
+    const elapsed = phaseElapsedById.get(phase.id) ?? 0;
     // A phase is a boundary, not one more call: its diamond and name run bold so the eye finds
     // the break first, and a dim rule carries the name out to that phase's own rollup.
     const prefix = themeText(theme, role, glyphs.diamond + " " + phase.label, true);
@@ -482,7 +505,7 @@ export function paintGroup(
       ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls"))
       : "";
     const separator = themeText(theme, "dim", DOT);
-    const rail = sideDurationRail(elapsed, inner, theme, glyphs, role);
+    const rail = sideDurationRail(elapsed, durationScale, inner, theme, glyphs, role);
     const tail = rail + themeText(theme, "dim", DOT + formatElapsed(elapsed));
     const rollup = (detail ? separator + detail : "") + separator + tail;
     // The rule takes exactly the space the rollup leaves, so the row fills the card and never wraps.
@@ -582,8 +605,8 @@ export function paintGroup(
       const end = ancestors.length === 0 ? branchEnd.has(node.id) : last;
       const connector = branchGuide(ancestors, end, connectorColor) + markText + " " + label;
       const detail = node.kind === "thinking" ? "" : detailOf(node);
-      const elapsed = elapsedFor(node, now);
-      const rail = sideDurationRail(elapsed, inner, theme, glyphs, connectorColor);
+      const elapsed = elapsedFor(node, durationNow);
+      const rail = sideDurationRail(elapsed, durationScale, inner, theme, glyphs, connectorColor);
       const rowTailParts = node.kind === "thinking"
         ? {
             summary: "",
