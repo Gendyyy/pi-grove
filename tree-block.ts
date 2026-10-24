@@ -5,7 +5,7 @@
 import { Container, type Component, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 import { fitToolLine, WidthAwareLines } from "./block-render.js";
 import type { GroveTheme } from "./theme.js";
-import type { PaintPhase, TreeGroup } from "./tree-model.js";
+import { DECORATION_TARGET, type PaintPhase, type TreeGroup } from "./tree-model.js";
 import type { ToolTree } from "./tool-tree.js";
 
 /** One tool row handed to the tree: its live component and the host paint context. */
@@ -59,6 +59,7 @@ export class TreeBlock implements Component {
     this.tree.paint(this.group, event.width - (this.row.outputPad ?? 1) * 2, this.theme, this.row.expanded);
     const target = this.tree.targetAt(event.y);
     if (target === undefined) return undefined;
+    if (target === DECORATION_TARGET) return { handled: true };
     this.tree.toggle(this.group, target);
     return { handled: true };
   }

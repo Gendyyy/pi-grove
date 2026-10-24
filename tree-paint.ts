@@ -7,6 +7,7 @@ import { colorizeDiff, fitToolLine, formatElapsed, summaryLine } from "./block-r
 import type { IconMode } from "./icons.js";
 import { plainTheme, themeText, toolLabel, type Foreground, type GroveTheme } from "./theme.js";
 import {
+  DECORATION_TARGET,
   DOT,
   ELLIPSIS,
   GROUP_TARGET,
@@ -52,6 +53,11 @@ const SPARK_BAR_COLORS = [
 const SPARK_FLOOR_MS = 50;
 const SPARK_CEIL_MS = 10_000;
 
+/** Side-rail scale from the approved mock; longer work fills the track at 6.2 seconds. */
+const SIDE_DURATION_MAX_MS = 6_200;
+/** Maximum visible width of each per-row elapsed-time rail. */
+const SIDE_DURATION_MAX_CELLS = 8;
+
 /** Place one duration on the fixed log scale, so a height means the same thing on every card. */
 function sparkPosition(ms: number): number {
   const floor = Math.log1p(SPARK_FLOOR_MS);
@@ -80,6 +86,26 @@ function durationSpark(tools: readonly TreeNode[], theme: GroveTheme, glyphs: Gl
       return themeText(theme, SPARK_BAR_COLORS[level]!, bar);
     })
     .join("");
+}
+
+/** Return the same Grove elapsed interval used by the row's time label. */
+function elapsedFor(node: TreeNode, now: number): number {
+  return node.duration ?? (node.status === "running" ? Math.max(0, now - node.started) : 0);
+}
+
+/** Paint a responsive duration track whose filled portion is proportional to elapsed time. */
+function sideDurationRail(
+  elapsed: number,
+  width: number,
+  theme: GroveTheme,
+  glyphs: Glyphs,
+  color: Foreground,
+): string {
+  const cells = Math.max(2, Math.min(SIDE_DURATION_MAX_CELLS, Math.floor(width / 9)));
+  const filled = Math.round(Math.min(1, elapsed / SIDE_DURATION_MAX_MS) * cells);
+  const fill = glyphs.spark === "ascii" ? "#" : "━";
+  return themeText(theme, color, fill.repeat(filled)) +
+    themeText(theme, "muted", glyphs.h.repeat(cells - filled));
 }
 
 const SHIMMER_BAND = 3;
@@ -371,31 +397,52 @@ export function paintGroup(
   const kept = new Set(visible.map(row => row.id));
   const rows = group.rows.filter(row => (row.kind === "thinking" ? row.seq >= from : kept.has(row.id)));
 
-  // The gutter is the same rule one level down: a divider appears only where the plan really
-  // moved, so the rows read as an event log instead of a forecast. Nothing is invented for a
-  // phase that has not started, and a plan-less card never grows a divider at all.
-  let dividerPhase: string | undefined;
-  let dividedRows = false;
-  const phaseDivider = (node: TreeNode): string | undefined => {
-    const plan = group.milestones;
-    const declared = node.milestone;
-    if (!plan || !declared || declared === dividerPhase) return undefined;
-    const index = plan.findIndex(phase => phase.id === declared);
-    if (index < 0) return undefined;
-    dividerPhase = declared;
-    // The first row has no boundary above it: the card start already says "here".
-    if (!dividedRows) return undefined;
+  const plan = state.settings.groupGutter ? group.milestones ?? [] : [];
+  const displayPhaseByCall = new Map<string, string>();
+  let latestObservedPhase = -1;
+  for (const node of tools) {
+    if (!node.milestone) continue;
+    const declaredIndex = plan.findIndex(phase => phase.id === node.milestone);
+    if (declaredIndex < 0) continue;
+    latestObservedPhase = Math.max(latestObservedPhase, declaredIndex);
+    const phase = plan[latestObservedPhase];
+    if (phase) displayPhaseByCall.set(node.id, phase.id);
+  }
+  let nextPhaseIndex = 0;
+  let hasTimelineMarker = false;
+  let connectorRole: Foreground = "dim";
+
+  /** Add one marker and the standalone link from its predecessor. */
+  const appendTimelineMarker = (line: string, target: string | undefined, nextRole: Foreground): void => {
+    if (hasTimelineMarker) {
+      lines.push(themeText(theme, connectorRole, glyphs.pipe));
+      targets.set(lines.length - 1, DECORATION_TARGET);
+    }
+    lines.push(fitToolLine(line, inner));
+    if (target !== undefined) targets.set(lines.length - 1, target);
+    hasTimelineMarker = true;
+    connectorRole = nextRole;
+  };
+
+  /** Paint a declared phase before its calls, with a rollup of the time already spent. */
+  const emitPhase = (index: number): void => {
+    const phase = plan[index];
+    if (!phase) return;
     const complete = group.progress === 100;
-    const activeIndex = complete ? plan.length - 1 : plan.findIndex(phase => phase.id === group.activeMilestoneId);
+    const activeIndex = complete ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
     const role: Foreground = complete || index < activeIndex ? "success" : index === activeIndex ? "accent" : "dim";
-    // The tick matches the one the meter draws for the same boundary; the diamond says this
-    // row is the plan moving, not another call.
-    const lead = glyphs.pipe + " " + glyphs.tick + " ";
-    const mark = themeText(theme, role, glyphs.diamond) + " ";
-    const label = themeText(theme, role, plan[index]!.label);
-    const room = Math.max(0, inner - visibleWidth(lead) - visibleWidth(mark) - visibleWidth(label) - 1);
-    const tail = room > 0 ? themeText(theme, "dim", " " + glyphs.h.repeat(room)) : "";
-    return themeText(theme, "dim", lead) + mark + label + tail;
+    const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
+    // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
+    const calls = phaseRows.length;
+    const now = Date.now();
+    const elapsed = phaseRows.reduce((total, node) => total + elapsedFor(node, now), 0);
+    const prefix = themeText(theme, role, glyphs.diamond + " " + phase.label);
+    const detail = calls > 0 ? counted(theme, calls, "call", "calls") : "";
+    const separator = themeText(theme, "dim", DOT);
+    const rail = sideDurationRail(elapsed, inner, theme, glyphs, role);
+    const tail = rail + themeText(theme, "dim", DOT + formatElapsed(elapsed));
+    const line = summaryLine(prefix, detail, separator, tail, inner);
+    appendTimelineMarker(line, PHASES_TARGET, role === "success" ? "success" : role);
   };
 
 
@@ -450,42 +497,46 @@ export function paintGroup(
     targets.set(lines.length - 1, GROUP_TARGET);
   }
 
+  /** Render visible call nodes as aligned markers, preserving expansion and previews. */
   const emit = (nodes: TreeNode[], ancestors: boolean[]): void => {
     for (const [index, node] of nodes.entries()) {
       const last = index === nodes.length - 1;
-      const guide = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
-      // One line, one gesture still holds: the divider belongs to the plan, like the meter.
-      if (ancestors.length === 0 && node.kind !== "thinking") {
-        const divider = state.settings.groupGutter ? phaseDivider(node) : undefined;
-        dividedRows = true;
-        if (divider) {
-          lines.push(fitToolLine(divider, width));
-          targets.set(lines.length - 1, PHASES_TARGET);
+      const displayPhase = displayPhaseByCall.get(node.id);
+      if (ancestors.length === 0 && node.kind !== "thinking" && displayPhase) {
+        const declaredIndex = plan.findIndex(phase => phase.id === displayPhase);
+        while (nextPhaseIndex <= declaredIndex && nextPhaseIndex < plan.length) {
+          emitPhase(nextPhaseIndex);
+          nextPhaseIndex += 1;
         }
       }
+
       const open = expandAll || state.expanded.has(node.id);
       const now = Date.now();
       const mark = stateMark(node, glyphs);
-      // The guide is structure, not state: the dot and the row summary already carry the
-      // outcome, so a failed call keeps a neutral stem instead of repainting the line.
-      const stemColor: Foreground =
-        node.kind === "thinking" ? "muted" : node.status === "running" ? "accent" : "dim";
+      const connectorColor: Foreground =
+        node.kind === "thinking"
+          ? "muted"
+          : node.status === "running"
+            ? "accent"
+            : mark.color === "error" || mark.color === "warning"
+              ? mark.color
+              : node.status === "success"
+                ? "success"
+                : "dim";
       const label =
         node.kind === "thinking"
           ? themeText(theme, "muted", "thinking")
           : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode);
-      // The branch keeps its stem; the dot after it carries the call state, so a running
-      // call blinks in place instead of the marker only saying open or closed.
-      const stem = guide + (last ? glyphs.end : glyphs.tee) + "─ ";
       const markText = mark.pulse
         ? pulseText(mark.glyph, theme, now, mark.pulse)
         : themeText(theme, mark.color, mark.glyph);
-      const connector = themeText(theme, stemColor, stem) + markText + " " + label;
-      // Reasoning stays a plain label until it is clicked; the text lives in the preview.
+      const connector = markText + " ".repeat(1 + ancestors.length * 2) + label;
       const detail = node.kind === "thinking" ? "" : detailOf(node);
+      const elapsed = elapsedFor(node, now);
+      const rail = sideDurationRail(elapsed, inner, theme, glyphs, connectorColor);
       const tail =
         node.kind === "thinking"
-          ? themeText(theme, "dim", formatElapsed(node.duration ?? (node.status === "running" ? now - node.started : 0)))
+          ? rail + themeText(theme, "dim", DOT + formatElapsed(elapsed))
           : rowTail(
               node,
               theme,
@@ -493,35 +544,32 @@ export function paintGroup(
               state.settings.icons,
               state.settings.iconMode,
               state.settings.groupNestedTools,
+              rail,
             );
-      const line = detail
-        ? summaryLine(
-            connector,
-            // The dot between the tool word and its intent keeps the two readable apart.
-            "· " + detail,
-            themeText(theme, "dim", DOT),
-            tail,
-            width,
-            fittedDetail => {
-              const color: Foreground = node.status === "error" ? "error" : "muted";
-              const leadLength =
-                fittedDetail.startsWith("· ") ? 2 : fittedDetail.startsWith("·") ? 1 : 0;
-              const lead = themeText(theme, color, fittedDetail.slice(0, leadLength));
-              const words = fittedDetail.slice(leadLength);
-              return lead + (node.status === "running"
-                ? shimmerText(words, theme, now, node.started)
-                : themeText(theme, color, words));
-            },
-          )
-        : fitToolLine(connector + themeText(theme, "dim", DOT) + tail, width);
-      lines.push(line);
-      targets.set(lines.length - 1, node.id);
+      const line = summaryLine(
+        connector,
+        detail ? "· " + detail : "",
+        themeText(theme, "dim", DOT),
+        tail,
+        inner,
+        fittedDetail => {
+          const color: Foreground = node.status === "error" ? "error" : "muted";
+          const leadLength =
+            fittedDetail.startsWith("· ") ? 2 : fittedDetail.startsWith("·") ? 1 : 0;
+          const lead = themeText(theme, color, fittedDetail.slice(0, leadLength));
+          const words = fittedDetail.slice(leadLength);
+          return lead + (node.status === "running"
+            ? shimmerText(words, theme, now, node.started)
+            : themeText(theme, color, words));
+        },
+      );
+      appendTimelineMarker(line, node.id, connectorColor);
 
       if (open) emit(node.children, [...ancestors, last]);
       else if (state.settings.revealErrors)
         emit(node.children.filter(child => child.status === "error"), [...ancestors, last]);
 
-      // Branch rows drill into their steps instead of dumping their own output.
+      // Keep bounded tool previews attached to their call without treating lines as markers.
       const preview = node.children.length === 0 ? node.preview ?? [] : [];
       if (open && preview.length > 0) {
         const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
@@ -542,6 +590,10 @@ export function paintGroup(
   };
 
   emit(rows, []);
+  while (nextPhaseIndex < plan.length) {
+    emitPhase(nextPhaseIndex);
+    nextPhaseIndex += 1;
+  }
   if (lines.length === 0 || width < 24) return lines;
 
   // One border around intent, rollup and calls: the group reads as a single object

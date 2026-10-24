@@ -42,7 +42,7 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
 | `groupProgress` | on / off | on | show the estimate as a meter, with the phase plan when one is declared |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
-| `groupGutter` | on / off | on | divide the rows wherever the plan moved on to another phase |
+| `groupGutter` | on / off | on | show phase markers in the timeline; tool calls stay linked either way |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
@@ -89,23 +89,21 @@ is transcript-backed and independent of the percentage, and a successful final `
 While a call is live, the needle's own cell breathes between the accent and muted roles on a cosine curve
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
-The rows carry the same rule one level down. Wherever the plan moved from one phase to the next between two
-calls, Grove draws a divider into the row list itself—`│ ┆ ◆ Build ─────────`—so the boundary stands where it
-happened instead of only in the meter above. A card never divides itself above its first row, and a phase whose
-calls all landed inside a single row never earns a divider: the gutter is an event log, not a forecast. The label
-holds the accent while the phase is in flight and turns green once the plan has moved past it. The diamond in
-front of the name keeps a divider from reading as one more call, and the divider opens the plan when clicked,
-exactly like the meter. `groupGutter` turns the dividers off.
+The rows below the rollup form a timeline. Each declared phase gets a diamond marker; each call gets a fixed-size circle. A separate connector row links every adjacent marker in the same column. The connector turns green when the phase or call before it completes, while a live call keeps its breathing marker and active link. Every phase and call keeps a proportional side-duration bar and elapsed label. Phase markers remain visible when the meter plan is closed; clicking a phase marker or the meter opens the full plan. `groupGutter` hides phase markers, while calls remain connected.
 
-There are no Goal or Now sections and no group status chip. By default, the headline places
-progress first, then the duration sparkline, then the call count and tool mix.
+There are no Goal or Now sections and no group status chip. By default, the headline places progress first, then the duration sparkline, then the call count and tool mix.
 
 ```
 ╭─ Make payment retries safe ───────────────────────────╮
 │ ▸   ▰▱▱▱▱▱▱▱▱▱   6% ·   ▃█ · 2 calls · bash ×1 · codemode ×1 │
-│ ├─ ●   codemode · read the classify docs and run one · 1s  │
-│ └─ ●   bash · run the model tests (npm test) · 4s          │
-╰────────────────────────────────────────────────────────────╯
+│ ◆ Inspect · 1 call · ━━━───── · 2s                   │
+│ │                                                     │
+│ ● codemode · read the classify docs · ━─────── · 1s   │
+│ │                                                     │
+│ ◆ Build · 1 call · ━━━━━━━━ · 4s                     │
+│ │                                                     │
+│ ● bash · run the model tests · ━━━━━━━━ · 4s          │
+╰───────────────────────────────────────────────────────╯
 ```
 
 The border title and rollup completion metric are the card's only group-level summary. Individual

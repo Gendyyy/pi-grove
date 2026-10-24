@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ToolTree, GROUP_TARGET, PHASES_TARGET, type TreeRow, type TreeSettings } from "../tool-tree.js";
-import { colorToRgb, rgbColor } from "@earendil-works/pi-tui";
+import { colorToRgb, rgbColor, visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { PULSE_MS } from "../tree-paint.js";
 
@@ -33,6 +33,10 @@ function painted(tree: ToolTree, width = 96, rowTheme: GroveTheme = theme): stri
   card(tree, "a", rowTheme).handleMouse?.(click(0));
   // This theme tags text instead of emitting escapes, so the frame is sliced, not parsed.
   return card(tree, "a", rowTheme).render(width).map(plain).slice(1, -1);
+}
+/** Identify a connector row between the card's left and right frame borders. */
+function isConnectorLine(line: string): boolean {
+  return /^[│|] [│|]\s+[│|]$/.test(line.trim());
 }
 
 /** Theme with a concrete palette that tags every colour as an rgb triple. */
@@ -237,13 +241,19 @@ test("a settled call shows a filled dot in its status colour", () => {
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, durationMs: 900 } as never, undefined);
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: true, durationMs: 800 } as never, undefined);
-  const [head, ok, failed] = painted(tree) as [string, string, string];
-  const headerMarker = head!.match(/\[dim\]v/)?.[0];
+  const rows = painted(tree);
+  const head = rows.find(line => line.includes("[dim]v"));
+  const ok = rows.find(line => line.includes("[success]*"));
+  const failed = rows.find(line => line.includes("[error]*"));
+  assert.ok(head);
+  assert.ok(ok);
+  assert.ok(failed);
+  const headerMarker = head.match(/\[dim\]v/)?.[0];
   assert.ok(headerMarker);
   assert.doesNotMatch(headerMarker, /warning/);
-  assert.match(ok!, /\[success\]\*/);
-  assert.match(failed!, /\[error\]\*/);
-  assert.doesNotMatch(ok!, /error/);
+  assert.match(ok, /\[success\]\*/);
+  assert.match(failed, /\[error\]\*/);
+  assert.doesNotMatch(ok, /error/);
 });
 
 test("a running call breathes its marker instead of cycling frames", () => {
@@ -329,22 +339,24 @@ test("seven phases keep the active phase readable on a narrow card", () => {
   assert.ok(narrow.length <= 34, `narrow meter exceeds its viewport: ${narrow}`);
 });
 
-test("the meter line is its own click target for the plan", () => {
+test("the meter toggles the expanded plan independently of visible timeline phases", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
   const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
+  const hasExpandedPlan = () => card(tree).render(WIDE).map(plain).some(line =>
+    line.includes("Inspect") && line.includes("Verify") && (line.includes("->") || line.includes("→")),
+  );
 
-  // The frame border still means "reveal the rows", so line 1 has to mean something else.
   card(tree).render(WIDE);
   assert.equal(targetAt(0), GROUP_TARGET);
   assert.equal(targetAt(1), PHASES_TARGET);
+  assert.equal(hasExpandedPlan(), false, "phase markers do not open the meter's full plan");
+  assert.ok(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("*")), "the timeline still names its first phase");
 
-  assert.equal(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect")), false, "the plan stays closed until asked for");
   card(tree).handleMouse?.(click(1));
-  const opened = card(tree).render(WIDE).map(plain);
-  assert.ok(opened.some(line => line.includes("Inspect") && line.includes("Verify")), "clicking the meter opens the plan");
+  assert.equal(hasExpandedPlan(), true, "clicking the meter expands the full plan");
   card(tree).handleMouse?.(click(1));
-  assert.equal(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect")), false, "a second click closes it");
+  assert.equal(hasExpandedPlan(), false, "a second click closes only the expanded plan");
 });
 /** Two finished calls in one phase, then a live call that opened the next one. */
 function twoPhases(gutterSettings: TreeSettings = settings): ToolTree {
@@ -357,43 +369,116 @@ function twoPhases(gutterSettings: TreeSettings = settings): ToolTree {
   return tree;
 }
 
-test("a phase change draws one divider where the plan actually moved", () => {
-  const tree = twoPhases();
-  const lines = painted(tree, 60, plainTheme);
-  // The divider is a pipe, the meter's own boundary tick, the milestone diamond, a name, a rule.
-  const divider = (line: string) => line.includes(" : * Build ") && line.includes("--");
-  const at = lines.findIndex(divider);
-  assert.ok(at > 0, "the boundary between two phases gets a divider: " + lines.join(" / "));
-  // One boundary, one divider, and it stands directly above the row that opened the phase.
-  assert.equal(lines.filter(divider).length, 1);
-  assert.match(lines[at + 1] ?? "", /bash/);
-  // Nothing divides the card above its first call, and the phase that call opened needs no divider.
-  assert.ok(at > lines.findIndex(line => line.includes("bash")), "the first call carries no divider above it");
-  // The divider is furniture, not a call: the rollup still counts three.
-  assert.match(lines.find(line => line.includes("calls")) ?? "", /3 calls/);
-});
+test("phase and call markers form one sequence with links between every step", () => {
+  const tree = twoPhases({ ...settings, iconMode: "nerd" });
+  const lines = painted(tree, WIDE, plainTheme);
+  const markers = lines.filter(line => /(?:◆|◇) (?:Inspect|Build|Verify)|● bash/.test(line));
+  assert.deepEqual(markers.map(line => line.match(/(?:◆|◇|●) (?:Inspect|Build|Verify|bash)/)?.[0]), [
+    "◆ Inspect", "● bash", "● bash", "◆ Build", "● bash", "◆ Verify",
+  ]);
+  const connectors = lines.filter(isConnectorLine);
+  assert.equal(connectors.length, markers.length - 1, "there is exactly one standalone link between adjacent markers");
 
-test("the gutter is opt-out and its divider opens the plan", () => {
-  const off = twoPhases({ ...settings, groupGutter: false });
-  assert.equal(painted(off, 60, plainTheme).filter(line => line.includes(" : * Build ")).length, 0, "opted out, the rows stay undivided");
-
-  const tree = twoPhases();
+  const rendered = card(tree, "a", plainTheme).render(WIDE).map(plain);
+  const buildY = rendered.findIndex(line => line.includes("◆ Build"));
   const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
-  card(tree).handleMouse?.(click(0));
-  // Under the tagging theme only the divider joins the diamond tag straight to the name.
-  const y = card(tree).render(60).map(plain).findIndex(line => line.includes("[accent]Build") || line.includes("[success]Build"));
-  assert.ok(y > 0, "the divider is on screen");
-  assert.equal(targetAt(y), PHASES_TARGET, "the divider belongs to the plan, like the meter");
-  card(tree).handleMouse?.(click(y));
-  assert.ok(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("Verify")), "clicking the divider opens the plan");
+  assert.equal(targetAt(buildY), PHASES_TARGET, "a phase marker remains a plan click target");
+  card(tree, "a", plainTheme).handleMouse?.(click(buildY));
+  assert.ok(card(tree, "a", plainTheme).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("Verify") && line.includes("→")), "clicking a phase marker opens the plan");
 });
 
-test("a divider re-colours behind the plan as later phases open", () => {
+test("a stale phase declaration stays with the latest completed phase in the timeline", () => {
+  const tree = new ToolTree(settings);
+  step(tree, "a", "inspect", 10);
+  step(tree, "b", "build", 55);
+  step(tree, "c", "inspect", 45);
+
+  const lines = painted(tree, WIDE);
+  const inspectAt = lines.findIndex(line => line.includes("Inspect") && /1 .*call/.test(line));
+  const buildAt = lines.findIndex(line => line.includes("Build") && /2 .*calls/.test(line));
+  const calls = lines.flatMap((line, index) =>
+    line.includes("bash") && !/\bcalls?\b/.test(line) ? [index] : [],
+  );
+  assert.ok(inspectAt >= 0 && buildAt > inspectAt, "phase summaries stay in declared order");
+  assert.equal(calls.length, 3, "all three calls remain visible");
+  assert.ok(inspectAt < calls[0]! && buildAt < calls[1]!, "the stale declaration is rendered under the latest phase");
+  assert.ok(calls[1]! < calls[2]!, "the calls retain their transcript order");
+});
+
+test("phase gutter hides phase markers but preserves links between calls", () => {
+  const tree = twoPhases({ ...settings, groupGutter: false });
+  const lines = painted(tree, 60, plainTheme);
+  assert.equal(lines.some(line => /◆ (?:Inspect|Build|Verify)/.test(line)), false, "the existing phase-gutter option still hides phase markers");
+  assert.equal(lines.filter(isConnectorLine).length, 2, "the call timeline remains connected");
+});
+
+test("a completed phase marker turns green when the plan moves on", () => {
   const tree = twoPhases();
-  const divider = () => painted(tree, WIDE).find(line => /\[(accent|success|dim)\]Build/.test(line)) ?? "";
-  assert.match(divider(), /\[accent\]\* \[accent\]Build/, "the phase in flight carries the accent, diamond included");
+  const phaseMarker = () => painted(tree, WIDE).find(line => /\[accent\]\* Build|\[success\]\* Build/.test(line)) ?? "";
+  assert.match(phaseMarker(), /\[accent\]\* Build/, "the active phase marker carries the accent");
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");
-  assert.match(divider(), /\[success\]\* \[success\]Build/, "a divider behind the plan reads as history, like the pinned span");
+  assert.match(phaseMarker(), /\[success\]\* Build/, "the completed phase marker reads as history");
+});
+
+test("a completed phase turns its connector green while a live phase stays active", () => {
+  const tree = twoPhases();
+  const buildLink = () => {
+    const lines = card(tree).render(WIDE).map(plain);
+    const build = lines.findIndex(line => line.includes("Build") && line.includes("call"));
+    return lines[build + 1] ?? "";
+  };
+  assert.match(buildLink(), /\[accent\]\|/, "the active phase keeps its outgoing link active");
+
+  step(tree, "d", "verify", 80);
+  settle(tree, "c");
+  assert.match(buildLink(), /\[success\]\|/, "the completed phase's outgoing link turns green");
+});
+
+test("phase call counts do not reveal nested totals hidden from codemode summaries", () => {
+  const tree = new ToolTree({ ...settings, groupNestedTools: false });
+  tree.start({
+    toolCallId: "a",
+    toolName: "codemode",
+    args: { taskIntent: "Implement retry safety", taskProgress: 10, taskMilestones: PLAN, taskMilestone: "inspect" },
+  });
+  for (const [id, toolName] of [["a1", "bash"], ["a2", "read"]]) {
+    tree.start({ toolCallId: id!, toolName: toolName!, parentToolCallId: "a", args: { reasoning: "nested step" } });
+    tree.end({ toolCallId: id!, toolName: toolName!, result: { content: [] }, isError: false, durationMs: 100 });
+  }
+  tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: false, durationMs: 200 });
+
+  const phase = painted(tree, WIDE).find(line => line.includes("Inspect") && line.includes("call")) ?? "";
+  assert.match(phase, /1 .*call/, "phase count describes its direct codemode row");
+  assert.doesNotMatch(phase, /3 .*calls/, "hidden nested tools do not leak through the phase rollup");
+});
+
+test("phase and call duration rails show elapsed time and fit narrow widths", () => {
+  const realNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    const tree = new ToolTree({ ...settings, iconMode: "nerd" });
+    step(tree, "a", "inspect", 15);
+    now += 3_100;
+    settle(tree, "a");
+    step(tree, "b", "build", 55);
+    now += 1_550;
+    settle(tree, "b");
+
+    const lines = painted(tree, 100, plainTheme);
+    const phase = lines.find(line => line.includes("◆ Inspect"));
+    const call = lines.find(line => line.includes("● bash") && line.includes("3s"));
+    assert.ok(phase && phase.includes("3s"), "phase summary includes its accumulated elapsed time");
+    assert.ok(phase.includes("━") && phase.includes("─"), "phase summary has a filled and remaining duration rail");
+    assert.ok(call && call.includes("3s"), "call summary retains its elapsed label beside the rail");
+
+    for (const width of [18, 23, 24, 27, 35, 40, 80]) {
+      const rendered = card(tree, "a", plainTheme).render(width);
+      assert.ok(rendered.every(line => visibleWidth(line) <= width), `timeline exceeds ${width} columns`);
+    }
+  } finally {
+    Date.now = realNow;
+  }
 });

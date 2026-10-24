@@ -121,7 +121,7 @@ export const SETTINGS: readonly SettingSpec[] = [
     apply: "live",
     fallback: true,
     label: "Phase gutter",
-    summary: "divide the rows wherever the plan moved on to another phase",
+    summary: "show phase markers in the timeline; tool calls stay linked either way",
   },
   { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", apply: "reload", label: "Reasoning", summary: "where reasoning appears" },
   {

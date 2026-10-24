@@ -124,7 +124,10 @@ function lines(component: Component, width = 80): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
   // The card is one bordered object now, so the body is what the assertions index.
   if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+  return painted
+    .slice(1, -1)
+    .map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim())
+    .filter(line => line.length > 0 && line !== "|" && line !== "│");
 }
 
 test("milestone annotations accept only bounded, uniquely identified phase plans", () => {
@@ -799,7 +802,7 @@ test("a finished call uses elapsed time when the host omits durationMs", () => {
     tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the log" } });
     now += 2_450;
     tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
-    const callLine = lines(tree.render(row("a"))).find(line => line.includes("+─"));
+    const callLine = lines(tree.render(row("a"))).find(line => line.includes("read the log"));
     assert.ok(callLine, "the rendered card includes the call row");
     assert.match(callLine, /2s$/, `elapsed time was lost when the host omitted durationMs: ${callLine}`);
   } finally {
@@ -822,7 +825,7 @@ test("Grove elapsed time overrides a supplied host duration", () => {
       isError: false,
       durationMs: 650,
     });
-    const callLine = lines(tree.render(row("a"))).find(line => line.includes("+─"));
+    const callLine = lines(tree.render(row("a"))).find(line => line.includes("read the log"));
     assert.ok(callLine, "the rendered card includes the call row");
     assert.match(callLine, /2s$/, `the Grove elapsed interval should win over host timing: ${callLine}`);
   } finally {
@@ -1017,13 +1020,13 @@ test("clicking a codemode row reveals its nested steps", () => {
   assert.match(before[0]!, /codemode x1/);
   assert.match(before[0]!, /bash x1/);
   assert.match(before[0]!, /read x1/);
-  // A branch row names the mix of steps it holds instead of a bare count.
+  // The codemode row names the mix of steps it holds instead of a bare count.
   assert.match(before[1]!, /bash x1/);
   assert.match(before[1]!, /read x1/);
   assert.doesNotMatch(before.join(" "), /list files/);
 
   // The headline also names codemode, so match the row by its own goal text.
-  card.handleMouse?.(click(at(card, /─ .*build the card/)));
+  card.handleMouse?.(click(at(card, /build the card/)));
   const after = lines(tree.render(row("c")));
   assert.equal(after.length, 4);
   assert.match(after[2]!, /list files/);
@@ -1048,7 +1051,7 @@ test("hiding nested counts preserves expandable child rows and failure markers",
   assert.doesNotMatch(collapsed[1]!, /bash x1/, "nested counts are hidden from the codemode row");
   assert.match(collapsed[1]!, /1 error/, "the parent failure marker is unaffected");
 
-  card.handleMouse?.(click(at(card, /─ .*build the card/)));
+  card.handleMouse?.(click(at(card, /build the card/)));
   const expanded = lines(tree.render(row("c")));
   assert.ok(expanded.some(line => /run nested checks/.test(line)), "nested rows remain expandable");
 });
@@ -1075,6 +1078,25 @@ test("clicking the card title reveals one level without Pi expand-all", () => {
   assert.doesNotMatch(revealed.join(" "), /list files/);
 });
 
+test("clicking a timeline connector does not trigger Pi expand-all", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
+  tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
+  tree.start({ toolCallId: "d", toolName: "bash", args: { reasoning: "run the tests" } });
+  let piExpanded = false;
+  const card = tree.render(row("c", piExpanded));
+  const hostRegion = new MouseRegion(card, () => {
+    piExpanded = !piExpanded;
+    return { handled: true };
+  });
+  const connectorY = card.render(80).map(stripAnsi).findIndex(line => /^\s*\| \|\s+\|$/.test(line));
+  assert.ok(connectorY > 0, "the timeline has a standalone connector row");
+
+  assert.equal(hostRegion.handleMouse(click(connectorY))?.handled, true);
+  assert.equal(piExpanded, false, "decorative links consume the click without changing Pi's expansion state");
+  assert.doesNotMatch(lines(tree.render(row("c", piExpanded))).join(" "), /list files/, "the nested child remains collapsed");
+});
+
 test("the header reveals every row but opens no level", () => {
   const tree = new ToolTree(settings());
   tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
@@ -1090,7 +1112,7 @@ test("the header reveals every row but opens no level", () => {
 
   // The header also names codemode in its mix, so match the row by its own goal.
   const card2 = tree.render(row("c"));
-  card2.handleMouse?.(click(at(card2, /─ .*build the card/)));
+  card2.handleMouse?.(click(at(card2, /build the card/)));
   const drilled = lines(tree.render(row("c")));
   assert.match(drilled.join(" "), /list files/);
 });
@@ -1185,7 +1207,7 @@ test("clicking a finished call shows a bounded preview", () => {
   const card = tree.render(row("a"));
   assert.equal(lines(card).length, 2);
   // Clicks take framed coordinates, so resolve the row in the rendered frame.
-  card.handleMouse?.(click(at(card, /─ .*read the log/)));
+  card.handleMouse?.(click(at(card, /read the log/)));
   const painted = lines(tree.render(row("a")));
   assert.equal(painted.length, 11);
   assert.match(painted[2]!, /line 1/);
@@ -1264,11 +1286,11 @@ test("a finished codemode call keeps the steps that ran inside it", () => {
   assert.match(before[0]!, /1 call/);
   assert.match(before[1]!, /bash x1/);
 
-  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /─ .*audit the suite/)));
+  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /audit the suite/)));
   const opened = lines(tree.render(row("c")));
   assert.match(opened[2]!, /run the tests/);
 
-  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /─ .*run the tests/)));
+  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /run the tests/)));
   const expanded = lines(tree.render(row("c")));
   assert.ok(expanded.some(line => /12 passed/.test(line)), "the step keeps its output");
 });
@@ -1290,7 +1312,7 @@ test("a codemode call does not duplicate the steps it already registered live", 
   tree.end({ toolCallId: "c:1", toolName: "bash", result: { content: [{ type: "text", text: "$ bun test\n12 passed" }] }, isError: false, durationMs: 1200 });
   tree.end({ toolCallId: "c", toolName: "codemode", result: { content: [{ type: "text", text: "done" }], details }, isError: false, durationMs: 1300 });
 
-  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /─ .*audit the suite/)));
+  tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /audit the suite/)));
   const painted = lines(tree.render(row("c")));
   const steps = painted.filter(line => line.includes("bun test") || line.includes("read the entry"));
   assert.equal(steps.length, 2, painted.join(" | "));

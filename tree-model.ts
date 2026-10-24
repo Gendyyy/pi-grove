@@ -118,6 +118,8 @@ export interface TreeGroup {
 export const GROUP_TARGET = "@group";
 /** Click target that toggles the phase plan under the meter; one line, one meaning. */
 export const PHASES_TARGET = "@phases";
+/** Non-interactive painted row that consumes clicks instead of falling through to Pi. */
+export const DECORATION_TARGET = "@decoration";
 
 export const MAX_ROWS = 64;
 export const MAX_CHILDREN = 32;
@@ -145,7 +147,7 @@ export interface Glyphs {
   arrow: string;
   /** Phase boundary drawn inside the meter, dashed because an unreached one is a guess. */
   tick: string;
-  /** Milestone mark on a divider row, so a phase change never reads as another call. */
+  /** Milestone mark on a timeline row, so a phase never reads as another call. */
   diamond: string;
   /** Frame corners and edges of the group card. */
   tl: string;
@@ -404,7 +406,7 @@ export function errorCell(count: number, theme: GroveTheme, icons = false, iconM
   return themeText(theme, "error", count + (count === 1 ? " error" : " errors"));
 }
 
-/** Build the metadata tail of one row, optionally omitting its nested-tool breakdown. */
+/** Build one row's metadata tail, placing its optional duration rail before elapsed time. */
 export function rowTail(
   node: TreeNode,
   theme: GroveTheme,
@@ -412,19 +414,21 @@ export function rowTail(
   icons = false,
   iconMode: IconMode = "auto",
   showNestedBreakdown = true,
+  durationRail = "",
 ): string {
   const parts: string[] = [];
-  // A branch row names the mix of steps it contains instead of a bare count.
+  // A codemode row names the mix of steps it contains instead of a bare count.
   if (showNestedBreakdown && node.children.length > 0)
     parts.push(...toolBreakdown(node.children, theme, glyphs, 4, icons, iconMode));
   const errors = node.children.filter(child => child.status === "error").length;
   if (errors > 0) parts.push(errorCell(errors, theme, icons, iconMode));
-  // A branch row is summarized by its steps; a leaf row carries its own outcome.
+  // A codemode row is summarized by its steps; a leaf row carries its own outcome.
   if (node.summary && node.children.length === 0)
     parts.push(paintSummary(node.name, node.summary, node.status, theme, icons, iconMode));
   else if (node.children.length === 0)
     parts.push(paintSummary(node.name, node.status === "running" ? "running" : node.status, node.status, theme, icons, iconMode));
   const elapsed = node.duration ?? (node.status === "running" ? Date.now() - node.started : 0);
+  if (durationRail) parts.push(durationRail);
   parts.push(themeText(theme, "dim", formatElapsed(elapsed)));
   return parts.join(themeText(theme, "dim", DOT));
 }

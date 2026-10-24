@@ -65,7 +65,7 @@ test("one card paints once even though pi mounts a row and a result row", () => 
   assert.deepEqual(host.painters(), ["a"]);
   assert.match(body(frame)[0]!, /3 calls/);
   assert.match(body(frame)[0]!, /bash x2/);
-  assert.equal(body(frame).length, 4, "headline and one row per call");
+  assert.equal(body(frame).length, 6, "headline, one row per call, and one link between adjacent calls");
 });
 
 test("the card never moves while calls arrive", () => {
@@ -142,7 +142,7 @@ test("reasoning shows up inside the card, between the calls that used it", () =>
   host.start("b", "bash", { reasoning: "run the suite" });
   host.end("b", okay("2 passed"));
   const frame = host.frame();
-  assert.equal(body(frame).length, 4, "headline, call, reasoning, call");
+  assert.equal(body(frame).length, 6, "headline, call/reasoning rows, and links between adjacent markers");
   assert.equal(body(frame).filter(line => /thinking/.test(line)).length, 1);
   assert.doesNotMatch(body(frame).join("\n"), /manifest names the entry/);
   host.click(frame.lines.findIndex(line => /thinking/.test(line)));

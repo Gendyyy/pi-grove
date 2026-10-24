@@ -312,12 +312,12 @@ test("a restored step still expands to the output its snapshot kept", () => {
   const before = lines(tree.render(row("c1")));
   assert.ok(before.some(line => line.includes("build the card")), "the codemode row is present");
   const card = tree.render(row("c1"));
-  card.handleMouse?.(click(clickAt(card, /─ .*build the card/)));
+  card.handleMouse?.(click(clickAt(card, /build the card/)));
   const opened = lines(tree.render(row("c1")));
   assert.ok(opened.some(line => line.includes("list files")), "the nested step must be listed");
 
   const drilled = tree.render(row("c1"));
-  drilled.handleMouse?.(click(clickAt(drilled, /─ .*list files/)));
+  drilled.handleMouse?.(click(clickAt(drilled, /list files/)));
   const expanded = lines(tree.render(row("c1")));
   assert.ok(expanded.some(line => /first file/.test(line)), "a reloaded step keeps its output");
 });
