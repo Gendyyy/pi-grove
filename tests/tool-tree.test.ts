@@ -941,6 +941,60 @@ test("the card shows call details without group-level prose", () => {
   assert.match(card, /run the regression tests/);
 });
 
+test("live groups keep top-level and nested calls beyond the former caps", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  tree.start({ toolCallId: "parent", toolName: "codemode", args: {} });
+
+  for (let index = 0; index < 40; index += 1) {
+    tree.start({
+      toolCallId: `child-${index}`,
+      toolName: "bash",
+      parentToolCallId: "parent",
+      args: { reasoning: `nested ${index}` },
+    });
+  }
+  for (let index = 0; index < 80; index += 1) {
+    tree.start({
+      toolCallId: `root-${index}`,
+      toolName: "read",
+      args: { reasoning: `top-level ${index}` },
+    });
+  }
+
+  assert.equal(tree.owns("child-39"), true);
+  assert.equal(tree.owns("root-79"), true);
+  const overflowRow = row("root-79");
+  assert.notEqual(tree.render(overflowRow), overflowRow.inner, "a late call must not fall back to its standalone renderer");
+});
+
+test("replayed groups keep calls beyond the former row caps", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const calls = Array.from({ length: 80 }, (_, index) => ({
+    id: `restored-${index}`,
+    name: "read",
+    isError: false,
+    status: "success" as const,
+    started: index,
+    children: index === 0
+      ? Array.from({ length: 40 }, (_, childIndex) => ({
+          id: `restored-child-${childIndex}`,
+          name: "bash",
+          isError: false,
+          status: "success" as const,
+          started: childIndex,
+          children: [],
+        }))
+      : [],
+  }));
+
+  tree.restore([{ calls }]);
+
+  assert.equal(tree.owns("restored-79"), true);
+  assert.equal(tree.owns("restored-child-39"), true);
+  const overflowRow = row("restored-79");
+  assert.notEqual(tree.render(overflowRow), overflowRow.inner, "a restored late call must remain Grove-owned");
+});
+
 test("the card stays on the first call and grows in place", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });

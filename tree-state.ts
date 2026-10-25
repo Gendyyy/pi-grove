@@ -11,11 +11,9 @@ import {
   GROUP_TARGET,
   PHASES_TARGET,
   MILESTONE_TARGET_PREFIX,
-  MAX_CHILDREN,
   MAX_GROUPS,
   MAX_GROUPS_TOTAL,
   MAX_ID,
-  MAX_ROWS,
   PREVIEW_CHARS,
   PREVIEW_LINES,
   PREVIEW_TOTAL,
@@ -284,7 +282,6 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
     if (statedProgress !== undefined) known.completesTask = completion;
     return group;
   }
-  if (parent ? parent.children.length >= MAX_CHILDREN : group.rows.length >= MAX_ROWS) return undefined;
   const node = makeNode(state, input.id, input.toolName, input.args, input.now, parent, !streaming);
   group.nodes.set(input.id, node);
   (parent ? parent.children : group.rows).push(node);
@@ -419,7 +416,6 @@ export function attachCalls(
       attachCalls(state, group, call.children, existing);
       continue;
     }
-    if (parent ? parent.children.length >= MAX_CHILDREN : group.rows.length >= MAX_ROWS) return;
     const node = makeNode(state, call.id, call.name, call.args, call.started, parent);
     node.restored = true;
     if (call.kind === "thinking") {

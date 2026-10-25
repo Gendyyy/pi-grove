@@ -130,8 +130,6 @@ export function milestoneTarget(id: string): string {
   return MILESTONE_TARGET_PREFIX + id;
 }
 
-export const MAX_ROWS = 64;
-export const MAX_CHILDREN = 32;
 /** Groups that keep bounded output previews; older ones stay renderable without them. */
 export const MAX_GROUPS = 24;
 /** Hard ceiling so a marathon session cannot grow the tree forever. */
