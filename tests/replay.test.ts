@@ -218,7 +218,7 @@ test("replay keeps the stable task title and ignores legacy phase annotations", 
   assert.match(frame[1]!, /53%/, "replay keeps the latest repeated estimate");
 });
 
-test("replay restores the latest declared milestone from codemode comments", () => {
+test("replay pins phase boundaries at the transition call estimate", () => {
   const plan = "// task-milestones: inspect=Inspect; build=Build; verify=Verify";
   const entries = [
     user("2026-01-01T00:00:00.000Z", "finish the retry fix"),
@@ -241,15 +241,32 @@ ${plan}
 // task-milestone: build
 return 1;` },
       },
+      {
+        id: "m3",
+        name: "codemode",
+        arguments: { code: `// task-intent: Implement retry safety
+// task-progress: 70
+${plan}
+// task-milestone: build
+return 1;` },
+      },
     ]),
     result("2026-01-01T00:00:02.000Z", "m1", "codemode"),
     result("2026-01-01T00:00:03.000Z", "m2", "codemode"),
+    result("2026-01-01T00:00:04.000Z", "m3", "codemode"),
   ];
   const tree = new ToolTree(settings());
   tree.restore(readTranscript(entries, "prompt"));
-  const card = lines(tree.render(row("m1")));
-  assert.match(card[0]!, /55% > \* Build 2\/3/, card[0]);
+  const component = tree.render(row("m1"));
+  const card = lines(component);
+  assert.match(card[0]!, /70% > \* Build 2\/3/, card[0]);
   assert.doesNotMatch(card[0]!, /Inspect|Verify/, "the phases ahead stay unspoken until clicked");
+
+  component.handleMouse?.(click(clickAt(component, /70%/)));
+  const expanded = lines(tree.render(row("m1")));
+  const inspect = expanded.find(line => line.includes("Inspect"));
+  assert.ok(inspect, "the expanded replay plan shows the completed phase");
+  assert.match(inspect, /Inspect 55%/);
 });
 
 test("replay commits 100 only for a successful final tool call", () => {

@@ -134,7 +134,7 @@ test("a narrow card drops the label but keeps the plan position", () => {
   assert.ok(compact.length <= 40, `compact meter exceeds its viewport: ${compact}`);
 });
 
-test("a crossed boundary pins at the estimate the finished phase reached", () => {
+test("a crossed boundary pins at the transition call's estimate", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 40);
   settle(tree, "a");
@@ -144,8 +144,8 @@ test("a crossed boundary pins at the estimate the finished phase reached", () =>
   card(tree).handleMouse?.(click(1));
   const planLine = painted(tree, WIDE).find(line => line.includes("Inspect"));
   assert.ok(planLine, "clicking the meter opens the plan");
-  // Inspect closed at 40%, so 40 is the only position it is allowed to claim.
-  assert.match(planLine, /Inspect\[muted\] 40%/);
+  // The call entering Build reports 70%, so the crossing pins at 70%.
+  assert.match(planLine, /Inspect\[muted\] 70%/);
   assert.match(planLine, /\[accent\]\* Build/);
 });
 
@@ -154,12 +154,13 @@ test("a crossed boundary divides the filled ramp while the phase in flight keeps
   step(tree, "a", "inspect", 40);
   settle(tree, "a");
   step(tree, "b", "build", 70);
+  settle(tree, "b");
+  step(tree, "c", "build", 85);
 
-  const meter = painted(tree, WIDE).find(line => line.includes("%")) ?? "";
-  assert.match(meter, /70%/, meter);
-  assert.match(meter, /\[accent\]\*\[accent\] Build 2\/3/, meter);
-  // The boundary inspect ended on keeps a column of its own inside the filled run.
-  const glyphsOnly = painted(tree, WIDE, plainTheme).find(line => line.includes("%")) ?? "";
+  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("%")) ?? "";
+  assert.match(meter, /85% > \* Build 2\/3/, meter);
+  // The transition pins at 70%; the later Build estimate fills beyond that marker.
+  const glyphsOnly = meter;
   assert.match(glyphsOnly, /▰+:▰+/, glyphsOnly);
 
   card(tree).handleMouse?.(click(1));
@@ -168,7 +169,7 @@ test("a crossed boundary divides the filled ramp while the phase in flight keeps
   assert.match(planLine, /\[accent\]\* Build/, planLine);
   assert.match(planLine, /\[dim\]o Verify/, planLine);
   // The arrow behind a finished phase is green, so a completed plan reads as one line.
-  assert.match(planLine, /Inspect\[muted\] 40% \[success\]-> \[accent\]\* Build/, planLine);
+  assert.match(planLine, /Inspect\[muted\] 70% \[success\]-> \[accent\]\* Build/, planLine);
   assert.match(planLine, /Build \[dim\]-> \[dim\]o Verify/, planLine);
 });
 

@@ -165,7 +165,7 @@ function updateGroupMilestones(
   const nextIndex = Math.min(plan.length - 1, declaredIndex < 0 ? floor : Math.max(floor, declaredIndex));
   const nextId = plan[nextIndex]?.id;
   if (nextId !== group.activeMilestoneId) {
-    if (pinPhaseBounds(group, Math.max(0, planIndex), nextIndex)) changed = true;
+    if (planIndex >= 0 && pinPhaseBounds(group, planIndex, nextIndex)) changed = true;
     group.activeMilestoneId = nextId;
     changed = true;
   }
@@ -254,12 +254,12 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
   const statedMilestones = parent || streaming ? undefined : taskMilestonesOf(record);
   const statedMilestone = parent || streaming ? undefined : taskMilestoneOf(record);
   const intentChanged = parent || streaming ? false : updateGroupIntent(group, statedIntent);
-  const milestonesChanged = parent || streaming
-    ? false
-    : updateGroupMilestones(group, statedMilestones, statedMilestone);
   const progressChanged = parent || statedProgress === 100
     ? false
     : updateGroupProgress(group, statedProgress);
+  const milestonesChanged = parent || streaming
+    ? false
+    : updateGroupMilestones(group, statedMilestones, statedMilestone);
   const pendingCompletionId = statedProgress === undefined
     ? group.pendingCompletionId
     : statedProgress === 100 ? input.id : undefined;
@@ -398,14 +398,14 @@ export function attachCalls(
     if (!parent) {
       const args = (call.args ?? undefined) as Record<string, unknown> | undefined;
       updateGroupIntent(group, taskIntentOf(args));
-      // The replayed call carries the same estimate, so the meter restores the same crossings.
-      updateGroupMilestones(group, taskMilestonesOf(args), taskMilestoneOf(args));
       const progress = taskProgressOf(args);
       if (progress === 100) group.pendingCompletionId = call.id;
       else if (progress !== undefined) {
         updateGroupProgress(group, progress);
         group.pendingCompletionId = undefined;
       }
+      // Pin after this call's estimate, matching live milestone transitions.
+      updateGroupMilestones(group, taskMilestonesOf(args), taskMilestoneOf(args));
     }
     const existing = group.nodes.get(call.id);
     if (existing && existing !== parent) {
