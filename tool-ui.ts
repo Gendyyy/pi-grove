@@ -53,6 +53,7 @@ const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comm
 export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
 When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line and a // task-progress: <0-100> line. Keep task-intent unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Estimate completion by your best judgment of how much of the requested task is done and how much remains; do not base it on tool-call count or invent a fixed denominator. Repeat the current integer estimate on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds.
 Every top-level call also carries a phase plan: declare it once with // task-milestones: inspect=Inspect; build=Build; verify=Verify. A plan holds one to seven short labeled phases; split the task into meaningful sequential phases rather than inventing filler. Prefer closing on a verify phase when the work actually needs checking, and add a clean phase before it when the work can leave temp files, scratch scripts, or throwaway artifacts behind. Both are judgement calls: skip them when the task genuinely does not need them. Use unique lowercase IDs of at most 24 characters, starting with a letter and followed only by lowercase letters, digits, or hyphens; labels are safely limited to 24 characters. Include // task-milestone: <id> on every top-level call, naming a phase from that plan. Advance the current id only after finishing that phase; Grove marks earlier phases complete and later ones pending. Re-state the same plan verbatim on every call; Grove only adopts a restated plan while it keeps the phases already finished, so a mid-task plan that drops, reorders, or replaces completed phases is ignored. Scope that genuinely grows may insert phases after the current one, and a different task needs a new // task-intent: rather than a rewritten plan. A successful task-progress: 100 call completes all phases; phase state stays independent of the percentage.
+Closing the card is part of the task. A turn that finishes the task must end with a top-level call carrying task-progress: 100 and the plan's final // task-milestone:. If your answer itself needs no tool call, still make one last top-level codemode call with task-progress: 100 and the final phase before you answer. Leave the plan open only when the task is genuinely unfinished or the user asked a question mid-task, and never write 100 just to clear the bar.
 With // @options:, put that header first, then // reasoning:, // task-intent:, // task-progress:, and finally the // task-milestones: plan with its // task-milestone: id.
 `;
 
@@ -300,18 +301,20 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
     renderers.set(name, {
       ...renderer,
       renderCall(args, theme, context) {
-        // Hydrating history and streaming arguments must never start clocks.
-        if (context.isPartial && context.executionStarted && startedAt.has(context.toolCallId)) {
+        const component = renderCall(args, theme, context);
+        // Streaming rows join the card too: painting one on its own is what made every
+        // new call flash as a separate block before it snapped into the group.
+        if (context.isPartial) tree.ensure(context.toolCallId, name, args);
+        // Hydrating history and streaming arguments must never start clocks, and a row the
+        // card paints already has the tree's 100 ms watcher: clocking it here would
+        // invalidate the same row twice as often.
+        if (context.isPartial && context.executionStarted && startedAt.has(context.toolCallId) && !tree.owns(context.toolCallId)) {
           if (listeners.size < 256 || listeners.has(context.toolCallId)) listeners.set(context.toolCallId, context.invalidate);
           if (listeners.size && timer === undefined) {
             timer = setInterval(redraw, 1000);
             timer.unref();
           }
         }
-        const component = renderCall(args, theme, context);
-        // Streaming rows join the card too: painting one on its own is what made every
-        // new call flash as a separate block before it snapped into the group.
-        if (context.isPartial) tree.ensure(context.toolCallId, name, args);
         // History renders before restore(): remember the hook so the card can come back.
         if (!tree.owns(context.toolCallId)) remember(context.toolCallId, context.invalidate);
         return tree.render({

@@ -126,6 +126,9 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
 test("Pi-agent guidance keeps task identity as the sole border title", () => {
   assert.match(CODEMODE_GROUP_GUIDANCE, /must include a model-written \/\/ task-intent:.*task-progress:/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /stable border title, not a phase update/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /finishes the task must end with a top-level call carrying task-progress: 100/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /answer itself needs no tool call.*still make one last top-level codemode call/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /never write 100 just to clear the bar/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /best judgment.*not.*tool-call count.*fixed denominator/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /final tool call.*100.*only after that call succeeds/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /one to seven short labeled phases/);
