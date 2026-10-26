@@ -187,19 +187,19 @@ function clamp(spec: SettingSpec, value: number): number {
   return Math.min(high, Math.max(low, rounded));
 }
 
-function readFlag(spec: SettingSpec, raw: unknown, fallback: boolean): boolean {
-  const value = coerce(spec, raw);
-  return typeof value === "boolean" ? value : fallback;
+/** Read one boolean option; the spec table already supplied the default. */
+function readFlag(spec: SettingSpec, raw: unknown): boolean {
+  return coerce(spec, raw) === true;
 }
 
-function readNumber(spec: SettingSpec, raw: unknown, fallback: number): number {
-  const value = coerce(spec, raw);
-  return typeof value === "number" ? value : fallback;
+/** Read one number option; the spec table already supplied and clamped the default. */
+function readNumber(spec: SettingSpec, raw: unknown): number {
+  return coerce(spec, raw) as number;
 }
 
-function readChoice<T extends string>(spec: SettingSpec, raw: unknown, values: readonly T[], fallback: T): T {
-  const stored = coerce(spec, raw);
-  return values.find(value => value === stored) ?? fallback;
+/** Read one enum option, using the first listed value if the table itself disagrees. */
+function readChoice<T extends string>(spec: SettingSpec, raw: unknown, values: readonly T[]): T {
+  return values.find(value => value === coerce(spec, raw)) ?? values[0];
 }
 
 /** Read and validate every option once, so callers never re-read the file per key. */
@@ -207,19 +207,19 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
   const raw = readRawConfig(configPath);
   return {
     // A valid PI_GROVE value wins over the file, so a shell can pin grove on or off.
-    enabled: parseEnabled(process.env.PI_GROVE) ?? readFlag(settingSpec("enabled"), raw.enabled, true),
-    mode: readChoice(settingSpec("mode"), raw.mode, MODES, "default"),
-    icons: readFlag(settingSpec("icons"), raw.icons, true),
-    iconMode: readChoice(settingSpec("iconMode"), raw.iconMode, ICON_MODES, "auto"),
-    group: readChoice(settingSpec("group"), raw.group, GROUPS, "prompt"),
-    groupWindow: readNumber(settingSpec("groupWindow"), raw.groupWindow, 4),
-    groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors, false),
-    groupNestedTools: readFlag(settingSpec("groupNestedTools"), raw.groupNestedTools, true),
-    groupToolNames: readFlag(settingSpec("groupToolNames"), raw.groupToolNames, true),
-    groupProgress: readFlag(settingSpec("groupProgress"), raw.groupProgress, true),
-    groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline, true),
-    groupGutter: readFlag(settingSpec("groupGutter"), raw.groupGutter, true),
-    thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS, "off"),
+    enabled: parseEnabled(process.env.PI_GROVE) ?? readFlag(settingSpec("enabled"), raw.enabled),
+    mode: readChoice(settingSpec("mode"), raw.mode, MODES),
+    icons: readFlag(settingSpec("icons"), raw.icons),
+    iconMode: readChoice(settingSpec("iconMode"), raw.iconMode, ICON_MODES),
+    group: readChoice(settingSpec("group"), raw.group, GROUPS),
+    groupWindow: readNumber(settingSpec("groupWindow"), raw.groupWindow),
+    groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors),
+    groupNestedTools: readFlag(settingSpec("groupNestedTools"), raw.groupNestedTools),
+    groupToolNames: readFlag(settingSpec("groupToolNames"), raw.groupToolNames),
+    groupProgress: readFlag(settingSpec("groupProgress"), raw.groupProgress),
+    groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline),
+    groupGutter: readFlag(settingSpec("groupGutter"), raw.groupGutter),
+    thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS),
     thinkingLabel: (() => {
       const value = coerce(settingSpec("thinkingLabel"), raw.thinkingLabel);
       return typeof value === "string" ? value : undefined;

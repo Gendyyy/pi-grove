@@ -56,11 +56,26 @@ export function readRawConfig(configPath = defaultConfigPath()): Record<string, 
   return {};
 }
 
+/** Pending write per file: two quick toggles must queue, not race on the same snapshot. */
+const writeQueues = new Map<string, Promise<void>>();
+
 /** Merge one update into the config file atomically, so a crash cannot truncate it. */
 export async function updateConfig(
   update: Record<string, unknown>,
   configPath = defaultConfigPath()
 ): Promise<void> {
+  const previous = writeQueues.get(configPath) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => writeConfig(update, configPath));
+  writeQueues.set(configPath, next);
+  try {
+    await next;
+  } finally {
+    if (writeQueues.get(configPath) === next) writeQueues.delete(configPath);
+  }
+}
+
+/** One write: read, merge, temp file, rename. The caller guarantees it runs alone. */
+async function writeConfig(update: Record<string, unknown>, configPath: string): Promise<void> {
   const current = readRawConfig(configPath);
   const directory = dirname(configPath);
   const temporaryPath = configPath + "." + process.pid + "." + Date.now() + ".tmp";
