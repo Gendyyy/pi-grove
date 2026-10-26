@@ -18,9 +18,6 @@ import {
   type SettingValue,
 } from "./settings.js";
 
-/** Rows the panel draws above the list: border, title, config path. */
-const HEADER_ROWS = 3;
-
 /** How many rows the panel shows before it scrolls. */
 const VISIBLE_ROWS = 9;
 
@@ -134,16 +131,25 @@ export async function showSettingsPanel(
         { enableSearch: true },
       );
 
-      container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
-      container.addChild(new Text(theme.fg("accent", theme.bold(" grove settings")), 1, 0));
-      container.addChild(new Text(theme.fg("dim", " " + configHint(configPath)), 1, 0));
+      const header = new Container();
+      header.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+      header.addChild(new Text(theme.fg("accent", theme.bold(" grove settings")), 1, 0));
+      header.addChild(new Text(theme.fg("dim", " " + configHint(configPath)), 1, 0));
+      container.addChild(header);
       container.addChild(list);
       container.addChild(new DynamicBorder((text: string) => theme.fg("accent", text)));
+      // The config path wraps on a narrow terminal, so clicks shift by the height the
+      // header actually painted instead of a fixed row count.
+      let headerRows = 3;
 
       return {
-        render: (width: number) => container.render(width),
+        render: (width: number) => {
+          headerRows = header.render(width).length;
+          return container.render(width);
+        },
         invalidate: () => {
           container.invalidate();
+          header.invalidate();
           list.invalidate();
         },
         handleInput: (data: string) => {
@@ -152,7 +158,7 @@ export async function showSettingsPanel(
         },
         handleMouse: (event) => {
           // Clicks arrive in this component own coordinates, so shift them past the header.
-          const local = { ...event, y: event.y - HEADER_ROWS };
+          const local = { ...event, y: event.y - headerRows };
           if (local.y < 0) return undefined;
           const result = list.handleMouse(local);
           if (result?.render !== false) tui.requestRender();
