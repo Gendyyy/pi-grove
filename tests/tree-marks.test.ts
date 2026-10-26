@@ -64,6 +64,18 @@ const PLAN = "inspect=Inspect; build=Build; verify=Verify";
 /** This theme counts every tag as visible text, so colour assertions need a very wide card. */
 const WIDE = 400;
 
+/** The meter's bar alone: the leading run of cells, without the gutter or the percentage. */
+function meterBar(tree: ToolTree): string {
+  const line = painted(tree, WIDE, plainTheme).find(candidate => candidate.includes("%")) ?? "";
+  const bar = line.slice(line.search(/[▰▱:]/));
+  return bar.slice(0, bar.search(/[^▰▱:]/));
+}
+
+/** Cells that carry a divider glyph, so a zone's opening column can be asserted by position. */
+function dividerCells(bar: string): number[] {
+  return [...bar].flatMap((glyph, index) => (glyph === ":" ? [index] : []));
+}
+
 /** Colour of the live fill edge: the last filled cell of the meter. */
 function needleColor(lines: readonly string[]): string | undefined {
   const meter = lines.find(line => line.includes("▰")) ?? "";
@@ -180,6 +192,22 @@ test("the bar forecasts no boundary before a phase has actually ended", () => {
   const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("%")) ?? "";
   // Nobody can say where the phases ahead will close, so the bar draws no guess in between.
   assert.doesNotMatch(meter, /[▰▱]:/, meter);
+});
+
+test("every phase opens a column, and the first one opens the bar itself", () => {
+  const tree = new ToolTree(settings);
+  step(tree, "a", "inspect", 20);
+  // The first phase starts where the bar starts, so its divider needs no crossing to earn.
+  assert.deepEqual(dividerCells(meterBar(tree)), [0]);
+
+  settle(tree, "a");
+  step(tree, "b", "build", 60);
+  settle(tree, "b");
+  step(tree, "c", "verify", 88);
+  const walked = meterBar(tree);
+  const cells = walked.length;
+  // Each later phase keeps the column its own start earned, on the estimate that opened it.
+  assert.deepEqual(dividerCells(walked), [0, Math.round(0.6 * cells), Math.round(0.88 * cells)]);
 });
 
 test("the filled span keeps the estimate's red-to-green ramp", () => {

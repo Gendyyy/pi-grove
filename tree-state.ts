@@ -546,8 +546,16 @@ export function trimGroups(state: TreeState): void {
     group.budget = 0;
   }
   for (const key of keys.slice(0, Math.max(0, keys.length - MAX_GROUPS_TOTAL))) {
+    const group = state.groups.get(key);
     state.groups.delete(key);
-    state.expanded.delete(key);
+    // Expansion is keyed by row id, so an evicted card must hand back its own ids.
+    const forget = (nodes: TreeNode[]): void => {
+      for (const node of nodes) {
+        state.expanded.delete(node.id);
+        forget(node.children);
+      }
+    };
+    if (group) forget(group.rows);
   }
 }
 
@@ -586,7 +594,6 @@ export function claimSlot(input: SlotInput): SlotClaim {
     // Repaint the call row out of band: pi rebuilds its children inside the render pass.
     repaint = node.slots.get("call");
   }
-  if (!node.painted) node.painted = true;
   // Fallback for a card whose first row never reached the tree: paint somewhere.
   if (group.leaderId === undefined) group.leaderId = node.id;
   if (group.leaderId !== node.id) return { paint: false, repaint };

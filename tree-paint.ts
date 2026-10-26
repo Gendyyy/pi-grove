@@ -272,7 +272,12 @@ function phaseMeterText(
   // A boundary earns a column only once it is actually crossed: nobody can say where a phase
   // will end before it does, so the bar draws no forecasts. The tick keeps the ramp colour of
   // the cell it divides, and one the estimate has retreated behind is a warning right of the needle.
-  const ticks = new Set<number>();
+  // Every zone opens with its own column. The first one opens at the bar's left edge, where
+  // there is no crossing to earn, so it is painted before the loop can skip it as cell zero.
+  painted[0] = fill > 0
+    ? progressCellText(theme, 0, cells, glyphs.tick)
+    : themeText(theme, "dim", glyphs.tick);
+  const ticks = new Set<number>([0]);
   for (let index = 1; index <= activeIndex; index += 1) {
     const tick = cellAt(bounds[index] ?? 0);
     if (tick <= 0 || tick >= cells) continue;
@@ -415,14 +420,12 @@ export function paintGroup(
   }
   const displayPhaseByCall = state.settings.groupGutter ? phaseByCall : new Map<string, string>();
   const durationNow = Date.now();
-  const phaseElapsedById = new Map<string, number>();
-  for (const phase of phasePlan) {
-    const elapsed = tools.reduce(
-      (total, node) =>
-        phaseByCall.get(node.id) === phase.id ? total + elapsedFor(node, durationNow) : total,
-      0,
-    );
-    phaseElapsedById.set(phase.id, elapsed);
+  // Every declared phase starts at zero, so the meter still scales against the whole plan.
+  const phaseElapsedById = new Map<string, number>(phasePlan.map(phase => [phase.id, 0]));
+  for (const node of tools) {
+    const phaseId = phaseByCall.get(node.id);
+    if (phaseId === undefined) continue;
+    phaseElapsedById.set(phaseId, (phaseElapsedById.get(phaseId) ?? 0) + elapsedFor(node, durationNow));
   }
   const durationScale = Math.max(
     longestElapsed(group.rows, durationNow),

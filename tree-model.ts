@@ -70,8 +70,6 @@ export interface TreeNode {
   hasResult?: boolean;
   /** True for a node rebuilt from the transcript: its rows are history, not live calls. */
   restored?: boolean;
-  /** True once a row of this node has actually painted the card. */
-  painted?: boolean;
   /** Creation order, so a newer call wins leadership over an older one. */
   seq: number;
   /** Set on a reasoning row: it narrates the card but is not a tool call. */
