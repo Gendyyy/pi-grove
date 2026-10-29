@@ -21,7 +21,13 @@ const glyphs: Record<string, readonly [string, string]> = {
   ffgrep: ["\uf00e", "[?+]"],
   fffind: ["\uf114", "[/+]"],
   generate_image: ["\uf0d0", "[gi]"],
-  web_enable: ["\uf0ac", "[@]"],
+  // The web toolset: the globe searches, the tray pulls a page in, the book reopens stored
+  // results, the chain checks a claim against its sources, and the switch turns it all on.
+  web_search: ["\uf0ac", "[ws]"],
+  fetch_content: ["\uf019", "[fc]"],
+  get_search_content: ["\uf02d", "[gc]"],
+  source_check: ["\uf0c1", "[ck]"],
+  web_enable: ["\uf011", "[on]"],
   ask_user_question: ["\uf059", "[q]"],
 };
 const unknown = ["\uf12e", "[~]"] as const;

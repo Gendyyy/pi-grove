@@ -159,7 +159,8 @@ rows while preserving top-level tool counts, expandable child rows, and parent f
 rows and tool-mix summaries. Every tool pi and codemode ship have an icon of their own: the file
 tools (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`), `codemode` itself, the codemode
 toolset (`compress`, `decompress`, `search_context`, `acp_status`, `acp_cache`,
-`acp_read_original_image`, `ffgrep`, `fffind`, `generate_image`, `web_enable`), and
+`acp_read_original_image`, `ffgrep`, `fffind`, `generate_image`, `web_enable`,
+`web_search`, `fetch_content`, `get_search_content`, `source_check`), and
 `ask_user_question`. Compression and expansion are one fold's two ends, so they never share a
 glyph. Tools Grove does not know keep their name beside the fallback marker; this icon-only mode
 still shows a glyph when `icons` is off.
