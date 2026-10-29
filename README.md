@@ -157,9 +157,14 @@ elapsed interval, not the host-reported execution duration. `/grove group progre
 the meter, not milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
 `/grove group nested off` hides nested tool names/counts from both the summary strip and codemode
 rows while preserving top-level tool counts, expandable child rows, and parent failure markers.
-`/grove group tool-names off` replaces recognized built-in names (`codemode`, `bash`, `read`,
-`write`, and others) with their selected Nerd or ASCII icons in rows and tool-mix summaries.
-Custom tool names remain visible; this icon-only mode still shows a glyph when `icons` is off.
+`/grove group tool-names off` replaces recognized names with their selected Nerd or ASCII icons in
+rows and tool-mix summaries. Every tool pi and codemode ship have an icon of their own: the file
+tools (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`), `codemode` itself, the codemode
+toolset (`compress`, `decompress`, `search_context`, `acp_status`, `acp_cache`,
+`acp_read_original_image`, `ffgrep`, `fffind`, `generate_image`, `web_enable`), and
+`ask_user_question`. Compression and expansion are one fold's two ends, so they never share a
+glyph. Tools Grove does not know keep their name beside the fallback marker; this icon-only mode
+still shows a glyph when `icons` is off.
 
 The card owns its background instead of borrowing one row's result: it stays pending while any
 call runs, stays neutral when calls succeed or only some of them fail, and turns red only when
@@ -171,7 +176,7 @@ marker and the error count, so the block never shouts about work that partly suc
 `icons` adds a glyph without hiding what the row says. With a Nerd Font a tool gets a glyph
 in its own colour beside its name, so the row still reads `  read`, `  codemode`, `  bash` with
 the two-cell gap a patched glyph needs so it never touches the word. Set `groupToolNames` off
-to use the glyph alone for recognized built-ins; custom tool names remain words. The selected
+to use the glyph alone for a recognized tool; an unknown name stays a word beside `~`. The selected
 icon mode supplies the icon even when `icons` is off. Outcome words become a single mark,
 and counts keep their number. With names enabled, the tool word is never dropped for its glyph;
 the rollup names tools in words (`read ×2 · bash ×1`) so the mix stays readable without the font. `auto` turns glyphs on only when the terminal can draw them;

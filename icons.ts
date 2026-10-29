@@ -11,6 +11,18 @@ const glyphs: Record<string, readonly [string, string]> = {
   find: ["\uf1e5", "[/]"],
   ls: ["\uf07b", "[d]"],
   codemode: ["\uf121", "[<>]"],
+  // The codemode toolset: one fold's two ends, folding away and coming back.
+  compress: ["\uf103", "[c]"],
+  decompress: ["\uf102", "[x]"],
+  search_context: ["\uf0ca", "[sc]"],
+  acp_status: ["\uf0e4", "[st]"],
+  acp_cache: ["\uf1c0", "[db]"],
+  acp_read_original_image: ["\uf1c5", "[im]"],
+  ffgrep: ["\uf00e", "[?+]"],
+  fffind: ["\uf114", "[/+]"],
+  generate_image: ["\uf0d0", "[gi]"],
+  web_enable: ["\uf0ac", "[@]"],
+  ask_user_question: ["\uf059", "[q]"],
 };
 const unknown = ["\uf12e", "[~]"] as const;
 

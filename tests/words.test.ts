@@ -7,7 +7,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import { errorCell, treeGlyphs, toolBreakdown, type TreeNode } from "../tree-model.js";
 import { ToolTree, type TreeSettings } from "../tool-tree.js";
 import { buildToolBlock, summarizeToolResult } from "../block-render.js";
-import { hasToolGlyph, markFor, toolWord } from "../icons.js";
+import { hasToolGlyph, markFor, toolIcon, toolWord } from "../icons.js";
 import { plainTheme } from "../theme.js";
 
 const READ = "\uf15c";
@@ -139,6 +139,24 @@ test("a tool word always stays next to its glyph", () => {
   assert.match(toolWord("mcp__db__lookup", "nerd"), /mcp__db__lookup/);
   assert.equal(toolWord("read", "nerd"), READ + "  read");
   assert.equal(toolWord("read", "ascii"), "read");
+});
+
+test("every bundled tool has an icon of its own", () => {
+  const bundled = [
+    "read", "write", "edit", "bash", "grep", "find", "ls", "codemode",
+    "compress", "decompress", "search_context", "acp_status", "acp_cache",
+    "acp_read_original_image", "ffgrep", "fffind", "generate_image", "web_enable",
+    "ask_user_question",
+  ];
+  for (const name of bundled) assert.equal(hasToolGlyph(name), true, name + " has no icon");
+  // Two tools sharing a glyph would make the icon-only row a guess.
+  for (const mode of ["nerd", "ascii"] as const) {
+    const drawn = bundled.map(name => toolIcon(name, mode));
+    assert.equal(new Set(drawn).size, drawn.length, "two tools share a glyph in " + mode);
+  }
+  // Both are double chevrons, so the direction alone has to separate the pair.
+  assert.equal(toolIcon("compress", "nerd"), "\uf103");
+  assert.equal(toolIcon("decompress", "nerd"), "\uf102");
 });
 
 test("the breakdown names tools in words, like the mock", () => {
