@@ -44,7 +44,7 @@ test("story phases retain failures and open one level at a time", () => {
   assert.ok(narrow.some(line => line.includes("1 failed")));
 });
 
-test("story summaries count the whole phase and fit common widths", () => {
+test("story phase headers count the whole phase and fit common widths", () => {
   const tree = new ToolTree(settings);
   for (let i = 0; i < 6; i++) {
     const id = String(i);
@@ -59,7 +59,7 @@ test("story summaries count the whole phase and fit common widths", () => {
   }
   const settled = card.render(96);
   assert.ok(settled.some(line => line.includes("Inspect lengthy configuration item 4")), "the newest calls stay visible");
-  assert.equal(settled.filter(line => line.includes("Inspect lengthy configuration item 0")).length, 1, "a visible call is never repeated in the summary");
+  assert.equal(settled.filter(line => line.includes("Inspect lengthy configuration item 0")).length, 0, "a folded call never resurfaces as a summary row");
 });
 
 test("expand-all reveals nested steps and Story colors distinguish phase outcomes", () => {

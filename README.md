@@ -97,10 +97,9 @@ The Story layout groups work into numbered, colored phase cards. Each phase head
 status, direct call count, elapsed time when space permits, and failure count. The newest
 call rows always stay visible: the last `groupWindow` call-level entries, where a run of related
 calls counts as one entry, so a phase that just finished keeps its tail on screen. Older calls
-collapse into a summary naming up to two of that phase's actual call goals (or tool names) plus
-the phase's total call count; a call shown as a row is never repeated in the summary. Click the
-phase header or summary to reveal the phase's direct calls; click a call to reveal its nested
-steps and output. Failures remain visible when collapsed. The same tail rule covers calls
+fold away entirely: a closed phase shows one header carrying its call count, never a second row
+of summarized goals. Click the phase header to reveal the phase's direct calls; click a call to
+reveal its nested steps and output. Failures remain visible when collapsed. The same tail rule covers calls
 without a visible phase. The meter separately
 opens the full plan, and Pi's expand-all opens the entire tree. Setting `groupGutter` off
 uses the compact timeline instead of the Story phase cards.
@@ -133,7 +132,6 @@ position. From the outside in:
 | Progress meter | The filled bar and its phase ticks | Expands the plan |
 | Plan line | The expanded phase names joined by arrows, with the estimate that closed each phase | Expands the plan |
 | Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
-| Phase summary row | Up to two of a collapsed phase's hidden call goals, plus that phase's total call count | Opens that phase |
 | Call row | Tool label, its goal, nested counts, and duration | Opens that call |
 | Nested row | A tool the call ran, such as a bash step inside a codemode script | Opens that step |
 | Preview row | Bounded output under an expanded call, led by a pipe guide | Opens or closes the call |

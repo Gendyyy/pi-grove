@@ -547,17 +547,6 @@ export function paintGroup(
       lines.push(fitToolLine(prefix + label + themeText(theme, "dim", meta) +
         themeText(theme, "warning", failureText) + themeText(theme, "dim", disclosure), inner));
       targets.set(lines.length - 1, target);
-      // The summary stands only for calls the rows below cannot show, and always names the
-      // phase's full call count so a collapsed phase still reads as the work it stands for.
-      const hidden = open ? [] : phaseRows.filter(node => !visibleIds.has(node.id));
-      if (hidden.length > 0) {
-        const descriptions = hidden.slice(0, 2).map(node => detailOf(node) || node.name);
-        const count = ` · ${phaseRows.length} ${phaseRows.length === 1 ? "call" : "calls"}`;
-        const lead = rail + themeText(theme, "dim", "  " + glyphs.closed + " ");
-        const budget = Math.max(0, inner - visibleWidth(lead) - visibleWidth(count));
-        lines.push(lead + fitToolLine(themeText(theme, "muted", descriptions.join(" · ")), budget) + themeText(theme, "dim", count));
-        targets.set(lines.length - 1, target);
-      }
       return;
     }
     const role: Foreground = complete || index < activeIndex ? "success" : index === activeIndex ? "accent" : "dim";
@@ -584,27 +573,6 @@ export function paintGroup(
         ? prefix + " " + themeText(theme, "dim", glyphs.h.repeat(room)) + rollup
         : summaryLine(prefix, detail, separator, tail, inner);
     appendPhaseMarker(line, phaseTarget, role);
-
-    const hiddenCalls = phaseRows.filter(node => !visibleIds.has(node.id));
-    if (hiddenCalls.length > 0) {
-      const summaries = hiddenCalls.slice(0, 2).map(node => {
-        const callDetail = detailOf(node);
-        return callDetail
-          ? themeText(theme, "muted", callDetail)
-          : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode, state.settings.groupToolNames);
-      });
-      const omitted = hiddenCalls.length - summaries.length;
-      const summaryParts = [
-        counted(theme, hiddenCalls.length, "call", "calls"),
-        ...summaries,
-      ];
-      if (omitted > 0)
-        summaryParts.push(counted(theme, omitted, "additional call", "additional calls"));
-      const summary = themeText(theme, "dim", "   " + glyphs.closed + " ") +
-        summaryParts.join(separator);
-      lines.push(fitToolLine(summary, inner));
-      targets.set(lines.length - 1, phaseTarget);
-    }
   };
 
 

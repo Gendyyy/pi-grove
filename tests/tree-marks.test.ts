@@ -441,7 +441,7 @@ test("a phase click reveals its direct codemode rows without opening nested step
   assert.equal(hasExpandedChild("test") || hasExpandedChild("lint") || hasExpandedChild("typecheck"), false);
 });
 
-test("phases summarize calls within the recent window and expose phase-level failures", () => {
+test("a collapsed phase keeps the recent window and reports phase-level failures", () => {
   const tree = new ToolTree({ ...settings, window: 2 });
   const calls: Array<[string, string, "inspect" | "build", number, boolean]> = [
     ["a", "Read release notes", "inspect", 20, true],
@@ -470,27 +470,24 @@ test("phases summarize calls within the recent window and expose phase-level fai
   const styled = card(tree, "a", theme).render(WIDE).map(plain);
   const inspectHeader = styled.find(line => line.includes("Inspect") && line.includes("1 failed")) ?? "";
   assert.match(inspectHeader, /\[warning\] · 1 failed/, "the collapsed phase reports its failure");
-  const summaryY = initial.findIndex(line => line.includes("Read release notes"));
-  assert.ok(summaryY >= 0, "calls outside the newest window still get a compact factual summary");
+  assert.ok(!initial.some(line => line.includes("Read release notes")), "a folded call never resurfaces as a summary row");
   for (const width of [35, 60, 96, WIDE]) {
     const lines = card(tree, "a", plainTheme).render(width).map(plain);
-    assert.ok(lines.every(line => visibleWidth(line) <= width), "summary stays within " + width + " columns");
+    assert.ok(lines.every(line => visibleWidth(line) <= width), "the phase header stays within " + width + " columns");
     if (width === 35)
-      assert.ok(lines.some(line => line.includes("2 calls")), "the collapsed-call count survives narrow fitting");
+      assert.ok(lines.some(line => line.includes("2 calls")), "the phase header counts every call it holds");
   }
-  assert.match(initial[summaryY] ?? "", /Read release notes.*Locate version parser/);
-  assert.doesNotMatch(initial[summaryY] ?? "", /\[dim\][|│] {2}>/, "the summary does not duplicate the phase spine with a dim pipe");
   assert.ok(initial.some(line => line.includes("Run focused package tests")));
   assert.ok(initial.some(line => line.includes("Typecheck extension types")));
+  const inspectY = initial.findIndex(line => line.includes("Inspect") && line.includes("calls"));
   /** Read the expansion target assigned to a rendered line. */
   const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
-  assert.equal(targetAt(summaryY), milestoneTarget("inspect"), "the summary opens its owning phase");
+  assert.equal(targetAt(inspectY), milestoneTarget("inspect"), "the phase line opens its own calls");
 
-  card(tree, "a", plainTheme).handleMouse?.({ ...click(summaryY), width: WIDE });
+  card(tree, "a", plainTheme).handleMouse?.({ ...click(inspectY), width: WIDE });
   const expanded = rendered().join("\n");
   assert.match(expanded, /Read release notes/);
   assert.match(expanded, /Locate version parser/);
-  assert.equal(expanded.split("Read release notes").length - 1, 1, "the expanded call replaces the summary");
 });
 
 test("a call with an unknown or missing milestone joins the phase it follows", () => {
