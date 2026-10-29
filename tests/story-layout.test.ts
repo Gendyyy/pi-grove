@@ -129,37 +129,20 @@ test("Story titles wrap from the border without hiding text or breaking targets"
   }
 });
 
-test("related calls form independently expandable consecutive groups", () => {
+test("consecutive related calls each keep their own row", () => {
   const tree = new ToolTree(settings);
-  const entries = [["a", "Read configuration"], ["b", "Read configuration"], ["c", ""], ["d", "Read configuration"], ["e", "Run checks"]];
-  for (const [id, taskGroup] of entries) {
-    tree.start({ toolCallId: id, toolName: "codemode", args: { code: `// task-intent: Group checks\n// task-progress: 30\n// task-milestones: inspect=Inspect\n// task-milestone: inspect\n${taskGroup ? `// task-group: ${taskGroup}` : ""}\n// reasoning: action ${id}` } });
-    if (id === "a") {
-      tree.start({ toolCallId: "nested", parentToolCallId: id, toolName: "bash", args: { reasoning: "Read nested data" } });
-      tree.end({ toolCallId: "nested", toolName: "bash", result: { content: [] }, isError: false });
-    }
+  // A leftover // task-group: comment must not collapse these calls any more.
+  for (const id of ["a", "b", "c"]) {
+    tree.start({ toolCallId: id, toolName: "codemode", args: { code: `// task-intent: Group checks\n// task-progress: 30\n// task-milestones: inspect=Inspect\n// task-milestone: inspect\n// task-group: Read configuration\n// reasoning: action ${id}` } });
     tree.end({ toolCallId: id, toolName: "codemode", result: { content: [] }, isError: id === "b" });
   }
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
   const click = (y: number) => card.handleMouse?.({ type: "click", button: "left", x: 0, y, screenX: 0, screenY: 0, shift: false, alt: false, ctrl: false, width: 96, height: 40 });
-  let lines = card.render(96);
+  const lines = card.render(96);
   click(lines.findIndex(line => line.includes("01 Inspect")));
-  lines = card.render(96);
-  assert.equal(lines.filter(line => line.includes("Read configuration")).length, 1);
-  assert.ok(lines.some(line => line.includes("2 calls") && line.includes("1 failed")));
-  assert.ok(lines.some(line => line.includes("action c")), "unlabeled calls remain visible");
-  assert.ok(lines.some(line => line.includes("action d")) && lines.some(line => line.includes("action e")), "single-call runs remain visible");
-  assert.ok(!lines.some(line => line.includes("Run checks")), "a singleton has no group row");
-  assert.ok(!lines.some(line => line.includes("action a")));
-  click(lines.findIndex(line => line.includes("Read configuration")));
-  lines = card.render(96);
-  assert.ok(lines.some(line => line.includes("action a")) && lines.some(line => line.includes("action b")));
-  assert.ok(lines.some(line => line.includes("action d")), "later single-call run remains visible");
-  assert.ok(!lines.some(line => line.includes("Read nested data")));
-  click(lines.findIndex(line => line.includes("action a")));
-  lines = card.render(96);
-  assert.ok(lines.some(line => line.includes("Read nested data")), "individual calls retain nested disclosure");
-  assert.ok(lines.findIndex(line => line.includes("action c")) < lines.findIndex(line => line.includes("action d")));
+  const opened = card.render(96);
+  for (const id of ["a", "b", "c"]) assert.equal(opened.filter(line => line.includes(`action ${id}`)).length, 1, `action ${id} renders exactly once`);
+  assert.ok(!opened.some(line => line.includes("Read configuration")), "no group row is rendered");
   for (const width of [35, 60, 96]) assert.ok(card.render(width).every(line => visibleWidth(line) <= width));
 });
 
@@ -177,26 +160,4 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
     assert.ok(phase.includes(`[warning]${iconMode === "ascii" ? "!" : "\uf071"} 01`));
     assert.match(phase, /\[warning\] · 1 failed/);
   }
-});
-
-
-test("a labeled call becomes a group only when a second related call arrives", () => {
-  const tree = new ToolTree(settings);
-  /** Add one labeled call to the current phase. */
-  const add = (id: string) => {
-    tree.start({ toolCallId: id, toolName: "codemode", args: { code: `// task-intent: Group checks\n// task-progress: 30\n// task-milestones: inspect=Inspect\n// task-milestone: inspect\n// task-group: Read configuration\n// reasoning: action ${id}` } });
-    tree.end({ toolCallId: id, toolName: "codemode", result: { content: [] }, isError: false });
-  };
-  add("a");
-  const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
-  let lines = card.render(96);
-  assert.ok(lines.some(line => line.includes("action a")), "collapsed phase summarizes the lone call");
-  card.handleMouse?.({ type: "click", button: "left", x: 0, y: lines.findIndex(line => line.includes("01 Inspect")), screenX: 0, screenY: 0, shift: false, alt: false, ctrl: false, width: 96, height: 40 });
-  lines = card.render(96);
-  assert.ok(lines.some(line => line.includes("action a")));
-  assert.ok(!lines.some(line => line.includes("Read configuration")));
-  add("b");
-  lines = card.render(96);
-  assert.ok(lines.some(line => line.includes("Read configuration") && line.includes("2 calls")));
-  assert.ok(!lines.some(line => line.includes("action a") || line.includes("action b")));
 });

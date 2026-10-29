@@ -10,7 +10,6 @@ import {
   DOT,
   ELLIPSIS,
   GROUP_TARGET,
-  CALL_GROUP_TARGET_PREFIX,
   PHASES_TARGET,
   milestoneTarget,
   PREVIEW_LINES,
@@ -412,28 +411,18 @@ export function paintGroup(
   const story = plan.length > 0;
   const phaseByCall = new Map<string, string>();
   let latestObservedPhase = -1;
+  // Every call belongs to a phase once a plan exists. A call whose milestone is missing or
+  // names something the plan does not have joins the phase of the work it follows, so no row
+  // floats outside the plan and the phase counts always add up to the calls on the card.
   for (const node of tools) {
-    if (!node.milestone) continue;
-    const declaredIndex = phasePlan.findIndex(phase => phase.id === node.milestone);
-    if (declaredIndex < 0) continue;
-    latestObservedPhase = Math.max(latestObservedPhase, declaredIndex);
-    const phase = phasePlan[latestObservedPhase];
+    if (node.milestone) {
+      const declaredIndex = phasePlan.findIndex(phase => phase.id === node.milestone);
+      if (declaredIndex > latestObservedPhase) latestObservedPhase = declaredIndex;
+    }
+    const phase = phasePlan[Math.max(latestObservedPhase, 0)];
     if (phase) phaseByCall.set(node.id, phase.id);
   }
   const displayPhaseByCall = state.settings.groupGutter ? phaseByCall : new Map<string, string>();
-  // Contiguous runs preserve chronology and retain a stable first-call disclosure target.
-  const callGroups = new Map<string, { first: string; label: string; nodes: TreeNode[] }>();
-  let run: { first: string; label: string; nodes: TreeNode[]; phase: string } | undefined;
-  for (const node of tools) {
-    const phase = displayPhaseByCall.get(node.id);
-    if (!phase || !node.callGroup) { run = undefined; continue; }
-    if (!run || run.phase !== phase || run.label !== node.callGroup)
-      run = { first: node.id, label: node.callGroup, phase, nodes: [] };
-    run.nodes.push(node);
-    callGroups.set(node.id, run);
-  }
-  // A single labeled call needs no extra disclosure level.
-  for (const [id, candidate] of callGroups) if (candidate.nodes.length < 2) callGroups.delete(id);
   const durationNow = Date.now();
   // Every declared phase starts at zero, so the meter still scales against the whole plan.
   const phaseElapsedById = new Map<string, number>(phasePlan.map(phase => [phase.id, 0]));
@@ -447,16 +436,9 @@ export function paintGroup(
     ...phaseElapsedById.values(),
   );
 
-  // One entry per call-level row: a group row when a run qualifies, otherwise one call row.
-  // The newest entries stay visible, so the card always shows what just happened, including
+  // The newest calls stay visible, so the card always shows what just happened, including
   // the tail of a phase that has already finished.
-  const entries: TreeNode[][] = [];
-  for (const node of tools) {
-    const callGroup = callGroups.get(node.id);
-    if (!callGroup) entries.push([node]);
-    else if (callGroup.first === node.id) entries.push(callGroup.nodes);
-  }
-  const tail = reveal ? tools : entries.slice(-limit).flat();
+  const tail = reveal ? tools : tools.slice(-limit);
   const tailIds = new Set(tail.map(node => node.id));
   const expandedPhases = group.expandedMilestones ?? new Set<string>();
   const visible = reveal
@@ -696,7 +678,7 @@ export function paintGroup(
   }
 
   /** Render visible call nodes as aligned markers, preserving expansion and previews. */
-  const emit = (nodes: TreeNode[], ancestors: boolean[], inheritedRail?: Foreground, grouped = false): void => {
+  const emit = (nodes: TreeNode[], ancestors: boolean[], inheritedRail?: Foreground): void => {
     for (const [index, node] of nodes.entries()) {
       const last = index === nodes.length - 1;
       const displayPhase = displayPhaseByCall.get(node.id);
@@ -708,21 +690,6 @@ export function paintGroup(
         }
       }
 
-      const callGroup = ancestors.length === 0 && story ? callGroups.get(node.id) : undefined;
-      if (callGroup) {
-        const groupOpen = reveal || group.expandedCallGroups?.has(callGroup.first) === true;
-        if (node.id === callGroup.first) {
-          const phaseIndex = plan.findIndex(phase => phase.id === displayPhase);
-          const rail = themeText(theme, phaseRole(phaseIndex), glyphs.v + " ");
-          const failures = countErrors(callGroup.nodes);
-          const tail = ` · ${callGroup.nodes.length} ${callGroup.nodes.length === 1 ? "call" : "calls"}` + (failures ? ` · ${failures} failed` : "");
-          const prefix = rail + themeText(theme, "dim", `  ${groupOpen ? glyphs.open : glyphs.closed} `);
-          const budget = Math.max(0, inner - visibleWidth(prefix) - visibleWidth(tail));
-          lines.push(prefix + fitToolLine(themeText(theme, "muted", callGroup.label), budget) + themeText(theme, failures ? "error" : "dim", tail));
-          targets.set(lines.length - 1, CALL_GROUP_TARGET_PREFIX + callGroup.first);
-        }
-        if (!groupOpen) continue;
-      }
       const open = expandAll || state.expanded.has(node.id);
       const now = Date.now();
       const mark = stateMark(node, glyphs);
@@ -748,7 +715,7 @@ export function paintGroup(
       const phaseIndex = displayPhase ? plan.findIndex(phase => phase.id === displayPhase) : -1;
       const railColor = inheritedRail ?? (phaseIndex >= 0 ? phaseRole(phaseIndex) : connectorColor);
       const connector = story
-        ? themeText(theme, railColor, glyphs.v + " ") + themeText(theme, "dim", "  ".repeat(ancestors.length + 1 + (grouped || callGroup ? 1 : 0)) + (disclosure ? (open ? glyphs.open : glyphs.closed) : " ") + " ") + markText + " " + label
+        ? themeText(theme, railColor, glyphs.v + " ") + themeText(theme, "dim", "  ".repeat(ancestors.length + 1) + (disclosure ? (open ? glyphs.open : glyphs.closed) : " ") + " ") + markText + " " + label
         : branchGuide(ancestors, end, connectorColor) + markText + " " + label;
       const detail = node.kind === "thinking" ? "" : detailOf(node);
       const elapsed = elapsedFor(node, durationNow);
@@ -794,16 +761,16 @@ export function paintGroup(
       lines.push(fitToolLine(line, inner));
       targets.set(lines.length - 1, node.id);
 
-      if (open) emit(node.children, [...ancestors, last], railColor, grouped || !!callGroup);
+      if (open) emit(node.children, [...ancestors, last], railColor);
       else if (state.settings.revealErrors)
-        emit(node.children.filter(child => child.status === "error"), [...ancestors, last], railColor, grouped || !!callGroup);
+        emit(node.children.filter(child => child.status === "error"), [...ancestors, last], railColor);
 
       // Keep bounded tool previews attached to their call without treating lines as markers.
       const preview = node.children.length === 0 ? node.preview ?? [] : [];
       if (open && preview.length > 0) {
         const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
         const prefix = story
-          ? themeText(theme, railColor, glyphs.v + " ") + themeText(theme, "dim", "  ".repeat(ancestors.length + 3 + (grouped || callGroup ? 1 : 0)) + glyphs.pipe + " ")
+          ? themeText(theme, railColor, glyphs.v + " ") + themeText(theme, "dim", "  ".repeat(ancestors.length + 3) + glyphs.pipe + " ")
           : themeText(theme, "dim", childGuide + glyphs.pipe + " ");
         const painted = node.previewDiff
           ? colorizeDiff(preview.join("\n"), theme)

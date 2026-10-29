@@ -134,7 +134,6 @@ position. From the outside in:
 | Plan line | The expanded phase names joined by arrows, with the estimate that closed each phase | Expands the plan |
 | Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
 | Phase summary row | Up to two of a collapsed phase's hidden call goals, plus that phase's total call count | Opens that phase |
-| Call group row | A label, call count and failure count for two or more consecutive calls sharing a task-group | Opens that group |
 | Call row | Tool label, its goal, nested counts, and duration | Opens that call |
 | Nested row | A tool the call ran, such as a bash step inside a codemode script | Opens that step |
 | Preview row | Bounded output under an expanded call, led by a pipe guide | Opens or closes the call |
@@ -262,4 +261,4 @@ npm test             # node:test through tsx
 npm run test:host-smoke   # load the extension in a real pi process
 ```
 
-Related calls within a phase can share a `// task-group: <summary>` comment. Two or more consecutive calls with the same summary form an independently expandable group; single labeled calls and unlabeled calls remain individual. Existing transcripts without labels retain their usual display.
+Every call keeps its own row inside its phase; there is no intermediate grouping level.

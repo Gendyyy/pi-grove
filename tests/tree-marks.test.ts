@@ -496,6 +496,28 @@ test("phases summarize calls within the recent window and expose phase-level fai
   assert.equal(expanded.split("Read release notes").length - 1, 1, "the expanded call replaces the summary");
 });
 
+test("a call with an unknown or missing milestone joins the phase it follows", () => {
+  const tree = new ToolTree({ ...settings, window: 5 });
+  // The second call names the label instead of the id; the third declares nothing at all.
+  for (const [id, reasoning, milestone, progress] of [["a", "Read package docs", "inspect", 10], ["b", "Read extension source", "Inspect", 20], ["c", "Run focused tests", "verify", 80], ["d", "Typecheck sources", undefined, 95]] as const) {
+    tree.start({
+      toolCallId: id,
+      toolName: "codemode",
+      args: { reasoning, taskIntent: "Inspect and build safely", taskProgress: progress, taskMilestones: PLAN, ...(milestone ? { taskMilestone: milestone } : {}) },
+    });
+    tree.end({ toolCallId: id, toolName: "codemode", result: { content: [] }, isError: false, durationMs: 100 });
+  }
+  const lines = card(tree, "a", plainTheme).render(WIDE).map(plain);
+  // Every call lands under a phase, and the phase counts add up to the calls on the card.
+  assert.ok(lines.some(line => line.includes("01 Inspect") && line.includes("2 calls")), "an unresolved milestone stays with the phase it follows");
+  assert.ok(lines.some(line => line.includes("03 Verify") && line.includes("2 calls")), "a call that declares nothing joins the phase before it");
+  const inspectY = lines.findIndex(line => line.includes("01 Inspect"));
+  const verifyY = lines.findIndex(line => line.includes("03 Verify"));
+  const at = (goal: string) => lines.findIndex(line => line.includes(goal));
+  assert.ok(at("Read package docs") > inspectY && at("Read package docs") < verifyY, "the phantom-milestone call renders inside its phase");
+  assert.ok(at("Typecheck sources") > verifyY, "the undeclared call renders inside the last phase");
+});
+
 test("a stale phase declaration stays with the latest completed phase in the timeline", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 10);
