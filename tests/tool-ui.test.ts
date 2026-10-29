@@ -50,6 +50,10 @@ test("grouped top-level codemode calls require stable identity and current progr
   assert.match(codemodeGroupMetadataViolation(foreignPhase, "prompt") ?? "", /must name a phase from the declared/);
 
   assert.equal(codemodeGroupMetadataViolation(validTask, "prompt"), undefined);
+  assert.equal(codemodeGroupMetadataViolation({
+    toolName: "codemode",
+    input: { code: script(intent, progress, "// task-milestones: answer=Answer", "// task-milestone: answer", "return 1;") },
+  }, "prompt"), undefined);
 
   const annotated = {
     toolName: "codemode",
@@ -132,6 +136,10 @@ test("Pi-agent guidance keeps task identity as the sole border title", () => {
   assert.match(CODEMODE_GROUP_GUIDANCE, /best judgment.*not.*tool-call count.*fixed denominator/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /final tool call.*100.*only after that call succeeds/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /one to seven short labeled phases/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /outcome, uncertainty, risk, and scale/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /one phase for simple work/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /Examples are inspiration, not mandatory templates/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /discoveries change the work.*preserving the IDs and order of completed phases/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /task-milestone: <id>.*every top-level call/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /@options:.*reasoning:.*task-intent:.*task-progress:/s);
   assert.doesNotMatch(CODEMODE_GROUP_GUIDANCE, /group-phase/);
