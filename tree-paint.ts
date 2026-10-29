@@ -2,7 +2,7 @@
  * tree-paint.ts — turns one group into the lines of its collapsed or revealed card,
  * and records the click target of every line it paints.
  */
-import { mixColors, rgbColor, visibleWidth } from "@earendil-works/pi-tui";
+import { mixColors, rgbColor, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { colorizeDiff, fitToolLine, formatElapsed, summaryLine } from "./block-render.js";
 import type { IconMode } from "./icons.js";
 import { plainTheme, themeText, toolLabel, type Foreground, type GroveTheme } from "./theme.js";
@@ -10,6 +10,7 @@ import {
   DOT,
   ELLIPSIS,
   GROUP_TARGET,
+  CALL_GROUP_TARGET_PREFIX,
   PHASES_TARGET,
   milestoneTarget,
   PREVIEW_LINES,
@@ -408,6 +409,7 @@ export function paintGroup(
   const tools = group.rows.filter(row => row.kind !== "thinking");
   const phasePlan = group.milestones ?? [];
   const plan = state.settings.groupGutter ? phasePlan : [];
+  const story = plan.length > 0;
   const phaseByCall = new Map<string, string>();
   let latestObservedPhase = -1;
   for (const node of tools) {
@@ -419,6 +421,19 @@ export function paintGroup(
     if (phase) phaseByCall.set(node.id, phase.id);
   }
   const displayPhaseByCall = state.settings.groupGutter ? phaseByCall : new Map<string, string>();
+  // Contiguous runs preserve chronology and retain a stable first-call disclosure target.
+  const callGroups = new Map<string, { first: string; label: string; nodes: TreeNode[] }>();
+  let run: { first: string; label: string; nodes: TreeNode[]; phase: string } | undefined;
+  for (const node of tools) {
+    const phase = displayPhaseByCall.get(node.id);
+    if (!phase || !node.callGroup) { run = undefined; continue; }
+    if (!run || run.phase !== phase || run.label !== node.callGroup)
+      run = { first: node.id, label: node.callGroup, phase, nodes: [] };
+    run.nodes.push(node);
+    callGroups.set(node.id, run);
+  }
+  // A single labeled call needs no extra disclosure level.
+  for (const [id, candidate] of callGroups) if (candidate.nodes.length < 2) callGroups.delete(id);
   const durationNow = Date.now();
   // Every declared phase starts at zero, so the meter still scales against the whole plan.
   const phaseElapsedById = new Map<string, number>(phasePlan.map(phase => [phase.id, 0]));
@@ -432,18 +447,29 @@ export function paintGroup(
     ...phaseElapsedById.values(),
   );
 
-  const truncated = !reveal && tools.length > limit;
-  const windowVisible = truncated ? tools.slice(-limit) : tools;
-  const windowIds = new Set(windowVisible.map(row => row.id));
+  // One entry per call-level row: a group row when a run qualifies, otherwise one call row.
+  // The newest entries stay visible, so the card always shows what just happened, including
+  // the tail of a phase that has already finished.
+  const entries: TreeNode[][] = [];
+  for (const node of tools) {
+    const callGroup = callGroups.get(node.id);
+    if (!callGroup) entries.push([node]);
+    else if (callGroup.first === node.id) entries.push(callGroup.nodes);
+  }
+  const tail = reveal ? tools : entries.slice(-limit).flat();
+  const tailIds = new Set(tail.map(node => node.id));
   const expandedPhases = group.expandedMilestones ?? new Set<string>();
   const visible = reveal
     ? tools
     : tools.filter(node => {
         const phase = displayPhaseByCall.get(node.id);
-        return windowIds.has(node.id) || (phase !== undefined && expandedPhases.has(phase));
+        return tailIds.has(node.id) || (phase !== undefined && expandedPhases.has(phase));
       });
-  // Phase expansion reveals older calls without rewinding reasoning outside the rolling window.
-  const from = truncated && windowVisible.length > 0 ? windowVisible[0]!.seq : Number.NEGATIVE_INFINITY;
+  // Reasoning from the oldest visible call onward stays in place; older reasoning hides with
+  // the calls it led to, so opening a phase never drags a stale thought into view.
+  const from = visible.length > 0 && visible.length < tools.length
+    ? visible[0]!.seq
+    : Number.NEGATIVE_INFINITY;
   const visibleIds = new Set(visible.map(row => row.id));
   const rows = group.rows.filter(row =>
     row.kind === "thinking" ? row.seq >= from : visibleIds.has(row.id),
@@ -490,24 +516,74 @@ export function paintGroup(
       themeText(theme, color, (end ? glyphs.end : glyphs.tee) + " ");
   };
 
+  const phaseRoles = new Map<number, Foreground>();
+  /** Keep every row in a phase on the same status-colored rail. */
+  const phaseRole = (index: number): Foreground => {
+    const cached = phaseRoles.get(index);
+    if (cached) return cached;
+    const phase = plan[index];
+    if (!phase) return "dim";
+    const activeIndex = group.progress === 100 ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
+    const role: Foreground = countErrors(tools.filter(node => displayPhaseByCall.get(node.id) === phase.id))
+      ? "warning" : group.progress === 100 || index < activeIndex ? "success" : index === activeIndex ? "warning" : "dim";
+    phaseRoles.set(index, role);
+    return role;
+  };
+
   /** Paint a declared phase before its calls, with a rollup of the time already spent. */
   const emitPhase = (index: number): void => {
     const phase = plan[index];
     if (!phase) return;
     const complete = group.progress === 100;
     const activeIndex = complete ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
+    if (story) {
+      const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
+      const failures = countErrors(phaseRows);
+      const done = complete || index < activeIndex;
+      const role = phaseRole(index);
+      const mark = failures ? glyphs.warning : done ? glyphs.check : index === activeIndex ? glyphs.dot : glyphs.hollow;
+      const open = reveal || expandedPhases.has(phase.id);
+      const target = milestoneTarget(phase.id);
+      const rail = themeText(theme, role, glyphs.v + " ");
+      const prefix = rail + themeText(theme, role, `${mark} ${String(index + 1).padStart(2, "0")} `);
+      const failureText = failures ? ` · ${failures} failed` : "";
+      const disclosure = ` ${open ? glyphs.open : glyphs.closed}`;
+      const labelBudget = Math.max(0, inner - visibleWidth(prefix) - visibleWidth(failureText) - visibleWidth(disclosure));
+      const label = fitToolLine(themeText(theme, "text", phase.label, true), labelBudget);
+      const count = ` · ${phaseRows.length} ${phaseRows.length === 1 ? "call" : "calls"}`;
+      const duration = ` · ${formatElapsed(phaseElapsedById.get(phase.id) ?? 0)}`;
+      const metaBudget = Math.max(0, inner - visibleWidth(prefix + label + failureText + disclosure));
+      const meta = visibleWidth(count + duration) <= metaBudget ? count + duration : visibleWidth(count) <= metaBudget ? count : "";
+      lines.push(fitToolLine(prefix + label + themeText(theme, "dim", meta) +
+        themeText(theme, "warning", failureText) + themeText(theme, "dim", disclosure), inner));
+      targets.set(lines.length - 1, target);
+      // The summary stands only for calls the rows below cannot show, and always names the
+      // phase's full call count so a collapsed phase still reads as the work it stands for.
+      const hidden = open ? [] : phaseRows.filter(node => !visibleIds.has(node.id));
+      if (hidden.length > 0) {
+        const descriptions = hidden.slice(0, 2).map(node => detailOf(node) || node.name);
+        const count = ` · ${phaseRows.length} ${phaseRows.length === 1 ? "call" : "calls"}`;
+        const lead = rail + themeText(theme, "dim", "  " + glyphs.closed + " ");
+        const budget = Math.max(0, inner - visibleWidth(lead) - visibleWidth(count));
+        lines.push(lead + fitToolLine(themeText(theme, "muted", descriptions.join(" · ")), budget) + themeText(theme, "dim", count));
+        targets.set(lines.length - 1, target);
+      }
+      return;
+    }
     const role: Foreground = complete || index < activeIndex ? "success" : index === activeIndex ? "accent" : "dim";
     const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
     // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
     const calls = phaseRows.length;
+    const phaseErrors = countErrors(phaseRows);
     const elapsed = phaseElapsedById.get(phase.id) ?? 0;
-    // A phase is a boundary, not one more call: its diamond and name run bold so the eye finds
-    // the break first, and a dim rule carries the name out to that phase's own rollup.
+    const phaseTarget = milestoneTarget(phase.id);
     const prefix = themeText(theme, role, glyphs.diamond + " " + phase.label, true);
-    const detail = calls > 0
-      ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls"))
-      : "";
+    const detailParts = [
+      calls > 0 ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls")) : "",
+      phaseErrors > 0 ? errorCell(phaseErrors, theme, state.settings.icons, state.settings.iconMode) : "",
+    ].filter(Boolean);
     const separator = themeText(theme, "dim", DOT);
+    const detail = detailParts.join(separator);
     const rail = sideDurationRail(elapsed, durationScale, inner, theme, glyphs, role);
     const tail = rail + themeText(theme, "dim", DOT + formatElapsed(elapsed));
     const rollup = (detail ? separator + detail : "") + separator + tail;
@@ -517,7 +593,28 @@ export function paintGroup(
       room >= PHASE_RULE_MIN
         ? prefix + " " + themeText(theme, "dim", glyphs.h.repeat(room)) + rollup
         : summaryLine(prefix, detail, separator, tail, inner);
-    appendPhaseMarker(line, milestoneTarget(phase.id), role);
+    appendPhaseMarker(line, phaseTarget, role);
+
+    const hiddenCalls = phaseRows.filter(node => !visibleIds.has(node.id));
+    if (hiddenCalls.length > 0) {
+      const summaries = hiddenCalls.slice(0, 2).map(node => {
+        const callDetail = detailOf(node);
+        return callDetail
+          ? themeText(theme, "muted", callDetail)
+          : toolLabel(node.name, theme, state.settings.icons, state.settings.iconMode, state.settings.groupToolNames);
+      });
+      const omitted = hiddenCalls.length - summaries.length;
+      const summaryParts = [
+        counted(theme, hiddenCalls.length, "call", "calls"),
+        ...summaries,
+      ];
+      if (omitted > 0)
+        summaryParts.push(counted(theme, omitted, "additional call", "additional calls"));
+      const summary = themeText(theme, "dim", "   " + glyphs.closed + " ") +
+        summaryParts.join(separator);
+      lines.push(fitToolLine(summary, inner));
+      targets.set(lines.length - 1, phaseTarget);
+    }
   };
 
 
@@ -559,7 +656,33 @@ export function paintGroup(
     headerLine = fitToolLine(head + parts.join(themeText(theme, "dim", DOT)), width);
   }
   // One line, one gesture: the meter opens the plan it draws, the border opens the rows.
-  if (meter) {
+  if (story) {
+    const activeIndex = group.progress === 100 ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
+    const current = plan[activeIndex];
+    const complete = group.progress === 100;
+    const status = !state.settings.groupProgress ? "" : complete ? `${glyphs.check} 100% · Complete` : current ? `${glyphs.dot} ${group.progress ?? 0}% · ${current.label} ${activeIndex + 1}/${plan.length}` : "";
+    lines.push(fitToolLine(themeText(theme, "success", "GROVE / TASK", true) + (status ? "  " + themeText(theme, complete ? "success" : "warning", status) : ""), inner));
+    targets.set(lines.length - 1, GROUP_TARGET);
+    const pieces: string[] = [];
+    if (meter) pieces.push(meter.line);
+    else if (state.settings.groupProgress && group.progress !== undefined) pieces.push(taskProgressText(group.progress, theme, glyphs));
+    if (errors) pieces.push(themeText(theme, "error", `${errors} failed`));
+    pieces.push(counted(theme, tools.length, "call", "calls"));
+    if (state.settings.groupSparkline) {
+      const spark = durationSpark(tools, theme, glyphs);
+      if (spark) pieces.push(spark);
+    }
+    pieces.push(...toolBreakdown(tools, theme, glyphs, 4, state.settings.icons, state.settings.iconMode, state.settings.groupNestedTools, state.settings.groupToolNames));
+    const elapsed = formatElapsed(Math.max(0, durationNow - group.started));
+    pieces.push(themeText(theme, "dim", elapsed));
+    lines.push(fitToolLine(pieces.join(themeText(theme, "dim", DOT)), inner));
+    targets.set(lines.length - 1, PHASES_TARGET);
+    if (meter?.plan) {
+      lines.push(meter.plan);
+      targets.set(lines.length - 1, PHASES_TARGET);
+    }
+    lines.push(themeText(theme, "dim", glyphs.h.repeat(Math.max(0, inner))));
+  } else if (meter) {
     lines.push(meter.line);
     targets.set(lines.length - 1, PHASES_TARGET);
     if (meter.plan) {
@@ -567,13 +690,13 @@ export function paintGroup(
       targets.set(lines.length - 1, PHASES_TARGET);
     }
   }
-  if (headerLine) {
+  if (headerLine && !story) {
     lines.push(headerLine);
     targets.set(lines.length - 1, GROUP_TARGET);
   }
 
   /** Render visible call nodes as aligned markers, preserving expansion and previews. */
-  const emit = (nodes: TreeNode[], ancestors: boolean[]): void => {
+  const emit = (nodes: TreeNode[], ancestors: boolean[], inheritedRail?: Foreground, grouped = false): void => {
     for (const [index, node] of nodes.entries()) {
       const last = index === nodes.length - 1;
       const displayPhase = displayPhaseByCall.get(node.id);
@@ -585,6 +708,21 @@ export function paintGroup(
         }
       }
 
+      const callGroup = ancestors.length === 0 && story ? callGroups.get(node.id) : undefined;
+      if (callGroup) {
+        const groupOpen = reveal || group.expandedCallGroups?.has(callGroup.first) === true;
+        if (node.id === callGroup.first) {
+          const phaseIndex = plan.findIndex(phase => phase.id === displayPhase);
+          const rail = themeText(theme, phaseRole(phaseIndex), glyphs.v + " ");
+          const failures = countErrors(callGroup.nodes);
+          const tail = ` · ${callGroup.nodes.length} ${callGroup.nodes.length === 1 ? "call" : "calls"}` + (failures ? ` · ${failures} failed` : "");
+          const prefix = rail + themeText(theme, "dim", `  ${groupOpen ? glyphs.open : glyphs.closed} `);
+          const budget = Math.max(0, inner - visibleWidth(prefix) - visibleWidth(tail));
+          lines.push(prefix + fitToolLine(themeText(theme, "muted", callGroup.label), budget) + themeText(theme, failures ? "error" : "dim", tail));
+          targets.set(lines.length - 1, CALL_GROUP_TARGET_PREFIX + callGroup.first);
+        }
+        if (!groupOpen) continue;
+      }
       const open = expandAll || state.expanded.has(node.id);
       const now = Date.now();
       const mark = stateMark(node, glyphs);
@@ -606,10 +744,15 @@ export function paintGroup(
         ? pulseText(mark.glyph, theme, now, mark.pulse)
         : themeText(theme, mark.color, mark.glyph);
       const end = ancestors.length === 0 ? branchEnd.has(node.id) : last;
-      const connector = branchGuide(ancestors, end, connectorColor) + markText + " " + label;
+      const disclosure = node.children.length > 0 || (node.preview?.length ?? 0) > 0;
+      const phaseIndex = displayPhase ? plan.findIndex(phase => phase.id === displayPhase) : -1;
+      const railColor = inheritedRail ?? (phaseIndex >= 0 ? phaseRole(phaseIndex) : connectorColor);
+      const connector = story
+        ? themeText(theme, railColor, glyphs.v + " ") + themeText(theme, "dim", "  ".repeat(ancestors.length + 1 + (grouped || callGroup ? 1 : 0)) + (disclosure ? (open ? glyphs.open : glyphs.closed) : " ") + " ") + markText + " " + label
+        : branchGuide(ancestors, end, connectorColor) + markText + " " + label;
       const detail = node.kind === "thinking" ? "" : detailOf(node);
       const elapsed = elapsedFor(node, durationNow);
-      const rail = sideDurationRail(elapsed, durationScale, inner, theme, glyphs, connectorColor);
+      const rail = story ? "" : sideDurationRail(elapsed, durationScale, inner, theme, glyphs, connectorColor);
       const rowTailParts = node.kind === "thinking"
         ? {
             summary: "",
@@ -651,15 +794,17 @@ export function paintGroup(
       lines.push(fitToolLine(line, inner));
       targets.set(lines.length - 1, node.id);
 
-      if (open) emit(node.children, [...ancestors, last]);
+      if (open) emit(node.children, [...ancestors, last], railColor, grouped || !!callGroup);
       else if (state.settings.revealErrors)
-        emit(node.children.filter(child => child.status === "error"), [...ancestors, last]);
+        emit(node.children.filter(child => child.status === "error"), [...ancestors, last], railColor, grouped || !!callGroup);
 
       // Keep bounded tool previews attached to their call without treating lines as markers.
       const preview = node.children.length === 0 ? node.preview ?? [] : [];
       if (open && preview.length > 0) {
         const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
-        const prefix = themeText(theme, "dim", childGuide + glyphs.pipe + " ");
+        const prefix = story
+          ? themeText(theme, railColor, glyphs.v + " ") + themeText(theme, "dim", "  ".repeat(ancestors.length + 3 + (grouped || callGroup ? 1 : 0)) + glyphs.pipe + " ")
+          : themeText(theme, "dim", childGuide + glyphs.pipe + " ");
         const painted = node.previewDiff
           ? colorizeDiff(preview.join("\n"), theme)
           : preview.map(text => themeText(theme, "dim", text));
@@ -691,7 +836,8 @@ export function paintGroup(
   };
   const titlePrefix = glyphs.tl + glyphs.h + " ";
   const titleBudget = Math.max(1, width - 10);
-  const title = fitToolLine(group.intent || "GROVE", titleBudget);
+  const titleLines = story ? wrapTextWithAnsi(group.intent || "GROVE", titleBudget) : [fitToolLine(group.intent || "GROVE", titleBudget)];
+  const title = titleLines[0] ?? "GROVE";
   const topPlain = titlePrefix + title + " ";
   const fill = Math.max(0, width - 1 - visibleWidth(topPlain));
   const titleText = themeText(theme, "accent", title, true);
@@ -702,6 +848,10 @@ export function paintGroup(
   ];
   const remapped = new Map<number, string>();
   remapped.set(0, GROUP_TARGET);
+  for (const continuation of titleLines.slice(1)) {
+    wrapped.push(body(themeText(theme, "accent", continuation, true)));
+    remapped.set(wrapped.length - 1, GROUP_TARGET);
+  }
   for (const [index, line] of lines.entries()) {
     wrapped.push(body(line));
     const target = targets.get(index);

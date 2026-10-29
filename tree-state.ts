@@ -11,6 +11,7 @@ import {
   GROUP_TARGET,
   PHASES_TARGET,
   MILESTONE_TARGET_PREFIX,
+  CALL_GROUP_TARGET_PREFIX,
   MAX_GROUPS,
   MAX_GROUPS_TOTAL,
   MAX_ID,
@@ -22,6 +23,7 @@ import {
   goalOf,
   adoptMilestones,
   taskMilestoneOf,
+  taskGroupOf,
   taskMilestonesOf,
   taskIntentOf,
   taskProgressOf,
@@ -102,6 +104,7 @@ function updateGroupIntent(group: TreeGroup, intent: string): boolean {
   group.phaseBounds = undefined;
   group.openPhases = undefined;
   group.expandedMilestones = undefined;
+  group.expandedCallGroups = undefined;
   return true;
 }
 
@@ -199,6 +202,7 @@ function makeNode(
     taskIntent: parent || !includeTaskMetadata ? undefined : taskIntentOf(record) || undefined,
     completesTask: !parent && includeTaskMetadata && taskProgressOf(record) === 100,
     milestone: parent || !includeTaskMetadata ? undefined : taskMilestoneOf(record) || undefined,
+    callGroup: parent || !includeTaskMetadata ? undefined : taskGroupOf(record),
     status: "running",
     started,
     seq: ++state.sequence,
@@ -253,6 +257,7 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
   const statedProgress = parent || streaming ? undefined : taskProgressOf(record);
   const statedMilestones = parent || streaming ? undefined : taskMilestonesOf(record);
   const statedMilestone = parent || streaming ? undefined : taskMilestoneOf(record);
+  const statedCallGroup = parent || streaming ? undefined : taskGroupOf(record);
   const intentChanged = parent || streaming ? false : updateGroupIntent(group, statedIntent);
   const progressChanged = parent || statedProgress === 100
     ? false
@@ -272,13 +277,15 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
     const completion = !parent && statedProgress === 100;
     const completionChanged = statedProgress !== undefined && known.completesTask !== completion;
     const milestoneNodeChanged = !parent && statedMilestone !== undefined && known.milestone !== statedMilestone;
+    const callGroupChanged = !parent && !streaming && known.callGroup !== statedCallGroup;
     if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
     if (goal === known.goal && target === known.target && !intentChanged && !milestonesChanged && !progressChanged &&
-      !intentNodeChanged && !completionChanged && !milestoneNodeChanged) return undefined;
+      !intentNodeChanged && !completionChanged && !milestoneNodeChanged && !callGroupChanged) return undefined;
     known.goal = goal;
     known.target = target;
     if (!parent && statedIntent) known.taskIntent = statedIntent;
     if (!parent && statedMilestone) known.milestone = statedMilestone;
+    if (!parent && !streaming) known.callGroup = statedCallGroup;
     if (statedProgress !== undefined) known.completesTask = completion;
     return group;
   }
@@ -516,7 +523,13 @@ export function toggleTarget(state: TreeState, group: TreeGroup, target: string)
   if (target === GROUP_TARGET) group.openAll = !group.openAll;
   // The meter line owns the plan gesture, so the border stays the row gesture.
   else if (target === PHASES_TARGET) group.openPhases = !group.openPhases;
-  else if (target.startsWith(MILESTONE_TARGET_PREFIX)) {
+  else if (target.startsWith(CALL_GROUP_TARGET_PREFIX)) {
+    const id = target.slice(CALL_GROUP_TARGET_PREFIX.length);
+    if (!group.nodes.has(id)) return;
+    group.expandedCallGroups ??= new Set();
+    if (group.expandedCallGroups.has(id)) group.expandedCallGroups.delete(id);
+    else group.expandedCallGroups.add(id);
+  } else if (target.startsWith(MILESTONE_TARGET_PREFIX)) {
     const id = target.slice(MILESTONE_TARGET_PREFIX.length);
     if (!group.milestones?.some(milestone => milestone.id === id)) return;
     group.expandedMilestones ??= new Set();

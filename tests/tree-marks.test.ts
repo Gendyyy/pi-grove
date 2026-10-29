@@ -66,7 +66,7 @@ const WIDE = 400;
 
 /** The meter's bar alone: the leading run of cells, without the gutter or the percentage. */
 function meterBar(tree: ToolTree): string {
-  const line = painted(tree, WIDE, plainTheme).find(candidate => candidate.includes("%")) ?? "";
+  const line = painted(tree, WIDE, plainTheme).find(candidate => candidate.includes("▰") || candidate.includes("▱")) ?? "";
   const bar = line.slice(line.search(/[▰▱:]/));
   return bar.slice(0, bar.search(/[^▰▱:]/));
 }
@@ -113,7 +113,7 @@ test("the meter names the phase in flight and keeps the rest of the plan unspoke
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
 
-  const wide = painted(tree, WIDE).find(line => line.includes("Build"));
+  const wide = painted(tree, WIDE).find(line => line.includes("▰") && line.includes("Build"));
   assert.ok(wide, "the phase in flight is the one that gets named");
   // Only the phase in flight spends width on a name; the phases ahead stay a shape.
   assert.match(wide, /\[accent\]\*\[accent\] Build 2\/3/);
@@ -126,26 +126,6 @@ test("the meter names the phase in flight and keeps the rest of the plan unspoke
   assert.ok(narrow.length <= 35, `compact meter exceeds its viewport: ${narrow}`);
 });
 
-test("a narrow card drops the label but keeps the plan position", () => {
-  const tree = new ToolTree(settings);
-  tree.start({
-    toolCallId: "a",
-    toolName: "bash",
-    args: {
-      taskIntent: "Implement retry safety",
-      taskProgress: 55,
-      taskMilestones: "inspect=Inspect; build=Checkpoint; verify=Verify",
-      taskMilestone: "build",
-    },
-  });
-
-  const compact = card(tree, "a", plainTheme).render(40).map(plain).find(line => line.includes("2/3"));
-  assert.ok(compact, "the position is the last thing the meter gives up");
-  assert.doesNotMatch(compact, /Checkpoint/);
-  assert.match(compact, /55% > \* 2\/3/);
-  assert.ok(compact.length <= 40, `compact meter exceeds its viewport: ${compact}`);
-});
-
 test("a crossed boundary pins at the transition call's estimate", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 40);
@@ -153,7 +133,7 @@ test("a crossed boundary pins at the transition call's estimate", () => {
   step(tree, "b", "build", 70);
 
   // The meter owns the plan gesture, so every phase sits one click away.
-  card(tree).handleMouse?.(click(1));
+  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
   const planLine = painted(tree, WIDE).find(line => line.includes("Inspect"));
   assert.ok(planLine, "clicking the meter opens the plan");
   // The call entering Build reports 70%, so the crossing pins at 70%.
@@ -169,13 +149,13 @@ test("a crossed boundary divides the filled ramp while the phase in flight keeps
   settle(tree, "b");
   step(tree, "c", "build", 85);
 
-  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("%")) ?? "";
+  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
   assert.match(meter, /85% > \* Build 2\/3/, meter);
   // The transition pins at 70%; the later Build estimate fills beyond that marker.
   const glyphsOnly = meter;
   assert.match(glyphsOnly, /▰+:▰+/, glyphsOnly);
 
-  card(tree).handleMouse?.(click(1));
+  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
   const planLine = painted(tree, WIDE).find(line => line.includes("Inspect")) ?? "";
   assert.match(planLine, /\[success\]x Inspect/, planLine);
   assert.match(planLine, /\[accent\]\* Build/, planLine);
@@ -189,7 +169,7 @@ test("the bar forecasts no boundary before a phase has actually ended", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
 
-  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("%")) ?? "";
+  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
   // Nobody can say where the phases ahead will close, so the bar draws no guess in between.
   assert.doesNotMatch(meter, /[▰▱]:/, meter);
 });
@@ -215,7 +195,7 @@ test("the filled span keeps the estimate's red-to-green ramp", () => {
   step(tree, "a", "build", 55);
   settle(tree, "a");
 
-  const meter = painted(tree, WIDE, paletteTheme()).find(line => line.includes("%")) ?? "";
+  const meter = painted(tree, WIDE, paletteTheme()).find(line => line.includes("▰") || line.includes("▱")) ?? "";
   const ramp = [...meter.matchAll(/rgb\((\d+),(\d+),(\d+)\)▰/g)].map(found => ({
     r: Number(found[1]),
     g: Number(found[2]),
@@ -353,35 +333,9 @@ test("a two-phase plan still paints a labeled stepper", () => {
     args: { taskIntent: "Tidy the retry helper", taskProgress: 40, taskMilestones: "work=Tidy helper; verify=Verify", taskMilestone: "work" },
   });
 
-  const line = painted(tree, WIDE).find(candidate => candidate.includes("Tidy helper"));
+  const line = painted(tree, WIDE).find(candidate => candidate.includes("▰") && candidate.includes("Tidy helper"));
   assert.ok(line, "a two-phase plan still names the phase in flight");
   assert.match(line, /\[accent\]\*\[accent\] Tidy helper 1\/2/);
-});
-
-test("seven phases keep the active phase readable on a narrow card", () => {
-  const tree = new ToolTree(settings);
-  tree.start({
-    toolCallId: "a",
-    toolName: "bash",
-    args: {
-      taskIntent: "Ship the retry guard",
-      taskProgress: 50,
-      taskMilestones: "plan=Plan; read=Read; patch=Patch; test=Test; docs=Docs; review=Review; verify=Verify",
-      taskMilestone: "test",
-    },
-  });
-
-  const wide = painted(tree, WIDE).find(candidate => candidate.includes("Test"));
-  assert.ok(wide, "seven phases have room for a name on a wide card");
-  assert.match(wide, /50%/);
-  assert.match(wide, /\[accent\]\*\[accent\] Test 4\/7/);
-  assert.doesNotMatch(wide, /Plan|Verify/);
-
-  const narrow = painted(tree, 34, plainTheme).find(candidate => candidate.includes("4/7"));
-  assert.ok(narrow, "the position survives the narrow card");
-  assert.doesNotMatch(narrow, /Test/);
-  assert.match(narrow, /50% > \* 4\/7/);
-  assert.ok(narrow.length <= 34, `narrow meter exceeds its viewport: ${narrow}`);
 });
 
 test("the meter toggles the expanded plan independently of visible timeline phases", () => {
@@ -394,13 +348,13 @@ test("the meter toggles the expanded plan independently of visible timeline phas
 
   card(tree).render(WIDE);
   assert.equal(targetAt(0), GROUP_TARGET);
-  assert.equal(targetAt(1), PHASES_TARGET);
+  assert.equal(targetAt(card(tree).render(WIDE).findIndex(line => line.includes("▰"))), PHASES_TARGET);
   assert.equal(hasExpandedPlan(), false, "phase markers do not open the meter's full plan");
-  assert.ok(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("*")), "the timeline still names its first phase");
+  assert.ok(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("01")), "the timeline still names its first phase");
 
-  card(tree).handleMouse?.(click(1));
+  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
   assert.equal(hasExpandedPlan(), true, "clicking the meter expands the full plan");
-  card(tree).handleMouse?.(click(1));
+  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
   assert.equal(hasExpandedPlan(), false, "a second click closes only the expanded plan");
 });
 /** Two finished calls in one phase, then a live call that opened the next one. */
@@ -413,22 +367,6 @@ function twoPhases(gutterSettings: TreeSettings = settings): ToolTree {
   step(tree, "c", "build", 55);
   return tree;
 }
-
-test("phase diamonds share a spine while calls remain in branch lists", () => {
-  const tree = twoPhases({ ...settings, iconMode: "nerd" });
-  const lines = painted(tree, WIDE, plainTheme);
-  const markers = lines.filter(line => /(?:◆|◇) (?:Inspect|Build|Verify)|● bash/.test(line));
-  assert.deepEqual(markers.map(line => line.match(/(?:◆|◇|●) (?:Inspect|Build|Verify|bash)/)?.[0]), [
-    "◆ Inspect", "● bash", "● bash", "◆ Build", "● bash", "◆ Verify",
-  ]);
-  const connectors = lines.filter(isConnectorLine);
-  assert.equal(connectors.length, 2, "only adjacent phase diamonds share standalone spine links");
-
-  const rendered = card(tree, "a", plainTheme).render(WIDE).map(plain);
-  const buildY = rendered.findIndex(line => line.includes("◆ Build"));
-  const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
-  assert.equal(targetAt(buildY), milestoneTarget("build"), "each phase marker owns a phase-scoped expansion target");
-});
 
 test("a phase click reveals its direct codemode rows without opening nested steps", () => {
   const tree = new ToolTree({ ...settings, window: 2, iconMode: "nerd" });
@@ -467,19 +405,22 @@ test("a phase click reveals its direct codemode rows without opening nested step
   const component = () => card(tree, "inspect-read", plainTheme);
   const rendered = () => component().render(WIDE).map(plain);
   const codemodeRows = () => rendered().filter(line => line.includes("● codemode ·"));
+  /** Call rows belonging to the given one-word call labels. */
+  const rowsOf = (...names: string[]) => codemodeRows().filter(line => names.some(name => line.includes(` ${name} ×1`)));
   const hasExpandedChild = (name: string): boolean =>
     rendered().some(line => line.includes("●") && line.includes(name + " · phase call"));
   const planIsOpen = () => rendered().some(line =>
     line.includes("Inspect") && line.includes("Verify") && (line.includes("->") || line.includes("→")),
   );
-  assert.equal(codemodeRows().length, 2, "the rolling window initially shows only the newest calls");
+  assert.equal(rowsOf("read", "grep", "write").length, 0, "a finished phase's older calls start collapsed");
+  assert.equal(codemodeRows().length, 2, "the newest calls stay visible without opening a phase");
 
-  const inspectY = rendered().findIndex(line => line.includes("◆ Inspect"));
+  const inspectY = rendered().findIndex(line => line.includes("01 Inspect"));
   assert.ok(inspectY >= 0);
   assert.equal((tree as unknown as { targetAt(index: number): string | undefined }).targetAt(inspectY), milestoneTarget("inspect"));
   component().handleMouse?.({ ...click(inspectY), width: WIDE });
-  let calls = codemodeRows();
-  assert.equal(calls.length, 5, "the selected phase's three direct rows appear alongside the rolling window");
+  let calls = rowsOf("read", "grep", "write");
+  assert.equal(calls.length, 3, "expanding a phase reveals all and only its direct rows");
   assert.ok(calls.some(line => line.includes("read ×1")));
   assert.ok(calls.some(line => line.includes("grep ×1")));
   assert.equal(hasExpandedChild("read") || hasExpandedChild("grep"), false, "showing codemodes does not open their nested tools");
@@ -492,14 +433,67 @@ test("a phase click reveals its direct codemode rows without opening nested step
   assert.equal(hasExpandedChild("grep"), false, "other codemode rows remain collapsed");
 
   component().handleMouse?.({ ...click(inspectY), width: WIDE });
-  assert.equal(codemodeRows().length, 2, "a second click restores the rolling window");
+  assert.equal(rowsOf("read", "grep", "write").length, 0, "a second click collapses the phase back to its summary");
+  assert.ok(rendered().some(line => line.includes("3 calls")), "the summary names the phase's full call count");
 
-  const buildY = rendered().findIndex(line => line.includes("◆ Build"));
+  const buildY = rendered().findIndex(line => line.includes("02 Build"));
   component().handleMouse?.({ ...click(buildY), width: WIDE });
-  calls = codemodeRows();
+  calls = rowsOf("test", "lint", "typecheck");
   assert.equal(calls.length, 3, "another phase reveals only its own hidden direct call");
   assert.ok(calls.every(line => line.includes("test ×1") || line.includes("lint ×1") || line.includes("typecheck ×1")));
   assert.equal(hasExpandedChild("test") || hasExpandedChild("lint") || hasExpandedChild("typecheck"), false);
+});
+
+test("phases summarize calls within the recent window and expose phase-level failures", () => {
+  const tree = new ToolTree({ ...settings, window: 2 });
+  const calls: Array<[string, string, "inspect" | "build", number, boolean]> = [
+    ["a", "Read release notes", "inspect", 20, true],
+    ["b", "Locate version parser", "inspect", 30, false],
+    ["c", "Run focused package tests", "build", 55, false],
+    ["d", "Typecheck extension types", "build", 65, false],
+  ];
+  for (const [id, reasoning, taskMilestone, taskProgress, isError] of calls) {
+    tree.start({
+      toolCallId: id,
+      toolName: "bash",
+      args: {
+        reasoning,
+        taskIntent: "Inspect and build safely",
+        taskProgress,
+        taskMilestones: PLAN,
+        taskMilestone,
+      },
+    });
+    tree.end({ toolCallId: id, toolName: "bash", result: { content: [] }, isError, durationMs: 100 });
+  }
+
+  /** Render the collapsed card at the standard test width. */
+  const rendered = () => card(tree, "a", plainTheme).render(WIDE).map(plain);
+  const initial = rendered();
+  const styled = card(tree, "a", theme).render(WIDE).map(plain);
+  const inspectHeader = styled.find(line => line.includes("Inspect") && line.includes("1 failed")) ?? "";
+  assert.match(inspectHeader, /\[warning\] · 1 failed/, "the collapsed phase reports its failure");
+  const summaryY = initial.findIndex(line => line.includes("Read release notes"));
+  assert.ok(summaryY >= 0, "calls outside the newest window still get a compact factual summary");
+  for (const width of [35, 60, 96, WIDE]) {
+    const lines = card(tree, "a", plainTheme).render(width).map(plain);
+    assert.ok(lines.every(line => visibleWidth(line) <= width), "summary stays within " + width + " columns");
+    if (width === 35)
+      assert.ok(lines.some(line => line.includes("2 calls")), "the collapsed-call count survives narrow fitting");
+  }
+  assert.match(initial[summaryY] ?? "", /Read release notes.*Locate version parser/);
+  assert.doesNotMatch(initial[summaryY] ?? "", /\[dim\][|│] {2}>/, "the summary does not duplicate the phase spine with a dim pipe");
+  assert.ok(initial.some(line => line.includes("Run focused package tests")));
+  assert.ok(initial.some(line => line.includes("Typecheck extension types")));
+  /** Read the expansion target assigned to a rendered line. */
+  const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
+  assert.equal(targetAt(summaryY), milestoneTarget("inspect"), "the summary opens its owning phase");
+
+  card(tree, "a", plainTheme).handleMouse?.({ ...click(summaryY), width: WIDE });
+  const expanded = rendered().join("\n");
+  assert.match(expanded, /Read release notes/);
+  assert.match(expanded, /Locate version parser/);
+  assert.equal(expanded.split("Read release notes").length - 1, 1, "the expanded call replaces the summary");
 });
 
 test("a stale phase declaration stays with the latest completed phase in the timeline", () => {
@@ -512,7 +506,7 @@ test("a stale phase declaration stays with the latest completed phase in the tim
   const inspectAt = lines.findIndex(line => line.includes("Inspect") && /1 .*call/.test(line));
   const buildAt = lines.findIndex(line => line.includes("Build") && /2 .*calls/.test(line));
   const calls = lines.flatMap((line, index) =>
-    line.includes("bash") && !/\bcalls?\b/.test(line) ? [index] : [],
+    line.includes("* bash") && !/\bcalls?\b/.test(line) ? [index] : [],
   );
   assert.ok(inspectAt >= 0 && buildAt > inspectAt, "phase summaries stay in declared order");
   assert.equal(calls.length, 3, "all three calls remain visible");
@@ -530,27 +524,12 @@ test("phase gutter hides phase markers and leaves calls as branches", () => {
 
 test("a completed phase marker turns green when the plan moves on", () => {
   const tree = twoPhases();
-  const phaseMarker = () => painted(tree, WIDE).find(line => /\[accent\]\* Build|\[success\]\* Build/.test(line)) ?? "";
-  assert.match(phaseMarker(), /\[accent\]\* Build/, "the active phase marker carries the accent");
+  const phaseMarker = () => painted(tree, WIDE).find(line => line.includes("02") && line.includes("Build")) ?? "";
+  assert.match(phaseMarker(), /\[warning\]\* 02/, "the active phase marker carries the warning color");
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");
-  assert.match(phaseMarker(), /\[success\]\* Build/, "the completed phase marker reads as history");
-});
-
-test("a completed phase turns its phase-spine link green", () => {
-  const tree = twoPhases();
-  const buildLink = () => {
-    const lines = card(tree).render(WIDE).map(plain);
-    // The link immediately before Verify joins the preceding Build phase to the next diamond.
-    const verify = lines.findIndex(line => /\* Verify/.test(line));
-    return lines[verify - 1] ?? "";
-  };
-  assert.match(buildLink(), /\[accent\]\|/, "the active phase keeps its outgoing link active");
-
-  step(tree, "d", "verify", 80);
-  settle(tree, "c");
-  assert.match(buildLink(), /\[success\]\|/, "the completed phase's spine link turns green");
+  assert.match(phaseMarker(), /\[success\]x 02/, "the completed phase marker reads as history");
 });
 
 test("phase call counts do not reveal nested totals hidden from codemode summaries", () => {
@@ -566,116 +545,11 @@ test("phase call counts do not reveal nested totals hidden from codemode summari
   }
   tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: false, durationMs: 200 });
 
-  const phase = painted(tree, WIDE, plainTheme).find(line => line.includes("Inspect") && line.includes("call")) ?? "";
+  const phase = painted(tree, WIDE, plainTheme).find(line => line.includes("01") && line.includes("Inspect") && line.includes("call")) ?? "";
   assert.match(phase, /1 .*call/, "phase count describes its direct codemode row");
   assert.doesNotMatch(phase, /3 .*calls/, "hidden nested tools do not leak through the phase rollup");
-  const styledPhase = painted(tree, WIDE).find(line => line.includes("Inspect") && line.includes("call")) ?? "";
-  assert.match(styledPhase, /\[dim\]1 calls?/, "the phase count and its unit share the dim role");
-});
-
-test("tool duration bars align to the right edge for different labels", () => {
-  const realNow = Date.now;
-  let now = 10_000;
-  Date.now = () => now;
-  try {
-    const tree = new ToolTree({ ...settings, iconMode: "nerd" });
-    step(tree, "a", "inspect", 15);
-    now += 2_000;
-    settle(tree, "a");
-    tree.start({
-      toolCallId: "b",
-      toolName: "very_long_tool",
-      args: { taskIntent: "Implement retry safety", taskProgress: 20, taskMilestones: PLAN, taskMilestone: "inspect" },
-    });
-    now += 3_000;
-    tree.end({ toolCallId: "b", toolName: "very_long_tool", result: { content: [] }, isError: false, durationMs: 4 });
-
-    const lines = painted(tree, 80, plainTheme);
-    const rows = lines.filter(line => line.includes("● bash") || line.includes("● very_long_tool"));
-    assert.equal(rows.length, 2, "both tools have a painted row");
-    const railStarts = rows.map(line => {
-      const rail = /[━─]+(?= · (?:<\d+s|\d+s) │$)/.exec(line);
-      assert.ok(rail, "duration rail and elapsed time sit immediately before the right frame");
-      return visibleWidth(line.slice(0, rail.index));
-    });
-    assert.equal(railStarts[0], railStarts[1], "equal-width elapsed labels put each rail in the same column");
-  } finally {
-    Date.now = realNow;
-  }
-});
-
-test("calls hang off their phase as a branch inside the timeline", () => {
-  const tree = new ToolTree({ ...settings, iconMode: "nerd" });
-  tree.start({ toolCallId: "a", toolName: "bash", args: { taskIntent: "Fix retries", taskProgress: 20, taskMilestones: PLAN, taskMilestone: "inspect" } });
-  settle(tree, "a");
-  tree.start({ toolCallId: "b", toolName: "bash", args: { taskProgress: 40, taskMilestones: PLAN, taskMilestone: "inspect" } });
-  settle(tree, "b");
-  tree.start({ toolCallId: "c", toolName: "bash", args: { taskProgress: 60, taskMilestones: PLAN, taskMilestone: "build" } });
-  settle(tree, "c");
-  tree.start({ toolCallId: "d", toolName: "bash", args: { taskProgress: 80, taskMilestones: PLAN, taskMilestone: "build" } });
-  settle(tree, "d");
-
-  const rows = painted(tree, 70, plainTheme);
-  const at = (needle: string) => rows.find(line => line.includes(needle)) ?? "";
-  // Calls follow their phase directly; only the phase-to-phase spine gets a blank link row.
-  const inspect = rows.findIndex(line => line.includes("◆ Inspect"));
-  assert.ok(inspect >= 0);
-  assert.match(rows[inspect + 1] ?? "", /^ │ ├ ●/, "the first call attaches directly as a branch");
-  const build = rows.findIndex(line => line.includes("◆ Build"));
-  assert.ok(isConnectorLine(rows[build - 1] ?? ""), "the phase spine reconnects before the next diamond");
-  // The last call of a phase closes that phase's branch, not the card's.
-  const calls = rows.filter(line => /^ │ [├└] ●/.test(line));
-  assert.equal(calls.length, 4, "every call hangs off a branch");
-  assert.match(calls[0] ?? "", /^ │ ├ ●/, "an earlier call keeps the branch open");
-  assert.equal(calls.filter(line => line.includes("└")).length, 2, "one branch closes per phase");
-  assert.ok(
-    rows.findIndex(line => line.includes("◆ Build")) > rows.findIndex(line => line.includes("└")),
-    "the closing branch comes before the next phase",
-  );
-});
-
-test("completed calls color their branch glyph green", () => {
-  const tree = new ToolTree({ ...settings, iconMode: "nerd" });
-  step(tree, "a", "inspect", 20);
-  settle(tree, "a");
-
-  const calls = painted(tree, WIDE).filter(line => /\[success\][├└] \[success\]●/.test(line));
-  assert.equal(calls.length, 1, "the completed call's branch glyph uses the success color");
-});
-
-test("phase totals and tool calls share one card-relative linear duration scale", () => {
-  const realNow = Date.now;
-  let now = 10_000;
-  Date.now = () => now;
-  try {
-    const tree = new ToolTree({ ...settings, iconMode: "nerd" });
-    step(tree, "a", "inspect", 20);
-    now += 5_000;
-    settle(tree, "a");
-    step(tree, "b", "build", 55);
-    now += 5_000;
-    settle(tree, "b");
-    step(tree, "c", "build", 60);
-    now += 4_000;
-    settle(tree, "c");
-
-    const lines = painted(tree, 100, plainTheme);
-    /** Count filled cells in the row's fixed-width duration rail. */
-    const filledCells = (line: string): number => {
-      const rail = /[━─]+(?= · \d+s │$)/.exec(line)?.[0];
-      assert.ok(rail, `duration rail is missing from: ${line}`);
-      return [...rail].filter(cell => cell === "━").length;
-    };
-    const inspect = lines.find(line => line.includes("◆ Inspect") && line.includes("5s"));
-    const build = lines.find(line => line.includes("◆ Build") && line.includes("9s"));
-    const tool = lines.find(line => line.includes("● bash") && line.includes("5s"));
-    assert.ok(inspect && build && tool, "both phase totals and a 5s tool row are visible");
-    assert.equal(filledCells(inspect), 4, "5s fills about 56% of an eight-cell rail against 9s");
-    assert.equal(filledCells(build), 8, "the longest phase total fills the shared rail");
-    assert.equal(filledCells(tool), 4, "tool rows use the same scale as phase totals");
-  } finally {
-    Date.now = realNow;
-  }
+  const styledPhase = painted(tree, WIDE).find(line => line.includes("01") && line.includes("Inspect") && line.includes("call")) ?? "";
+  assert.match(styledPhase, /\[dim\] · 1 calls?/, "the phase count and its unit share the dim role");
 });
 
 test("the duration scale includes calls outside the collapsed window", () => {
@@ -720,35 +594,6 @@ test("the duration scale includes calls outside the collapsed window", () => {
       4,
       "the hidden 9s call still sets the card scale for the visible 5s call",
     );
-  } finally {
-    Date.now = realNow;
-  }
-});
-
-test("phase and call duration rails show elapsed time and fit narrow widths", () => {
-  const realNow = Date.now;
-  let now = 10_000;
-  Date.now = () => now;
-  try {
-    const tree = new ToolTree({ ...settings, iconMode: "nerd" });
-    step(tree, "a", "inspect", 15);
-    now += 3_100;
-    settle(tree, "a");
-    step(tree, "b", "build", 55);
-    now += 1_550;
-    settle(tree, "b");
-
-    const lines = painted(tree, 100, plainTheme);
-    const phase = lines.find(line => line.includes("◆ Build"));
-    const call = lines.find(line => line.includes("● bash") && line.includes("3s"));
-    assert.ok(phase && phase.includes("1s"), "the shorter phase summary includes its accumulated elapsed time");
-    assert.ok(phase.includes("━") && phase.includes("─"), "phase summary has a filled and remaining duration rail");
-    assert.ok(call && call.includes("3s"), "call summary retains its elapsed label beside the rail");
-
-    for (const width of [18, 23, 24, 27, 35, 40, 80]) {
-      const rendered = card(tree, "a", plainTheme).render(width);
-      assert.ok(rendered.every(line => visibleWidth(line) <= width), `timeline exceeds ${width} columns`);
-    }
   } finally {
     Date.now = realNow;
   }

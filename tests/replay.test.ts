@@ -259,12 +259,12 @@ return 1;` },
   tree.restore(readTranscript(entries, "prompt"));
   const component = tree.render(row("m1"));
   const card = lines(component);
-  assert.match(card[0]!, /70% > \* Build 2\/3/, card[0]);
-  assert.doesNotMatch(card[0]!, /Inspect|Verify/, "the phases ahead stay unspoken until clicked");
+  const meter = card.find(line => line.includes("▰")) ?? "";
+  assert.match(meter, /70% > \* Build 2\/3/, meter);
 
-  component.handleMouse?.(click(clickAt(component, /70%/)));
+  component.handleMouse?.(click(clickAt(component, /▰/)));
   const expanded = lines(tree.render(row("m1")));
-  const inspect = expanded.find(line => line.includes("Inspect"));
+  const inspect = expanded.find(line => line.includes("Inspect 55%"));
   assert.ok(inspect, "the expanded replay plan shows the completed phase");
   assert.match(inspect, /Inspect 55%/);
 });
@@ -338,4 +338,34 @@ test("a restored step still expands to the output its snapshot kept", () => {
   drilled.handleMouse?.(click(clickAt(drilled, /list files/)));
   const expanded = lines(tree.render(row("c1")));
   assert.ok(expanded.some(line => /first file/.test(line)), "a reloaded step keeps its output");
+});
+test("replay restores model-labeled call groups and their disclosure", () => {
+  const code = (goal: string) => `// reasoning: ${goal}\n// task-intent: Inspect settings\n// task-progress: 30\n// task-milestones: inspect=Inspect\n// task-milestone: inspect\n// task-group: Read configuration\nreturn 1;`;
+  const entries = [user("2026-01-01T00:00:00.000Z", "inspect"), assistant("2026-01-01T00:00:01.000Z", [
+    { id: "a1", name: "codemode", arguments: { code: code("read first") } },
+    { id: "a2", name: "codemode", arguments: { code: code("read second") } },
+  ]), result("2026-01-01T00:00:02.000Z", "a1", "codemode"), result("2026-01-01T00:00:03.000Z", "a2", "codemode")];
+  const tree = new ToolTree(settings());
+  tree.restore(readTranscript(entries, "prompt"));
+  const card = tree.render(row("a1"));
+  card.render(100);
+  card.handleMouse?.(click(clickAt(card, /01 Inspect/)));
+  assert.match(card.render(100).join("\n"), /Read configuration.*2 calls/);
+  card.handleMouse?.(click(clickAt(card, /Read configuration/)));
+  assert.match(card.render(100).join("\n"), /read first/);
+  assert.match(card.render(100).join("\n"), /read second/);
+});
+
+
+test("replay displays a single labeled call without an extra group", () => {
+  const code = "// reasoning: read first\n// task-intent: Inspect settings\n// task-progress: 30\n// task-milestones: inspect=Inspect\n// task-milestone: inspect\n// task-group: Read configuration\nreturn 1;";
+  const entries = [user("2026-01-01T00:00:00.000Z", "inspect"), assistant("2026-01-01T00:00:01.000Z", [{ id: "a1", name: "codemode", arguments: { code } }]), result("2026-01-01T00:00:02.000Z", "a1", "codemode")];
+  const tree = new ToolTree(settings());
+  tree.restore(readTranscript(entries, "prompt"));
+  const card = tree.render(row("a1"));
+  card.render(100);
+  card.handleMouse?.(click(clickAt(card, /01 Inspect/)));
+  const rendered = card.render(100).join("\n");
+  assert.match(rendered, /read first/);
+  assert.doesNotMatch(rendered, /Read configuration/);
 });

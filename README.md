@@ -39,21 +39,22 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `icons` | on / off | on | add glyphs beside tool words |
 | `iconMode` | auto / nerd / ascii | auto | whether the font can draw them |
 | `group` | prompt / turn / message / off | prompt | where one card ends |
-| `groupWindow` | 1-32 | 5 | how many recent calls stay visible |
+| `groupWindow` | 1-32 | 5 | how many recent unphased calls stay visible |
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
 | `groupToolNames` | on / off | on | show built-in tool names or icons only |
 | `groupProgress` | on / off | on | show the estimate as a meter, with the phase plan when one is declared |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
-| `groupGutter` | on / off | on | show phase markers and their spine links; calls remain a branch list either way |
+| `groupGutter` | on / off | on | show Story phase cards; off retains the compact call timeline |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
 
 ## Card shape
 
-One card per request: a model-authored task description in the top border, then the rollup
-and tool rows. The required `taskIntent` identifies the atomic task cluster and stays fixed
+One card per request: a model-authored task description in the border, then the rollup and tool rows.
+Keep task titles concise (ideally 45 characters or fewer); long titles continue onto extra lines.
+Cards with a phase plan use the Story layout; cards without one keep the compact timeline. The required `taskIntent` identifies the atomic task cluster and stays fixed
 across its calls; progress appears on the rollup, so milestone updates never rewrite the
 headline. A new task starts a new title. The title is not per-call reasoning or a summary of
 the latest tool action.
@@ -92,25 +93,56 @@ is transcript-backed and independent of the percentage, and a successful final `
 While a call is live, the needle's own cell breathes between the accent and muted roles on a cosine curve
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
-The rows below the rollup form a timeline of phases, and calls inside each phase hang off it as a branch. Each declared phase gets a diamond marker; its calls follow directly as fixed-size circles beside `├` or `└` branch glyphs. The last call of a phase closes that phase's branch. One connector row links each phase diamond to the next; there are no blank connector rows between calls. A completed phase turns its outgoing spine link green, and each call colors its own branch glyph by outcome, while a live call keeps its breathing marker. A phase row is a boundary rather than one more call: its diamond and name are bold, and a dim rule carries the name out to the phase's own call count and elapsed time. Every phase and call keeps a side-duration bar and elapsed label aligned to the card's right edge. All duration rails share one linear card-relative scale, anchored to the longest phase total or row duration, including collapsed and out-of-window calls: the longest fills the rail, so 5s is about 56% of 9s. Labels stay absolute, and the rule is the first thing dropped when a card is too narrow to hold it. Phase markers remain visible when the meter plan is closed; clicking a phase marker reveals all direct calls assigned to that phase, including calls outside the rolling window, without opening their nested steps. Click a codemode row to reveal its nested calls; clicking the meter opens the full plan. `groupGutter` hides phase markers and their spine links, while calls remain a branch list with outcome-colored glyphs.
+The Story layout groups work into numbered, colored phase cards. Each phase header shows its
+status, direct call count, elapsed time when space permits, and failure count. The newest
+call rows always stay visible: the last `groupWindow` call-level entries, where a run of related
+calls counts as one entry, so a phase that just finished keeps its tail on screen. Older calls
+collapse into a summary naming up to two of that phase's actual call goals (or tool names) plus
+the phase's total call count; a call shown as a row is never repeated in the summary. Click the
+phase header or summary to reveal the phase's direct calls; click a call to reveal its nested
+steps and output. Failures remain visible when collapsed. The same tail rule covers calls
+without a visible phase. The meter separately
+opens the full plan, and Pi's expand-all opens the entire tree. Setting `groupGutter` off
+uses the compact timeline instead of the Story phase cards.
 
-There are no Goal or Now sections and no group status chip. By default, the headline places progress first, then the duration sparkline, then the call count and tool mix.
-
+```text
+╭─ Check updates ────────────────────────────────────────────╮
+│ GROVE / TASK  ● 65% · Verify 2/2                           │
+│ ▰▰▰▰▰▰▱▱▱▱  65% · 2 calls                                  │
+│ ────────────────────────────────────────────────────────── │
+│ │ ✓ 01 Inspect · 1 call · 1s ▸                             │
+│ │   ▸ Read settings                                        │
+│ │ ! 02 Verify · 1 call · 1 failed ▸                        │
+│ │   ▸ Check registry                                       │
+╰────────────────────────────────────────────────────────────╯
 ```
-╭─ Make payment retries safe ───────────────────────────╮
-│ ▸   ▰▱▱▱▱▱▱▱▱▱   6% ·   ▃█ · 2 calls · bash ×1 · codemode ×1 │
-│ ◆ Inspect ───────── · 1 call · ━━━───── · 2s          │
-│ │                                                     │
-│ ● codemode · read the classify docs · ━─────── · 1s   │
-│ │                                                     │
-│ ◆ Build ─────────── · 1 call · ━━━━━━━━ · 4s          │
-│ │                                                     │
-│ ● bash · run the model tests · ━━━━━━━━ · 4s          │
-╰───────────────────────────────────────────────────────╯
-```
 
-The border title and rollup completion metric are the card's only group-level summary. Individual
-call rows show each tool's own per-call intent; Grove adds no separate Goal or Now sections.
+The task title stays fixed across the task; call rows show their own per-call intent. Grove
+adds no separate Goal or Now sections.
+
+## Layers
+
+Every part of a card has a name, so a request can point at one layer instead of describing a
+position. From the outside in:
+
+| Layer | What it is | Click target |
+| --- | --- | --- |
+| Card frame | The border, including the task title and its wrapped continuation lines | Reveals every row |
+| Status line | GROVE / TASK plus the percentage and current phase, or the complete marker | Reveals every row |
+| Rollup | One metrics line: meter, failed count, call count, duration sparkline, tool mix, elapsed | Expands the plan |
+| Progress meter | The filled bar and its phase ticks | Expands the plan |
+| Plan line | The expanded phase names joined by arrows, with the estimate that closed each phase | Expands the plan |
+| Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
+| Phase summary row | Up to two of a collapsed phase's hidden call goals, plus that phase's total call count | Opens that phase |
+| Call group row | A label, call count and failure count for two or more consecutive calls sharing a task-group | Opens that group |
+| Call row | Tool label, its goal, nested counts, and duration | Opens that call |
+| Nested row | A tool the call ran, such as a bash step inside a codemode script | Opens that step |
+| Preview row | Bounded output under an expanded call, led by a pipe guide | Opens or closes the call |
+| Reasoning row | A thinking segment kept inline, shown as thinking | None |
+
+The layers are also named in code: tree-model.ts holds the data, tree-state.ts the disclosure
+state, tree-paint.ts the rows and their names, and tree-block.ts the measuring and hit map that
+turns a click into one of the targets above.
 
 ## Rollup
 
@@ -229,3 +261,5 @@ npm run check        # tsc --noEmit
 npm test             # node:test through tsx
 npm run test:host-smoke   # load the extension in a real pi process
 ```
+
+Related calls within a phase can share a `// task-group: <summary>` comment. Two or more consecutive calls with the same summary form an independently expandable group; single labeled calls and unlabeled calls remain individual. Existing transcripts without labels retain their usual display.

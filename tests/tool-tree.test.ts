@@ -336,7 +336,7 @@ test("the plan meter advances monotonically and settles only after successful co
       toolName: "read",
       args: { taskIntent: intent, taskProgress: progress, taskMilestones: phases, taskMilestone: milestone },
     });
-  const meter = () => lines(tree.render(row("a")))[0]!;
+  const meter = () => lines(tree.render(row("a"))).find(line => line.includes("▰") || line.includes("▱")) ?? lines(tree.render(row("a")))[0]!;
 
   start("a", "inspect", 20);
   assert.match(meter(), /20% > \* Inspect 1\/3/);
@@ -1133,7 +1133,7 @@ test("clicking the card title reveals one level without Pi expand-all", () => {
   assert.doesNotMatch(revealed.join(" "), /list files/);
 });
 
-test("clicking the phase spine link reveals that phase's direct calls", () => {
+test("clicking the phase header reveals that phase's direct calls", () => {
   const tree = new ToolTree({ ...settings(), window: 1, iconMode: "nerd" });
   const milestones = "inspect=Inspect;build=Build;verify=Verify";
   tree.start({
@@ -1165,9 +1165,8 @@ test("clicking the phase spine link reveals that phase's direct calls", () => {
     return { handled: true };
   });
   const before = card.render(80).map(stripAnsi);
-  const buildY = before.findIndex(line => line.includes("◆ Build"));
-  const connectorY = buildY - 1;
-  assert.ok(buildY > 0 && /^\s*[│|] [│|]\s+[│|]$/.test(before[connectorY] ?? ""), "the phase spine links Inspect to Build");
+  const connectorY = before.findIndex(line => line.includes("01 Inspect"));
+  assert.ok(connectorY > 0, "the phase header is visible");
 
   assert.equal(hostRegion.handleMouse(click(connectorY))?.handled, true);
   assert.equal(piExpanded, false, "the phase link is Grove's, so Pi never expands the card");
@@ -1456,7 +1455,7 @@ test("a shrink-wrapped final call keeps the phases the card already showed", () 
     });
   };
   // The position counter is the plan's skeleton: a collapsed plan would read 1/1.
-  const meter = (): string => lines(tree.render(row("a")))[0] ?? "";
+  const meter = (): string => lines(tree.render(row("a"))).find(line => line.includes("▰") || line.includes("▱")) ?? "";
 
   step("a", plan, "inspect", 20);
   step("b", plan, "build", 60);

@@ -82,7 +82,7 @@ export const SETTINGS: readonly SettingSpec[] = [
     fallback: 5,
     label: "Visible calls",
     choices: WINDOW_CHOICES,
-    summary: "how many recent calls stay visible",
+    summary: "how many recent unphased calls stay visible",
   },
   {
     key: "groupRevealErrors",

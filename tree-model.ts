@@ -53,6 +53,8 @@ export interface TreeNode {
   completesTask?: boolean;
   /** Phase this call declared, so the rows can show where the plan moved. */
   milestone?: string;
+  /** Model-authored summary shared by consecutive related calls. */
+  callGroup?: string;
   status: TreeStatus;
   started: number;
   duration?: number;
@@ -113,6 +115,8 @@ export interface TreeGroup {
   openPhases?: boolean;
   /** Phase ids whose nested call rows are expanded from their timeline marker. */
   expandedMilestones?: Set<string>;
+  /** First call ids of independently expanded consecutive call groups. */
+  expandedCallGroups?: Set<string>;
   invalidate?: () => void;
 }
 
@@ -122,6 +126,8 @@ export const GROUP_TARGET = "@group";
 export const PHASES_TARGET = "@phases";
 /** Prefix for a click target that expands only the calls assigned to one phase. */
 export const MILESTONE_TARGET_PREFIX = "@milestone:";
+/** Prefix for a click target that expands a consecutive call group. */
+export const CALL_GROUP_TARGET_PREFIX = "@call-group:";
 
 /** Name the click target for one phase marker. */
 export function milestoneTarget(id: string): string {
@@ -169,15 +175,17 @@ export interface Glyphs {
   progress: string;
   /** Completed milestone marker, with an ASCII fallback for plain consoles. */
   check: string;
+  /** Warning indicator with a plain-console fallback. */
+  warning: string;
 }
 
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", arrow: "→", tick: "┆", diamond: "◆", spark: "bars", chart: "\uf080", progress: "", check: "✓",
+  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", arrow: "→", tick: "┆", diamond: "◆", spark: "bars", chart: "\uf080", progress: "", check: "✓", warning: "\uf071",
 };
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
-  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", arrow: "->", tick: ":", diamond: "*", spark: "ascii", chart: "", progress: "", check: "x",
+  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", arrow: "->", tick: ":", diamond: "*", spark: "ascii", chart: "", progress: "", check: "x", warning: "!",
 };
 
 /** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
@@ -299,6 +307,15 @@ export function taskMilestoneOf(args: Record<string, unknown> | undefined): stri
     }
   }
   return TASK_MILESTONE_ID.test(id) ? id : undefined;
+}
+
+/** Recover a concise related-call summary from a field or codemode comment. */
+export function taskGroupOf(args: Record<string, unknown> | undefined): string | undefined {
+  const direct = args?.taskGroup;
+  const code = args?.code ?? args?.script;
+  const match = typeof code === "string" ? code.match(/^\s*(?:\/\/|#)\s*task-group:\s*(.+)$/im) : undefined;
+  const label = typeof direct === "string" && direct.trim() ? direct : match?.[1];
+  return label ? brief(label, 80) || undefined : undefined;
 }
 
 const TARGET_KEYS = ["path", "file_path", "filePath", "pattern", "query", "command", "cmd", "url", "name", "prompt"];
