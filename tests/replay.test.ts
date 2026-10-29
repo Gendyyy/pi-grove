@@ -218,7 +218,7 @@ test("replay keeps the stable task title and ignores legacy phase annotations", 
   assert.match(frame[1]!, /53%/, "replay keeps the latest repeated estimate");
 });
 
-test("replay pins phase boundaries at the transition call estimate", () => {
+test("replay shows the equal share of each phase it restored", () => {
   const plan = "// task-milestones: inspect=Inspect; build=Build; verify=Verify";
   const entries = [
     user("2026-01-01T00:00:00.000Z", "finish the retry fix"),
@@ -260,13 +260,14 @@ return 1;` },
   const component = tree.render(row("m1"));
   const card = lines(component);
   const meter = card.find(line => line.includes("▰")) ?? "";
-  assert.match(meter, /70% > \* Build 2\/3/, meter);
+  // Two thirds is the most Build may claim, so the restored 70% paints as 67%.
+  assert.match(meter, /67% > \* Build 2\/3/, meter);
 
   component.handleMouse?.(click(clickAt(component, /▰/)));
   const expanded = lines(tree.render(row("m1")));
-  const inspect = expanded.find(line => line.includes("Inspect 55%"));
+  const inspect = expanded.find(line => line.includes("Inspect 33%"));
   assert.ok(inspect, "the expanded replay plan shows the completed phase");
-  assert.match(inspect, /Inspect 55%/);
+  assert.match(inspect, /Inspect 33%/);
 });
 
 test("replay commits 100 only for a successful final tool call", () => {

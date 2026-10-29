@@ -16,6 +16,7 @@ import {
   TASK_MILESTONE_MAX,
   countErrors,
   countToolCalls,
+  phaseShare,
   errorCell,
   counted,
   detailOf,
@@ -208,6 +209,18 @@ function pulseText(glyph: string, theme: GroveTheme, now: number, base: PulseBas
   return theme.style(glyph, { fg: mixColors(from, palette.muted, breath, "oklch") });
 }
 
+/** The estimate the card can show while work sits in a phase; a 100 still means finished. */
+export function cappedProgress(group: TreeGroup): number | undefined {
+  const stated = group.progress;
+  const plan = group.milestones;
+  if (stated === undefined) return undefined;
+  const value = Math.max(0, Math.min(100, Math.round(stated)));
+  // The last phase owns the final slice, so a real finish still reaches 100 through the cap.
+  if (!plan || plan.length === 0) return value;
+  const index = plan.findIndex(phase => phase.id === group.activeMilestoneId);
+  return index < 0 ? value : Math.min(value, phaseShare(plan.length, index));
+}
+
 /** Cells in a plan meter: wide enough to hold real zones, narrow enough to stay a meter. */
 const METER_CELLS_MIN = 10;
 const METER_CELLS_MAX = 24;
@@ -234,7 +247,7 @@ function phaseMeterText(
 ): MeterPaint | undefined {
   const plan = group.milestones;
   if (!plan || plan.length === 0 || plan.length > TASK_MILESTONE_MAX) return undefined;
-  const value = Math.max(0, Math.min(100, Math.round(group.progress ?? 0)));
+  const value = cappedProgress(group) ?? 0;
   const complete = value === 100;
   const activeIndex = complete
     ? plan.length - 1
@@ -260,10 +273,6 @@ function phaseMeterText(
   );
   const cellAt = (percent: number): number =>
     Math.max(0, Math.min(cells, Math.round((percent / 100) * cells)));
-  const bounds = group.phaseBounds?.length === plan.length + 1
-    ? group.phaseBounds
-    : Array.from({ length: plan.length + 1 }, () => 0);
-
   const fill = cellAt(value);
   const painted: Array<string | undefined> = new Array<string | undefined>(cells).fill(undefined);
   // The whole filled span keeps the estimate's own ramp, error red at the left edge to success
@@ -279,7 +288,7 @@ function phaseMeterText(
     : themeText(theme, "dim", glyphs.tick);
   const ticks = new Set<number>([0]);
   for (let index = 1; index <= activeIndex; index += 1) {
-    const tick = cellAt(bounds[index] ?? 0);
+    const tick = cellAt(phaseShare(plan.length, index - 1));
     if (tick <= 0 || tick >= cells) continue;
     painted[tick] = tick <= fill
       ? progressCellText(theme, tick, cells, glyphs.tick)
@@ -305,7 +314,7 @@ function phaseMeterText(
     : "";
   return {
     line: cue + bar + themeText(theme, progressColor(value), pct) + suffixText,
-    plan: group.openPhases ? phasePlanText(group, theme, glyphs, width, value, activeIndex, bounds) : undefined,
+    plan: group.openPhases ? phasePlanText(group, theme, glyphs, width, value, activeIndex) : undefined,
   };
 }
 
@@ -317,7 +326,6 @@ function phasePlanText(
   width: number,
   value: number,
   activeIndex: number,
-  bounds: number[],
 ): string {
   const plan = group.milestones ?? [];
   const complete = value === 100;
@@ -332,8 +340,8 @@ function phasePlanText(
     const current = !complete && index === activeIndex;
     const role: Foreground = done ? "success" : current ? "accent" : "dim";
     const glyph = done ? glyphs.check : current ? glyphs.dot : glyphs.hollow;
-    // A finished phase states the estimate that closed it: that crossing is the real fact.
-    const crossed = done ? Math.round(index === activeIndex ? value : bounds[index + 1] ?? 0) : undefined;
+    // A finished phase states the share it was allowed: equal slices, never the model's own guess.
+    const crossed = done ? Math.round(index === activeIndex ? value : phaseShare(plan.length, index)) : undefined;
     parts.push(
       themeText(theme, role, glyph + " " + phase.label) +
         (crossed === undefined ? "" : themeText(theme, "muted", ` ${crossed}%`)),
@@ -606,6 +614,8 @@ export function paintGroup(
   // The plan meter leads the card: it carries the estimate, the current phase and the shape
   // of the remaining plan in one line, so the rollup never has to repeat the percentage.
   const running = tools.some(row => row.status === "running");
+  // The card never reports more progress than the phase it is in has earned.
+  const shownProgress = cappedProgress(group);
   const meter = state.settings.groupProgress
     ? phaseMeterText(group, theme, glyphs, inner, Date.now(), running)
     : undefined;
@@ -621,8 +631,8 @@ export function paintGroup(
           themeText(theme, "muted", " calls");
     // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
     const parts: string[] = [];
-    if (!meter && state.settings.groupProgress && group.progress !== undefined)
-      parts.push(taskProgressText(group.progress, theme, glyphs));
+    if (!meter && state.settings.groupProgress && shownProgress !== undefined)
+      parts.push(taskProgressText(shownProgress, theme, glyphs));
     // Keep the duration shape ahead of the count and tool mix when space gets tight.
     if (state.settings.groupSparkline) {
       const spark = durationSpark(tools, theme, glyphs);
@@ -642,12 +652,12 @@ export function paintGroup(
     const activeIndex = group.progress === 100 ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
     const current = plan[activeIndex];
     const complete = group.progress === 100;
-    const status = !state.settings.groupProgress ? "" : complete ? `${glyphs.check} 100% · Complete` : current ? `${glyphs.dot} ${group.progress ?? 0}% · ${current.label} ${activeIndex + 1}/${plan.length}` : "";
+    const status = !state.settings.groupProgress ? "" : complete ? `${glyphs.check} 100% · Complete` : current ? `${glyphs.dot} ${shownProgress ?? 0}% · ${current.label} ${activeIndex + 1}/${plan.length}` : "";
     lines.push(fitToolLine(themeText(theme, "success", "GROVE / TASK", true) + (status ? "  " + themeText(theme, complete ? "success" : "warning", status) : ""), inner));
     targets.set(lines.length - 1, GROUP_TARGET);
     const pieces: string[] = [];
     if (meter) pieces.push(meter.line);
-    else if (state.settings.groupProgress && group.progress !== undefined) pieces.push(taskProgressText(group.progress, theme, glyphs));
+    else if (state.settings.groupProgress && shownProgress !== undefined) pieces.push(taskProgressText(shownProgress, theme, glyphs));
     if (errors) pieces.push(themeText(theme, "error", `${errors} failed`));
     pieces.push(counted(theme, tools.length, "call", "calls"));
     if (state.settings.groupSparkline) {

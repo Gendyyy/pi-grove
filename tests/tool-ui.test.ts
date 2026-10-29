@@ -75,6 +75,23 @@ test("grouped top-level codemode calls require stable identity and current progr
   assert.equal(codemodeGroupMetadataViolation({ ...missingTask, parentToolCallId: "parent" }, "prompt"), undefined);
 });
 
+test("a phase may not claim more than its equal share of the estimate", () => {
+  const call = (value: number, milestone: string) => ({
+    toolName: "codemode",
+    input: { code: script(intent, "// task-progress: " + value, plan, "// task-milestone: " + milestone, "return 1;") },
+  });
+
+  // Three phases split 100 evenly, so Inspect tops out at 33 and Build at 67.
+  assert.match(codemodeGroupMetadataViolation(call(40, "inspect"), "prompt") ?? "", /exceeds this phase's share.*"Inspect" may claim at most 33%/);
+  assert.match(codemodeGroupMetadataViolation(call(80, "build"), "prompt") ?? "", /"Build" may claim at most 67%/);
+  assert.match(codemodeGroupMetadataViolation(call(100, "build"), "prompt") ?? "", /may claim at most 67%/);
+  assert.equal(codemodeGroupMetadataViolation(call(33, "inspect"), "prompt"), undefined);
+  assert.equal(codemodeGroupMetadataViolation(call(67, "build"), "prompt"), undefined);
+  // The last phase owns the last slice, so only it may report the task finished.
+  assert.equal(codemodeGroupMetadataViolation(call(100, "verify"), "prompt"), undefined);
+  assert.match(codemodeGroupMetadataViolation(call(100, "inspect"), "prompt") ?? "", /may claim at most 33%/);
+});
+
 test("registerToolUi injects stable-title guidance and blocks missing identity", () => {
   const handlers = new Map<string, (event: unknown, context?: unknown) => unknown>();
   const pi = {

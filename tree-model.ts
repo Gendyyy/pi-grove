@@ -109,7 +109,6 @@ export interface TreeGroup {
    * it actually earned. Monotone, one longer than the plan, and written only from an
    * observed crossing: a boundary we have not reached yet stays a guess until it happens.
    */
-  phaseBounds?: number[];
   /** True while the full plan is expanded under the meter. */
   openPhases?: boolean;
   /** Phase ids whose nested call rows are expanded from their timeline marker. */
@@ -124,6 +123,11 @@ export const GROUP_TARGET = "@group";
 export const PHASES_TARGET = "@phases";
 /** Prefix for a click target that expands only the calls assigned to one phase. */
 export const MILESTONE_TARGET_PREFIX = "@milestone:";
+
+/** Each phase owns an equal share of the estimate: the phase at index i tops out at (i+1)/n of 100. */
+export function phaseShare(phases: number, index: number): number {
+  return Math.round(((index + 1) / phases) * 100);
+}
 
 /** Name the click target for one phase marker. */
 export function milestoneTarget(id: string): string {

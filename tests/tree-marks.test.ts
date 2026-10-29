@@ -126,7 +126,7 @@ test("the meter names the phase in flight and keeps the rest of the plan unspoke
   assert.ok(narrow.length <= 35, `compact meter exceeds its viewport: ${narrow}`);
 });
 
-test("a crossed boundary pins at the transition call's estimate", () => {
+test("a crossed phase states its equal share of the plan", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 40);
   settle(tree, "a");
@@ -136,11 +136,10 @@ test("a crossed boundary pins at the transition call's estimate", () => {
   card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
   const planLine = painted(tree, WIDE).find(line => line.includes("Inspect"));
   assert.ok(planLine, "clicking the meter opens the plan");
-  // The call entering Build reports 70%, so the crossing pins at 70%.
-  assert.match(planLine, /Inspect\[muted\] 70%/);
+  // Three phases split 100 evenly, so Inspect closes at 33% whatever the model reported.
+  assert.match(planLine, /Inspect\[muted\] 33%/);
   assert.match(planLine, /\[accent\]\* Build/);
 });
-
 test("a crossed boundary divides the filled ramp while the phase in flight keeps the accent", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 40);
@@ -150,10 +149,10 @@ test("a crossed boundary divides the filled ramp while the phase in flight keeps
   step(tree, "c", "build", 85);
 
   const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
-  assert.match(meter, /85% > \* Build 2\/3/, meter);
-  // The transition pins at 70%; the later Build estimate fills beyond that marker.
-  const glyphsOnly = meter;
-  assert.match(glyphsOnly, /▰+:▰+/, glyphsOnly);
+  // Build owns at most the second third, so the reported 85% paints as 67%.
+  assert.match(meter, /67% > \* Build 2\/3/, meter);
+  // The Inspect boundary sits a third of the way along, inside the filled span.
+  assert.match(meter, /▰+:▰+/, meter);
 
   card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
   const planLine = painted(tree, WIDE).find(line => line.includes("Inspect")) ?? "";
@@ -161,19 +160,18 @@ test("a crossed boundary divides the filled ramp while the phase in flight keeps
   assert.match(planLine, /\[accent\]\* Build/, planLine);
   assert.match(planLine, /\[dim\]o Verify/, planLine);
   // The arrow behind a finished phase is green, so a completed plan reads as one line.
-  assert.match(planLine, /Inspect\[muted\] 70% \[success\]-> \[accent\]\* Build/, planLine);
+  assert.match(planLine, /Inspect\[muted\] 33% \[success\]-> \[accent\]\* Build/, planLine);
   assert.match(planLine, /Build \[dim\]-> \[dim\]o Verify/, planLine);
 });
-
-test("the bar forecasts no boundary before a phase has actually ended", () => {
+test("the bar marks only the phases the plan has reached", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
 
-  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
-  // Nobody can say where the phases ahead will close, so the bar draws no guess in between.
-  assert.doesNotMatch(meter, /[▰▱]:/, meter);
+  // Reaching Build closes Inspect, so its third earns a divider; Verify is still ahead,
+  // and a phase that has not started cannot say where it will close.
+  const bar = meterBar(tree);
+  assert.deepEqual(dividerCells(bar), [0, Math.round(bar.length / 3)]);
 });
-
 test("every phase opens a column, and the first one opens the bar itself", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 20);
@@ -186,10 +184,9 @@ test("every phase opens a column, and the first one opens the bar itself", () =>
   step(tree, "c", "verify", 88);
   const walked = meterBar(tree);
   const cells = walked.length;
-  // Each later phase keeps the column its own start earned, on the estimate that opened it.
-  assert.deepEqual(dividerCells(walked), [0, Math.round(0.6 * cells), Math.round(0.88 * cells)]);
+  // Each later phase keeps the column its equal share earned.
+  assert.deepEqual(dividerCells(walked), [0, Math.round(cells / 3), Math.round((2 * cells) / 3)]);
 });
-
 test("the filled span keeps the estimate's red-to-green ramp", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
@@ -619,4 +616,20 @@ test("the duration scale includes calls outside the collapsed window", () => {
   } finally {
     Date.now = realNow;
   }
+});
+
+test("no phase but the last may paint a finished bar", () => {
+  const tree = new ToolTree(settings);
+  step(tree, "a", "build", 100);
+  settle(tree, "a");
+  const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
+  // Build has two thirds to claim, so a reported 100% stops there while Verify is ahead.
+  assert.match(meter, /67% > \* Build 2\/3/, meter);
+  assert.match(meter, /▱/, "the last third stays empty");
+
+  const finished = new ToolTree(settings);
+  step(finished, "a", "verify", 100);
+  settle(finished, "a");
+  const full = painted(finished, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
+  assert.match(full, /100% > x Verify 3\/3/, full);
 });

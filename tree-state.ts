@@ -99,36 +99,9 @@ function updateGroupIntent(group: TreeGroup, intent: string): boolean {
   group.milestones = undefined;
   group.activeMilestoneId = undefined;
   group.pendingCompletionId = undefined;
-  group.phaseBounds = undefined;
   group.openPhases = undefined;
   group.expandedMilestones = undefined;
   return true;
-}
-
-/**
- * Pin the boundary of every phase the advancing call finished, at the estimate the same
- * call carried. A crossing is history, so a boundary may never slide back behind the one
- * before it: the meter would then claim a finished phase shrank.
- */
-function pinPhaseBounds(group: TreeGroup, from: number, to: number): boolean {
-  const plan = group.milestones;
-  // Without an observed estimate there is nothing to pin: a phase cannot claim progress the
-  // card never saw it reach, so the boundary stays at zero and the bar keeps the open scale.
-  if (!plan || to <= from || group.progress === undefined) return false;
-  const bounds = group.phaseBounds?.length === plan.length + 1
-    ? [...group.phaseBounds]
-    : Array.from({ length: plan.length + 1 }, () => 0);
-  const stated = Math.max(0, Math.min(100, Math.round(group.progress)));
-  let changed = false;
-  for (let index = from + 1; index <= to && index < bounds.length; index += 1) {
-    const value = Math.max(bounds[index - 1] ?? 0, stated);
-    if (bounds[index] !== value) {
-      bounds[index] = value;
-      changed = true;
-    }
-  }
-  if (changed) group.phaseBounds = bounds;
-  return changed;
 }
 
 /** Apply an optional phase plan and current id, preserving the last valid state. */
@@ -146,7 +119,6 @@ function updateGroupMilestones(
     const adopted = adoptMilestones(group.milestones, milestones, Math.max(0, activeIndex));
     // Only a resized plan invalidates crossings: a restated one keeps every position it had.
     if (!group.milestones || group.milestones.length !== adopted.length) {
-      group.phaseBounds = Array.from({ length: adopted.length + 1 }, () => 0);
       changed = true;
     }
     if (adopted !== group.milestones) {
@@ -165,7 +137,6 @@ function updateGroupMilestones(
   const nextIndex = Math.min(plan.length - 1, declaredIndex < 0 ? floor : Math.max(floor, declaredIndex));
   const nextId = plan[nextIndex]?.id;
   if (nextId !== group.activeMilestoneId) {
-    if (planIndex >= 0 && pinPhaseBounds(group, planIndex, nextIndex)) changed = true;
     group.activeMilestoneId = nextId;
     changed = true;
   }
