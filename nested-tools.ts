@@ -1,3 +1,4 @@
+import { clean } from "./tree-model.js";
 import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
@@ -36,9 +37,6 @@ interface Snapshot {
   incomplete: boolean;
 }
 
-function clean(value: unknown): string {
-  return typeof value === "string" ? stripVTControlCharacters(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "") : "";
-}
 function brief(value: unknown, limit = 240): string {
   return clean(value).replace(/\s+/g, " ").trim().slice(0, limit);
 }

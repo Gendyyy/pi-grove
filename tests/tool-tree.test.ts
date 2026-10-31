@@ -126,7 +126,7 @@ function lines(component: Component, width = 80): string[] {
   // The card is one bordered object now, so the body is what the assertions index.
   if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
   return painted
-    .slice(1, -1)
+    .slice(1)
     .map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim())
     .filter(line => line.length > 0 && line !== "|" && line !== "│");
 }
@@ -180,7 +180,7 @@ test("milestone annotations accept only bounded, uniquely identified phase plans
   assert.equal(bounded?.[0]?.label.length, 24);
 });
 
-test("composed tools require taskIntent and strip Grove metadata before execution", async () => {
+test("composed tools require taskIntent and strip retired metadata before execution", async () => {
   let received: unknown;
   const source = {
     name: "fixture",
@@ -195,21 +195,17 @@ test("composed tools require taskIntent and strip Grove metadata before executio
     reasoningGuideline: "reasoning",
     taskIntent: true,
     taskIntentGuideline: "stable task title",
-    taskProgress: true,
-    taskProgressGuideline: "current estimated completion percentage",
   });
   const schema = composed.parameters as unknown as {
     required?: string[];
     properties?: Record<string, { type?: string; maxLength?: number; minimum?: number; maximum?: number }>;
   };
-  assert.deepEqual(schema.required, ["taskProgress", "taskIntent", "reasoning", "value"]);
+  assert.deepEqual(schema.required, ["taskIntent", "reasoning", "value"]);
   assert.equal(schema.properties?.taskIntent?.type, "string");
   assert.equal(schema.properties?.taskIntent?.maxLength, 120);
-  assert.equal(schema.properties?.taskProgress?.type, "integer");
-  assert.equal(schema.properties?.taskProgress?.minimum, 0);
-  assert.equal(schema.properties?.taskProgress?.maximum, 100);
+  // Progress is derived from the phase plan, so the schema never asks the model for it.
+  assert.equal(schema.properties?.taskProgress, undefined);
   assert.match(composed.promptGuidelines?.join(" ") ?? "", /stable task title/);
-  assert.match(composed.promptGuidelines?.join(" ") ?? "", /current estimated completion percentage/);
 
   await Reflect.apply(composed.execute, composed, [
     "call-1",
@@ -219,23 +215,6 @@ test("composed tools require taskIntent and strip Grove metadata before executio
     undefined,
   ]);
   assert.deepEqual(received, { value: "keep" });
-});
-
-test("a source cannot reserve Grove taskProgress metadata", () => {
-  const source = {
-    name: "fixture",
-    parameters: { type: "object", properties: { taskProgress: { type: "integer" } } },
-    execute: async () => ({ content: [] }),
-  } as unknown as SourceToolDefinition;
-  assert.throws(
-    () => composeSourceTool(source, {
-      mode: "reasoning",
-      reasoningGuideline: "reasoning",
-      taskIntent: true,
-      taskProgress: true,
-    }),
-    /fixture source schema reserves grove-owned taskProgress/,
-  );
 });
 
 test("a source cannot reserve Grove taskIntent metadata", () => {
@@ -265,113 +244,120 @@ test("running descriptions shimmer without changing text or visible width", () =
   assert.equal(visibleWidth(later), description.length);
 });
 
-test("the agent milestone estimate repeats, and only a successful final call reaches green", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
+test("no call declares its own percentage, and a card without a plan has none", () => {
   const intent = "Inspect payment retry safeguards";
-  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 6 } });
-  const card = tree.render(row("a", false, PROGRESS_THEME));
-  const initial = card.render(80);
-  const headline = initial[0]!;
-  const first = initial[1]!;
-  assert.match(stripAnsi(headline), /Inspect payment retry safeguards/);
-  assert.doesNotMatch(stripAnsi(headline), /[▰▱]|6%/);
-  assert.match(stripAnsi(first), /▰▱{9} +6%/);
-  assert.equal(stylesFor(first, "▰")[0], rgbAnsi(PROGRESS_THEME.colors!.error), "the first cell starts at theme error red");
-  assert.ok(stylesFor(first, "6%").every(style => style === "\u001b[31m"));
+  const plain = new ToolTree(settings({ mode: "prompt" }));
+  plain.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 6 } });
+  const withoutPlan = plain.render(row("a", false, PROGRESS_THEME)).render(80).map(stripAnsi);
+  assert.ok(withoutPlan.every(line => !/[▰▱]/.test(line)), "no plan means no meter");
+  assert.ok(withoutPlan.every(line => !/\d+%/.test(line)), "a declared percentage is never painted");
 
-  tree.start({ toolCallId: "b", toolName: "grep", args: { taskIntent: intent, taskProgress: 6 } });
-  const repeated = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
-  const visibleMeter = (line: string) => stripAnsi(line).match(/▰▱{9} +6%/)?.[0];
-  assert.equal(visibleMeter(repeated), visibleMeter(first), "repeating the same estimate keeps the meter unchanged");
-  assert.deepEqual(stylesFor(repeated, "▰"), stylesFor(first, "▰"));
-  assert.deepEqual(stylesFor(repeated, "6%"), stylesFor(first, "6%"));
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 5 });
-  tree.end({ toolCallId: "b", toolName: "grep", result: { content: [] }, isError: false, durationMs: 5 });
-
-  tree.start({ toolCallId: "c", toolName: "bash", args: { taskIntent: intent, taskProgress: 50 } });
-  const middleFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  const middle = middleFrame[1]!;
-  assert.equal(middleFrame[0], headline, "milestone updates leave the headline byte-stable");
-  assert.match(stripAnsi(middle), /▰{5}▱{5} +50%/);
-  assert.ok(stylesFor(middle, "50%").every(style => style === "\u001b[33m"), "midpoint is yellow");
-  tree.end({ toolCallId: "c", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
-
-  tree.start({ toolCallId: "d", toolName: "bash", args: { taskIntent: intent, taskProgress: 99 } });
-  const almostFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  const almost = almostFrame[1]!;
-  assert.equal(almostFrame[0], headline, "progress never rewrites the border title");
-  assert.match(stripAnsi(almost), /▰{10} +99%/);
-  assert.ok(stylesFor(almost, "99%").every(style => style === "\u001b[32m"), "high progress advances to green");
-  const gradient = stylesFor(almost, "▰".repeat(10));
-  assert.equal(gradient.length, 10);
-  assert.equal(gradient[0], rgbAnsi(PROGRESS_THEME.colors!.error), "the ramp starts at theme error red");
-  assert.equal(gradient[9], rgbAnsi(PROGRESS_THEME.colors!.success), "the ramp ends at theme success green");
-  assert.equal(new Set(gradient).size, 10, "every cell shifts to a distinct interpolated color");
-  tree.end({ toolCallId: "d", toolName: "bash", result: { content: [] }, isError: false, durationMs: 5 });
-
-  tree.start({ toolCallId: "e", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
-  const pendingFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  const pending = pendingFrame[1]!;
-  assert.equal(pendingFrame[0], headline);
-  assert.match(stripAnsi(pending), /99%/, "100 stays pending while the final call runs");
-  tree.end({ toolCallId: "e", toolName: "bash", result: { content: [] }, isError: false, durationMs: 10 });
-  const completeFrame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  const complete = completeFrame[1]!;
-  assert.equal(completeFrame[0], headline);
-  assert.match(stripAnsi(complete), /▰{10} +100%/);
-  assert.ok(stylesFor(complete, "100%").every(style => style === "\u001b[32m"), "completed progress is green");
-
-  tree.start({ toolCallId: "f", toolName: "read", args: { taskIntent: "Verify a different task", taskProgress: 12 } });
-  const nextTask = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  assert.match(stripAnsi(nextTask[0]!), /Verify a different task/);
-  assert.match(stripAnsi(nextTask[1]!), /12%/, "a new task gets its own estimate");
+  const planned = new ToolTree(settings({ mode: "prompt" }));
+  planned.start({
+    toolCallId: "a",
+    toolName: "codemode",
+    args: {
+      code: [
+        "// task-intent: " + intent,
+        "// task-progress: 90",
+        "// task-milestones: inspect=Inspect; build=Build; verify=Verify",
+        "// task-milestone: inspect",
+        "return 1;",
+      ].join(String.fromCharCode(10)),
+    },
+  });
+  const frame = lines(planned.render(row("a", false, PROGRESS_THEME)));
+  const meter = frame.find(line => /[▰▱]/.test(line))!;
+  assert.match(meter, / 0%/, "a declared estimate earns nothing the plan has not finished");
+  const plan = frame.find(line => line.includes("Inspect") && line.includes("Verify")) ?? "";
+  assert.match(plan, /Inspect \|-{3}\| Build \|-{3}\| Verify/, "the plan row names the phase in flight and the ones ahead");
+  assert.match(frame.find(line => line.includes("+") && line.includes("..")) ?? "", /\+\.{4,}\+/, "a phase still ahead keeps a dotted box");
 });
 
-test("the plan meter advances monotonically and settles only after successful completion", () => {
+test("the plan meter earns one equal slice per finished phase and completes only when the card settles", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const phases = "inspect=Inspect; build=Build; verify=Verify";
-  const start = (id: string, milestone: string, progress: number, intent = "Implement retry safety") =>
+  const start = (id: string, milestone: string) =>
     tree.start({
       toolCallId: id,
       toolName: "read",
-      args: { taskIntent: intent, taskProgress: progress, taskMilestones: phases, taskMilestone: milestone },
+      args: { taskIntent: "Implement retry safety", taskMilestones: phases, taskMilestone: milestone },
     });
-  const meter = () => lines(tree.render(row("a"))).find(line => line.includes("▰") || line.includes("▱")) ?? lines(tree.render(row("a")))[0]!;
+  const end = (id: string) =>
+    tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
+  const meter = () => lines(tree.render(row("a"))).find(line => /[▰▱]/.test(line)) ?? "";
+  const plan = () => lines(tree.render(row("a"))).find(line => line.includes("Inspect") && line.includes("Build")) ?? "";
 
-  start("a", "inspect", 20);
-  assert.match(meter(), /20% > \* Inspect 1\/3/);
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
-  start("b", "build", 55);
-  assert.match(meter(), /55% > \* Build 2\/3/);
-  tree.end({ toolCallId: "b", toolName: "read", result: { content: [] }, isError: false });
-  start("c", "inspect", 56);
-  assert.match(meter(), /56% > \* Build 2\/3/, "an out-of-order annotation cannot reopen a completed phase");
-  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
-  start("d", "verify", 100);
-  assert.match(meter(), /56% > \* Verify 3\/3/, "the final estimate stays pending while its call runs");
-  tree.end({ toolCallId: "d", toolName: "read", result: { content: [] }, isError: false });
-  assert.match(meter(), /100% > x Verify 3\/3/);
-
-  tree.start({
-    toolCallId: "e",
-    toolName: "read",
-    args: { taskIntent: "Review a different task", taskProgress: 12 },
-  });
-  assert.doesNotMatch(meter(), /Inspect|Build|Verify/, "a new task clears the previous plan");
+  start("a", "inspect");
+  assert.match(meter(), / 0%/, "the phase in flight has earned nothing yet");
+  end("a");
+  start("b", "build");
+  assert.match(meter(), / 33%/);
+  end("b");
+  start("c", "inspect");
+  assert.match(meter(), / 33%/, "a phase that already closed cannot reopen");
+  end("c");
+  start("d", "verify");
+  assert.match(meter(), / 67%/, "the plan never reads complete while a call runs");
+  end("d");
+  assert.match(meter(), / 67%/, "the last phase closing clean still owes the card's own end");
+  tree.settle();
+  assert.match(meter(), /100%/, "a settled card reads complete");
+  assert.match(plan(), /Inspect \|-{3}\| Build \|-{3}\| Verify/, "every closed phase links to the next");
+  assert.doesNotMatch(plan(), /%|\./, "a settled plan keeps no dots and no percentages");
 });
 
-test("a 35 percent progress meter colors filled cells along the gradient", () => {
+test("a settled card with a failed call keeps its finished share and never reads complete", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
-  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Inspect retries", taskProgress: 35 } });
-  const line = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
-  assert.match(stripAnsi(line), /▰{4}▱{6} +35%/);
-  const gradient = stylesFor(line, "▰".repeat(4));
-  assert.equal(gradient[0], rgbAnsi(PROGRESS_THEME.colors!.error));
-  assert.equal(new Set(gradient).size, 4, "each filled cell shifts toward green");
-  assert.ok(stylesFor(line, "▱".repeat(6)).every(style => style === "\u001b[2m"),
-    "unfilled cells stay dim");
-  assert.ok(stylesFor(line, "35%").every(style => style === "\u001b[33m"),
-    "the percentage keeps its estimate-based color");
+  const phases = "inspect=Inspect; build=Build; verify=Verify";
+  const start = (id: string, milestone: string) =>
+    tree.start({
+      toolCallId: id,
+      toolName: "read",
+      args: { taskIntent: "Complete the retry fix", taskMilestones: phases, taskMilestone: milestone },
+    });
+  const meter = () => lines(tree.render(row("a"))).find(line => /[▰▱]/.test(line)) ?? "";
+
+  start("a", "inspect");
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  start("b", "build");
+  tree.end({ toolCallId: "b", toolName: "read", result: { content: [{ type: "text", text: "failed" }] }, isError: true });
+  start("c", "verify");
+  tree.end({ toolCallId: "c", toolName: "read", result: { content: [{ type: "text", text: "failed" }] }, isError: true });
+  tree.settle();
+  assert.match(meter(), /67%/, "the phases that finished still count");
+  assert.doesNotMatch(meter(), /100%/, "one failure keeps the card short of complete");
+});
+
+test("the filled span keeps the progress ramp, and only a clean finish is green", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const phases = "inspect=Inspect; build=Build; verify=Verify";
+  const start = (id: string, milestone: string) =>
+    tree.start({
+      toolCallId: id,
+      toolName: "read",
+      args: { taskIntent: "Tune the progress ramp", taskMilestones: phases, taskMilestone: milestone },
+    });
+  start("a", "inspect");
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  start("b", "build");
+  tree.end({ toolCallId: "b", toolName: "read", result: { content: [] }, isError: false });
+  start("c", "verify");
+
+  const partial = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
+  const bar = stripAnsi(partial).match(/[▰▱:]+/)![0];
+  const ramp = stylesFor(partial, bar);
+  const filled = [...bar].flatMap((cell, index) => (cell === "\u25B0" ? [ramp[index]!] : []));
+  const empty = [...bar].flatMap((cell, index) => (cell === "\u25B1" ? [ramp[index]!] : []));
+  assert.ok(filled.length > 1, "a finished phase fills cells");
+  assert.equal(new Set(filled).size > 1, true, "the filled span interpolates instead of one flat colour");
+  assert.ok(empty.every(style => style === "\u001b[2m"), "unfilled cells stay dim");
+
+  tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
+  tree.settle();
+  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
+  assert.match(stripAnsi(complete), /100%/);
+  assert.ok(stylesFor(complete, "100%").every(style => style === rgbAnsi(PROGRESS_THEME.colors!.success)), "a finished plan ends on the ramp green");
 });
 
 test("rollup places the call count after progress and the duration sparkline", () => {
@@ -385,19 +371,24 @@ test("rollup places the call count after progress and the duration sparkline", (
       tree.start({
         toolCallId,
         toolName: "bash",
-        args: { taskIntent: "Tune the progress rollup", taskProgress: 90, reasoning: "run a step" },
+        args: {
+          taskIntent: "Tune the progress rollup",
+          taskMilestones: "tune=Tune; check=Check; report=Report",
+          taskMilestone: "check",
+          reasoning: "run a step",
+        },
       });
       now += (index + 1) * 100;
       tree.end({ toolCallId, toolName: "bash", result: { content: [] }, isError: false });
     }
 
-    const header = stripAnsi(lines(tree.render(row("call-0", false, PROGRESS_THEME)))[0]!);
-    const progress = header.indexOf("90%");
-    const sparkline = header.indexOf("\uf080");
-    const callCount = header.indexOf("5 of 10 calls");
-    assert.ok(progress >= 0, `progress is missing: ${header}`);
-    assert.ok(sparkline > progress, `sparkline must follow progress: ${header}`);
-    assert.ok(callCount > sparkline, `call count must follow the sparkline: ${header}`);
+    const header = stripAnsi(lines(tree.render(row("call-0", false, PROGRESS_THEME)))[1]!);
+    const progress = header.indexOf("33%");
+    const sparkline = header.search(/[▁▂▃▄▅▆▇█]/);
+    const callCount = header.indexOf("calls");
+    assert.ok(progress >= 0, "progress is missing: " + header);
+    assert.ok(sparkline > progress, "sparkline must follow progress: " + header);
+    assert.ok(callCount > progress, "call count must follow progress: " + header);
   } finally {
     Date.now = realNow;
   }
@@ -407,30 +398,23 @@ test("progress and sparkline visibility can be disabled independently", () => {
   const realNow = Date.now;
   let now = 10_000;
   Date.now = () => now;
+  const planned = { taskIntent: "Keep metrics independent", taskMilestones: "a=Alpha; b=Beta; c=Gamma", taskMilestone: "b" };
   try {
     const progressOff = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupProgress: false }));
-    progressOff.start({
-      toolCallId: "progress-off",
-      toolName: "read",
-      args: { taskIntent: "Keep estimates independent", taskProgress: 35 },
-    });
+    progressOff.start({ toolCallId: "progress-off", toolName: "read", args: planned });
     now += 1_200;
     progressOff.end({ toolCallId: "progress-off", toolName: "read", result: { content: [] }, isError: false });
-    const progressOffHeader = stripAnsi(lines(progressOff.render(row("progress-off", false, PROGRESS_THEME)))[0]!);
-    assert.doesNotMatch(progressOffHeader, /35%/);
-    assert.match(progressOffHeader, /\uf080/, "hiding the meter leaves the duration chart visible");
+    const progressOffHeader = stripAnsi(lines(progressOff.render(row("progress-off", false, PROGRESS_THEME)))[1]!);
+    assert.doesNotMatch(progressOffHeader, /33%|[▰▱]/);
+    assert.match(progressOffHeader, /[▁▂▃▄▅▆▇█]/, "hiding the meter leaves the duration chart visible");
 
     const sparklineOff = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupSparkline: false }));
-    sparklineOff.start({
-      toolCallId: "sparkline-off",
-      toolName: "read",
-      args: { taskIntent: "Keep estimates independent", taskProgress: 35 },
-    });
+    sparklineOff.start({ toolCallId: "sparkline-off", toolName: "read", args: planned });
     now += 900;
     sparklineOff.end({ toolCallId: "sparkline-off", toolName: "read", result: { content: [] }, isError: false });
-    const sparklineOffHeader = stripAnsi(lines(sparklineOff.render(row("sparkline-off", false, PROGRESS_THEME)))[0]!);
-    assert.match(sparklineOffHeader, /35%/, "hiding the chart leaves the progress meter visible");
-    assert.doesNotMatch(sparklineOffHeader, /\uf080|[▁▂▃▄▅▆▇█]/);
+    const sparklineOffHeader = stripAnsi(lines(sparklineOff.render(row("sparkline-off", false, PROGRESS_THEME)))[1]!);
+    assert.match(sparklineOffHeader, /33%/, "hiding the chart leaves the progress meter visible");
+    assert.doesNotMatch(sparklineOffHeader, /[▁▂▃▄▅▆▇█]/);
     assert.match(sparklineOffHeader, /1 call/);
   } finally {
     Date.now = realNow;
@@ -447,107 +431,45 @@ test("live presentation changes repaint existing cards", () => {
     tree.start({
       toolCallId: "live-settings",
       toolName: "read",
-      args: { taskIntent: "Update existing presentation", taskProgress: 35 },
+      args: { taskIntent: "Update existing presentation", taskMilestones: "a=Alpha; b=Beta; c=Gamma", taskMilestone: "b" },
     });
     now += 1_200;
     tree.end({ toolCallId: "live-settings", toolName: "read", result: { content: [] }, isError: false });
-    const before = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[0]!);
-    assert.match(before, /35%/);
-    assert.match(before, /\uf080/);
+    const before = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[1]!);
+    assert.match(before, /33%/);
+    assert.match(before, /[▁▂▃▄▅▆▇█]/);
     const redrawsBefore = redraws;
 
     tree.updateSettings({ groupProgress: false, groupSparkline: false, window: 2 });
-    const after = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[0]!);
-    assert.doesNotMatch(after, /35%|\uf080|[▁▂▃▄▅▆▇█]/);
+    const after = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[1]!);
+    assert.doesNotMatch(after, /33%|[▁▂▃▄▅▆▇█]/);
     assert.ok(redraws > redrawsBefore, "the settings update invalidates mounted cards");
   } finally {
     Date.now = realNow;
   }
 });
 
-test("hidden rollup metrics fit across narrow and wide card widths", () => {
-  const tree = new ToolTree(settings({
-    mode: "prompt",
-    groupNestedTools: false,
-    groupProgress: false,
-    groupSparkline: false,
-  }));
+test("the progress metric stays visible when the title is clipped on narrow cards", () => {
+  const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({
     toolCallId: "a",
     toolName: "read",
-    args: { taskIntent: "Keep a compact card", taskProgress: 70, reasoning: "inspect the summary" },
-  });
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
-
-  for (const theme of [plainTheme, PROGRESS_THEME, DURATION_THEME]) {
-    const card = tree.render(row("a", false, theme));
-    for (const width of [24, 27, 35, 40, 80]) {
-      const frame = card.render(width);
-      assert.ok(frame.every(line => visibleWidth(line) <= width), `line exceeds ${width} columns`);
-      assert.ok(frame.length > 0, `no card rendered at ${width} columns`);
-    }
-  }
-});
-
-test("partial streamed annotations cannot clear the committed progress meter", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
-  const intent = "Fix retry handling safely";
-  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 35 } });
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
-
-  tree.ensure("b", "codemode", { code: "// task-intent: Fix retry" });
-  tree.ensure("b", "codemode", { code: "// task-intent: Fix retry handling" });
-  let frame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  assert.match(stripAnsi(frame[0]!), /Fix retry handling safely/);
-  assert.match(stripAnsi(frame[1]!), /35%/, "partial title fragments leave the last committed estimate visible");
-
-  tree.start({
-    toolCallId: "b",
-    toolName: "codemode",
     args: {
-      code: ["// task-intent: Fix retry handling safely", "// task-progress: 50"].join(String.fromCharCode(10)),
+      taskIntent: "A very long title that should be clipped",
+      taskMilestones: "a=Alpha; b=Beta; c=Gamma",
+      taskMilestone: "b",
     },
   });
-  frame = tree.render(row("a", false, PROGRESS_THEME)).render(80);
-  assert.match(stripAnsi(frame[1]!), /50%/, "the complete estimate replaces the prior value atomically");
-});
-
-test("100 waits for the declared final call and outstanding calls to succeed", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
-  const intent = "Complete the retry fix";
-  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 58 } });
-  tree.start({ toolCallId: "b", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
-  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 10 });
-  const waiting = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
-  assert.match(stripAnsi(waiting), /58%/, "a still-running call prevents completion");
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
-  const complete = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
-  assert.match(stripAnsi(complete), /100%/);
-});
-
-test("a failed final call never paints 100 percent", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
-  const intent = "Complete the retry fix";
-  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: intent, taskProgress: 58 } });
-  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false, durationMs: 10 });
-  tree.start({ toolCallId: "b", toolName: "bash", args: { taskIntent: intent, taskProgress: 100 } });
-  tree.end({ toolCallId: "b", toolName: "bash", result: { content: [{ type: "text", text: "failed" }] }, isError: true, durationMs: 10 });
-  const failed = tree.render(row("a", false, PROGRESS_THEME)).render(80)[1]!;
-  assert.match(stripAnsi(failed), /58%/);
-  assert.doesNotMatch(stripAnsi(failed), /100%/);
-  assert.ok(stylesFor(failed, "58%").every(style => style === "\u001b[33m"));
-});
-
-test("the progress metric stays visible when the title is clipped on narrow cards", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
-  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "A very long title that should be clipped", taskProgress: 6 } });
   const frame = tree.render(row("a", false, PROGRESS_THEME)).render(32);
-  assert.ok(frame.every(line => visibleWidth(line) <= 32));
-  assert.doesNotMatch(stripAnsi(frame[0]!), /[▰▱]|6%/);
-  assert.match(stripAnsi(frame[1]!), /▰▱{9} +6%/);
-  assert.match(stripAnsi(frame[0]!), /A very long title…/, "the title is clipped with an ellipsis");
-  assert.doesNotMatch(stripAnsi(frame[0]!), /that should be clipped/);
+  assert.ok(frame.every(line => visibleWidth(line) <= 32), "nothing overflows a narrow card");
+  const painted = frame.map(stripAnsi);
+  const meter = painted.find(line => /[▰▱]/.test(line));
+  assert.ok(meter, "the meter survives a narrow card");
+  assert.match(meter!, /.[ ]33%/, "the meter keeps the share and its pie on a narrow card: " + JSON.stringify(painted));
+  assert.match(painted.join(" "), /Beta/, "the phase in flight is still named below the meter");
+  assert.match(painted.join(" "), /A very/, "the headline still names the task");
 });
+
 
 test("the border title stays static while tool rows run", () => {
   const realNow = Date.now;

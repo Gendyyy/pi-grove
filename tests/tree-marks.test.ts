@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ToolTree, GROUP_TARGET, PHASES_TARGET, milestoneTarget, type TreeRow, type TreeSettings } from "../tool-tree.js";
+import { clean, treeGlyphs } from "../tree-model.js";
 import { colorToRgb, rgbColor, visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { PULSE_MS } from "../tree-paint.js";
@@ -20,6 +21,8 @@ const settings: TreeSettings = {
   groupToolNames: true,
 };
 const inner = () => ({ render: () => ["inner"], invalidate: () => {} });
+/** Any row marker: Nerd Font paints a circle for the Unicode dot, and a live row spins. */
+const MARKER = /[●\uf111*|\/-\\o]/;
 const row = (id: string, rowTheme: GroveTheme = theme): TreeRow => ({ toolCallId: id, inner: inner(), theme: rowTheme, expanded: false, invalidate: () => {} });
 const click = (y: number) => ({ type: "click", button: "left", x: 0, y, screenX: 0, screenY: 0, width: 96, height: 40 });
 const plain = (line: string) => line.replace(/\u001b\[[0-9;]*m/g, "");
@@ -33,8 +36,13 @@ function painted(tree: ToolTree, width = 96, rowTheme: GroveTheme = theme): stri
   // The frame border carries the row gesture; line 1 belongs to the meter, which opens the plan.
   card(tree, "a", rowTheme).handleMouse?.(click(0));
   // This theme tags text instead of emitting escapes, so the frame is sliced, not parsed.
-  return card(tree, "a", rowTheme).render(width).map(plain).slice(1, -1);
+  return card(tree, "a", rowTheme).render(width).map(plain).slice(1);
 }
+/** The plan block's label row: one box per phase, so every named phase shares a line. */
+function planRow(lines: readonly string[], ...names: string[]): string {
+  return lines.find(line => names.every(name => line.includes(name))) ?? "";
+}
+
 /** Identify a connector row between the card's left and right frame borders. */
 function isConnectorLine(line: string): boolean {
   return /^[│|] [│|]\s+[│|]$/.test(line.trim());
@@ -63,6 +71,8 @@ function paletteTheme(): GroveTheme {
 const PLAN = "inspect=Inspect; build=Build; verify=Verify";
 /** This theme counts every tag as visible text, so colour assertions need a very wide card. */
 const WIDE = 400;
+/** Milliseconds each spinner frame holds the screen. */
+const SPIN_MS = 80;
 
 /** The meter's bar alone: the leading run of cells, without the gutter or the percentage. */
 function meterBar(tree: ToolTree): string {
@@ -109,36 +119,52 @@ function codemodeWithOutcomes(failures: boolean[]): ToolTree {
   return tree;
 }
 
-test("the meter names the phase in flight and keeps the rest of the plan unspoken", () => {
+test("the meter keeps only the share, and the plan row names every phase", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
 
-  const wide = painted(tree, WIDE).find(line => line.includes("▰") && line.includes("Build"));
-  assert.ok(wide, "the phase in flight is the one that gets named");
-  // Only the phase in flight spends width on a name; the phases ahead stay a shape.
-  assert.match(wide, /\[accent\]\*\[accent\] Build 2\/3/);
-  assert.doesNotMatch(wide, /Inspect|Verify/);
+  const wide = painted(tree, WIDE).find(line => line.includes("▰")) ?? "";
+  assert.ok(wide, "a card with a plan paints a meter");
+  assert.match(wide, /33%/, "the meter states the share alone");
+  assert.doesNotMatch(wide, /Inspect|Build|Verify/, "no phase name spends the bar's cells");
 
-  const narrow = painted(tree, 35, plainTheme).find(line => line.includes("2/3"));
-  assert.ok(narrow, "the position survives a card too narrow for the name");
-  assert.doesNotMatch(narrow, /Build/);
-  assert.match(narrow, /55% > \* 2\/3/);
+  // The plan block sits under the meter unprompted, one box per phase.
+  const plan = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
+  assert.ok(plan, "the plan row opens without a click");
+  assert.match(plan, /\[success\]\| \[success\]Inspect \[success\]\|\[success\]---/, "a closed phase turns its box and its link green");
+  assert.match(plan, /\[accent\]\| \[accent\]Build \[accent\]\|/, "the phase in flight keeps the accent");
+  assert.match(plan, /\[dim\]\| \[dim\]Verify \[dim\]\|/, "and the phases ahead stay dim");
+  assert.doesNotMatch(plan, /%/, "the boxes never carry a percentage");
+
+  const narrow = painted(tree, 35, plainTheme).find(line => /[▰▱]/.test(line)) ?? "";
+  assert.ok(narrow, "the meter survives a card too narrow for its plan");
   assert.ok(narrow.length <= 35, `compact meter exceeds its viewport: ${narrow}`);
 });
 
-test("a crossed phase states its equal share of the plan", () => {
+test("a crowded plan drops whole boxes and counts the rest instead of cutting one", () => {
+  const tree = new ToolTree(settings);
+  const plan = "a=Inspect; b=Build; c=Verify; d=Lint; e=Docs; f=Commit; g=Push";
+  tree.start({ toolCallId: "a", toolName: "bash", args: { taskIntent: "Ship the retry fix", taskMilestones: plan, taskMilestone: "a" } });
+
+  // Seven phases cannot fit a narrow card, so the tail becomes a count rather than a sliced box.
+  const row = planRow(painted(tree, 60, plainTheme), "Inspect", "Build").trimEnd();
+  assert.ok(row, "the leading phases keep their boxes");
+  assert.match(row, /- \+\d+$/, "the plan ends in a count: " + row);
+  assert.ok(visibleWidth(row) <= 60, "the plan exceeds its viewport: " + visibleWidth(row));
+});
+
+test("a crossed phase turns its box green and leaves the live phase in the accent", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 40);
   settle(tree, "a");
   step(tree, "b", "build", 70);
 
-  // The meter owns the plan gesture, so every phase sits one click away.
-  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
-  const planLine = painted(tree, WIDE).find(line => line.includes("Inspect"));
-  assert.ok(planLine, "clicking the meter opens the plan");
-  // Three phases split 100 evenly, so Inspect closes at 33% whatever the model reported.
-  assert.match(planLine, /Inspect\[muted\] 33%/);
-  assert.match(planLine, /\[accent\]\* Build/);
+  // The plan block is already on screen, so a phase's stage needs no gesture.
+  const planLine = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
+  assert.ok(planLine, "the plan row states each phase's stage unprompted");
+  // Three phases split 100 evenly, so Inspect sits behind us at 33% whatever the model reported.
+  assert.match(planLine, /\[success\]\| \[success\]Inspect \[success\]\|\[success\]---\[accent\]\| \[accent\]Build/, planLine);
+  assert.doesNotMatch(planLine, /33%/, "the share stays on the meter");
 });
 test("a crossed boundary divides the filled ramp while the phase in flight keeps the accent", () => {
   const tree = new ToolTree(settings);
@@ -149,19 +175,18 @@ test("a crossed boundary divides the filled ramp while the phase in flight keeps
   step(tree, "c", "build", 85);
 
   const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
-  // Build owns at most the second third, so the reported 85% paints as 67%.
-  assert.match(meter, /67% > \* Build 2\/3/, meter);
-  // The Inspect boundary sits a third of the way along, inside the filled span.
-  assert.match(meter, /▰+:▰+/, meter);
+  // Only Inspect has finished, so Build owns the first third whatever the model reported.
+  assert.match(meter, / 33%/, meter);
+  // Inspect's tick is the fill edge: one finished phase, one third filled.
+  assert.match(meter, /▰+:?▱/, meter);
 
-  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
-  const planLine = painted(tree, WIDE).find(line => line.includes("Inspect")) ?? "";
-  assert.match(planLine, /\[success\]x Inspect/, planLine);
-  assert.match(planLine, /\[accent\]\* Build/, planLine);
-  assert.match(planLine, /\[dim\]o Verify/, planLine);
-  // The arrow behind a finished phase is green, so a completed plan reads as one line.
-  assert.match(planLine, /Inspect\[muted\] 33% \[success\]-> \[accent\]\* Build/, planLine);
-  assert.match(planLine, /Build \[dim\]-> \[dim\]o Verify/, planLine);
+  const planLine = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
+  assert.match(planLine, /\[success\]\| \[success\]Inspect/, planLine);
+  assert.match(planLine, /\[accent\]\| \[accent\]Build/, planLine);
+  assert.match(planLine, /\[dim\]\| \[dim\]Verify/, planLine);
+  // The link behind a finished phase is green, so a closed run reads as one chain.
+  assert.match(planLine, /Inspect \[success\]\|\[success\]---\[accent\]\| \[accent\]Build/, planLine);
+  assert.match(planLine, /Build \[accent\]\|\[dim\]---\[dim\]\| \[dim\]Verify/, planLine);
 });
 test("the bar marks only the phases the plan has reached", () => {
   const tree = new ToolTree(settings);
@@ -197,7 +222,7 @@ test("the filled span keeps the estimate's red-to-green ramp", () => {
     r: Number(found[1]),
     g: Number(found[2]),
   }));
-  assert.ok(ramp.length >= 8, meter);
+  assert.ok(ramp.length >= 4, meter);
   const first = ramp[0]!;
   const last = ramp[ramp.length - 1]!;
   assert.ok(first.r > last.r && first.g < last.g, `expected red to green, got ${meter}`);
@@ -264,47 +289,39 @@ test("a settled call shows a filled dot in its status colour", () => {
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: true, durationMs: 800 } as never, undefined);
   const rows = painted(tree);
-  const head = rows.find(line => line.includes("[dim]v"));
   const ok = rows.find(line => line.includes("[success]*"));
   const failed = rows.find(line => line.includes("[error]*"));
-  assert.ok(head);
   assert.ok(ok);
   assert.ok(failed);
-  const headerMarker = head.match(/\[dim\]v/)?.[0];
-  assert.ok(headerMarker);
-  assert.doesNotMatch(headerMarker, /warning/);
   assert.match(ok, /\[success\]\*/);
   assert.match(failed, /\[error\]\*/);
   assert.doesNotMatch(ok, /error/);
 });
 
-test("a running call breathes its marker instead of cycling frames", () => {
+test("a running call cycles a quarter circle and settles to a still dot", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
-    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the schema" } });
-    tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
+    tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
     const base = 1_000_000;
-    // Sample the live row marker, the only cell painted as a breathing dot.
+    const frame = PULSE_MS / 4;
+    // Sample the live row marker: the spinner turns in place of the state dot.
     const marker = (offset: number): string => {
       Date.now = () => base + offset;
-      // The detail text is the narrowest thing on the row, so locate it by the tool label.
-      const row = painted(tree, 400, paletteTheme()).find(line => line.includes("rgb(") && line.includes("bash"));
+      const card = painted(tree, 400, paletteTheme());
+      const row = card.find(line => /\[warning\][|/\-\\] \S*bash/.test(line));
       assert.ok(row, "expected the live row in the painted card");
-      const found = /rgb\(\d+,\d+,\d+\)\*/.exec(row);
-      assert.ok(found, "expected a breathing marker in " + JSON.stringify(row));
-      return found[0];
+      // The spinner keeps the running role's colour, so only the glyph itself turns.
+      assert.match(row, /\[warning\]/, "the spinner stays in the running role");
+      return /\[warning\]([|/\-\\])/.exec(row)![1]!;
     };
-    const glyphOf = (paintedMarker: string): string => paintedMarker.replace(/^rgb\([^)]*\)/, "");
 
-    const bright = marker(0);
-    const mid = marker(PULSE_MS / 2);
-    // The glyph is steady, so the row cannot flicker between frames the way a spinner did.
-    assert.equal(glyphOf(bright), "*");
-    assert.equal(glyphOf(mid), "*");
-    assert.notEqual(bright, mid, "half a cycle lands on a different brightness");
-    assert.equal(marker(PULSE_MS), bright, "one cycle later the breathing returns to where it started");
-    assert.notEqual(mid, "rgb(80,80,80)*", "the pulse quiets toward muted without switching the marker off");
+    assert.deepEqual([marker(0), marker(frame), marker(frame * 2)], ["|", "/", "-"]);
+    assert.equal(marker(frame * 4), marker(0), "a full cycle returns to the first quarter");
+
+    tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, durationMs: 500 } as never, undefined);
+    const settled = painted(tree, 400, paletteTheme()).find(line => /\[success\]\* \S*bash/.test(line))!;
+    assert.ok(settled, "a finished call keeps the filled dot");
   } finally {
     Date.now = real;
   }
@@ -322,6 +339,56 @@ test("a finished card keeps a quiet marker", () => {
   assert.doesNotMatch(marker, /warning/);
 });
 
+test("the phase in flight keeps turning while no call is running", () => {
+  const real = Date.now;
+  try {
+    const tree = new ToolTree(settings);
+    step(tree, "a", "build", 55);
+    settle(tree, "a");
+    const base = 1_000_000;
+    // Nothing is running, but the phase is still open: its mark turns on the same clock as a live call.
+    const mark = (offset: number): string => {
+      Date.now = () => base + offset;
+      // The plan row also names Build, so pick the numbered phase row below it.
+      const row = painted(tree, WIDE, plainTheme).find(line => /(\S) \d\d /.test(line) && line.includes("Build"));
+      assert.ok(row, "expected the phase row in the painted card");
+      // The rail owns the first cell, so the phase mark is the glyph before its number.
+      return /(\S) \d\d /.exec(row)![1]!;
+    };
+    const first = mark(0);
+    assert.notEqual(mark(SPIN_MS), first, "the phase mark turns while the phase is open");
+    assert.notEqual(mark(SPIN_MS * 2), mark(SPIN_MS), "it keeps turning between two finished calls");
+    // One revolution is as long as the glyph table's frame list, whatever mode is painting.
+    assert.equal(mark(SPIN_MS * treeGlyphs(settings.iconMode).spinner.length), first, "one revolution returns to the first frame");
+    // Closing the card ends the motion, so a settled phase holds one still mark.
+    tree.settle();
+    assert.equal(mark(0), mark(SPIN_MS), "a settled phase stops turning");
+  } finally {
+    Date.now = real;
+  }
+});
+
+test("a phase keeps turning after one of its own calls failed", () => {
+  const real = Date.now;
+  try {
+    const tree = new ToolTree(settings);
+    step(tree, "a", "build", 55);
+    tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 4 });
+    const base = 2_000_000;
+    // The phase is still the one being worked on: the failure belongs in its rollup, not in place of its motion.
+    const mark = (offset: number): string => {
+      Date.now = () => base + offset;
+      const line = painted(tree, WIDE, plainTheme).find(candidate => /(\S) \d\d /.test(candidate) && candidate.includes("Build"));
+      assert.ok(line, "expected the phase row in the painted card");
+      return /(\S) \d\d /.exec(line)![1]!;
+    };
+    assert.notEqual(mark(0), "!", "a failure inside the live phase never replaces the spinner");
+    assert.notEqual(mark(SPIN_MS), mark(0), "the phase keeps turning after the failure");
+  } finally {
+    Date.now = real;
+  }
+});
+
 test("a two-phase plan still paints a labeled stepper", () => {
   const tree = new ToolTree(settings);
   tree.start({
@@ -330,29 +397,33 @@ test("a two-phase plan still paints a labeled stepper", () => {
     args: { taskIntent: "Tidy the retry helper", taskProgress: 40, taskMilestones: "work=Tidy helper; verify=Verify", taskMilestone: "work" },
   });
 
-  const line = painted(tree, WIDE).find(candidate => candidate.includes("▰") && candidate.includes("Tidy helper"));
-  assert.ok(line, "a two-phase plan still names the phase in flight");
-  assert.match(line, /\[accent\]\*\[accent\] Tidy helper 1\/2/);
+  const meter = painted(tree, WIDE).find(candidate => /[▰▱]/.test(candidate)) ?? "";
+  assert.ok(meter, "a two-phase plan still paints a meter");
+  assert.doesNotMatch(meter, /Tidy helper/, "the meter leaves the name to the plan row");
+
+  const line = planRow(painted(tree, WIDE), "Tidy helper", "Verify");
+  assert.ok(line, "a two-phase plan still boxes the phase in flight");
+  assert.match(line, /\[accent\]\| \[accent\]Tidy helper \[accent\]\|/, line);
+  assert.match(line, /\[dim\]\| \[dim\]Verify \[dim\]\|/, line);
 });
 
 test("the meter toggles the expanded plan independently of visible timeline phases", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 55);
   const targetAt = (line: number) => (tree as unknown as { targetAt(index: number): string | undefined }).targetAt(line);
-  const hasExpandedPlan = () => card(tree).render(WIDE).map(plain).some(line =>
-    line.includes("Inspect") && line.includes("Verify") && (line.includes("->") || line.includes("→")),
-  );
+  const hasExpandedPlan = () => planRow(card(tree).render(WIDE).map(plain), "Inspect", "Verify") !== "";
 
   card(tree).render(WIDE);
   assert.equal(targetAt(0), GROUP_TARGET);
   assert.equal(targetAt(card(tree).render(WIDE).findIndex(line => line.includes("▰"))), PHASES_TARGET);
-  assert.equal(hasExpandedPlan(), false, "phase markers do not open the meter's full plan");
+  const meterY = () => card(tree).render(WIDE).findIndex(line => line.includes("▰"));
+  assert.equal(hasExpandedPlan(), true, "the plan row is on screen without a click");
   assert.ok(card(tree).render(WIDE).map(plain).some(line => line.includes("Inspect") && line.includes("01")), "the timeline still names its first phase");
 
-  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
-  assert.equal(hasExpandedPlan(), true, "clicking the meter expands the full plan");
-  card(tree).handleMouse?.(click(card(tree).render(WIDE).findIndex(line => line.includes("▰"))));
-  assert.equal(hasExpandedPlan(), false, "a second click closes only the expanded plan");
+  card(tree).handleMouse?.(click(meterY()));
+  assert.equal(hasExpandedPlan(), false, "clicking the meter folds the full plan away");
+  card(tree).handleMouse?.(click(meterY()));
+  assert.equal(hasExpandedPlan(), true, "a second click brings it back");
 });
 /** Two finished calls in one phase, then a live call that opened the next one. */
 function twoPhases(gutterSettings: TreeSettings = settings): ToolTree {
@@ -401,14 +472,12 @@ test("a phase click reveals its direct codemode rows without opening nested step
 
   const component = () => card(tree, "inspect-read", plainTheme);
   const rendered = () => component().render(WIDE).map(plain);
-  const codemodeRows = () => rendered().filter(line => line.includes("● codemode ·"));
+  const codemodeRows = () => rendered().filter(line => MARKER.test(line) && line.includes(" codemode ·"));
   /** Call rows belonging to the given one-word call labels. */
   const rowsOf = (...names: string[]) => codemodeRows().filter(line => names.some(name => line.includes(` ${name} ×1`)));
   const hasExpandedChild = (name: string): boolean =>
-    rendered().some(line => line.includes("●") && line.includes(name + " · phase call"));
-  const planIsOpen = () => rendered().some(line =>
-    line.includes("Inspect") && line.includes("Verify") && (line.includes("->") || line.includes("→")),
-  );
+    rendered().some(line => MARKER.test(line) && line.includes(name + " · phase call"));
+  const planIsOpen = () => planRow(rendered(), "Inspect", "Verify") !== "";
   assert.equal(rowsOf("read", "grep", "write").length, 0, "a finished phase's older calls start collapsed");
   assert.equal(codemodeRows().length, 2, "the newest calls stay visible without opening a phase");
 
@@ -421,9 +490,9 @@ test("a phase click reveals its direct codemode rows without opening nested step
   assert.ok(calls.some(line => line.includes("read ×1")));
   assert.ok(calls.some(line => line.includes("grep ×1")));
   assert.equal(hasExpandedChild("read") || hasExpandedChild("grep"), false, "showing codemodes does not open their nested tools");
-  assert.equal(planIsOpen(), false, "phase expansion does not also open the full plan");
+  assert.equal(planIsOpen(), true, "phase expansion leaves the plan row where it was");
 
-  const readY = rendered().findIndex(line => line.includes("● codemode · read ×1"));
+  const readY = rendered().findIndex(line => MARKER.test(line) && line.includes(" codemode · read ×1"));
   assert.ok(readY >= 0, "the revealed codemode row remains individually clickable");
   component().handleMouse?.({ ...click(readY), width: WIDE });
   assert.equal(hasExpandedChild("read"), true, "clicking the codemode row expands its nested call");
@@ -522,7 +591,7 @@ test("a stale phase declaration stays with the latest completed phase in the tim
   const inspectAt = lines.findIndex(line => line.includes("Inspect") && /1 .*call/.test(line));
   const buildAt = lines.findIndex(line => line.includes("Build") && /2 .*calls/.test(line));
   const calls = lines.flatMap((line, index) =>
-    line.includes("* bash") && !/\bcalls?\b/.test(line) ? [index] : [],
+    MARKER.test(line) && line.includes(" bash") && !/\bcalls?\b/.test(line) ? [index] : [],
   );
   assert.ok(inspectAt >= 0 && buildAt > inspectAt, "phase summaries stay in declared order");
   assert.equal(calls.length, 3, "all three calls remain visible");
@@ -541,7 +610,7 @@ test("phase gutter hides phase markers and leaves calls as branches", () => {
 test("a completed phase marker turns green when the plan moves on", () => {
   const tree = twoPhases();
   const phaseMarker = () => painted(tree, WIDE).find(line => line.includes("02") && line.includes("Build")) ?? "";
-  assert.match(phaseMarker(), /\[warning\]\* 02/, "the active phase marker carries the warning color");
+  assert.match(phaseMarker(), /\[warning\]. 02/, "the active phase marker carries the warning color and turns");
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");
@@ -620,13 +689,31 @@ test("no phase but the last may paint a finished bar", () => {
   step(tree, "a", "build", 100);
   settle(tree, "a");
   const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
-  // Build has two thirds to claim, so a reported 100% stops there while Verify is ahead.
-  assert.match(meter, /67% > \* Build 2\/3/, meter);
+  // Build has only the first third to its name, so the bar stops there while Verify is ahead.
+  assert.match(meter, / 33%/, meter);
   assert.match(meter, /▱/, "the last third stays empty");
 
   const finished = new ToolTree(settings);
   step(finished, "a", "verify", 100);
   settle(finished, "a");
+  finished.settle();
   const full = painted(finished, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
-  assert.match(full, /100% > x Verify 3\/3/, full);
+  assert.match(full, /100%/, full);
+});
+
+test("a plan box is measured in cells, so a wide label cannot shear its border", () => {
+  const tree = new ToolTree(settings);
+  tree.start({ toolCallId: "a", toolName: "bash", args: { taskIntent: "Document the audit", taskMilestones: "a=調査する; b=Build", taskMilestone: "a" } });
+
+  // A wide label spends two cells per character, so building the box from code units leaves it short.
+  const lines = painted(tree, 120, plainTheme).map(line => line.trimEnd());
+  const middle = lines.findIndex(line => line.includes("調査する"));
+  assert.ok(middle > 0, "the plan paints the wide label");
+  const block = lines.slice(middle - 1, middle + 2).map(visibleWidth);
+  assert.equal(new Set(block).size, 1, "every row of a box spans the same cells: " + block.join("/"));
+});
+
+test("clean expands a tab before the line is measured", () => {
+  // A tab reads as one cell to the width counter and several on screen, so it must become spaces first.
+  assert.equal(clean("a	b"), "a   b", "a tab survives into the painter");
 });

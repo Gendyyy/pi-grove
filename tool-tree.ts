@@ -11,8 +11,6 @@ import { TreeBlock, type TreeRow } from "./tree-block.js";
 import { paintGroup, TICK_MS } from "./tree-paint.js";
 import {
   GROUP_TARGET,
-  groupTone,
-  type CardTone,
   type GroupMode,
   type PaintScope,
   type TreeGroup,
@@ -174,15 +172,6 @@ export class ToolTree {
     return findGroup(this.state, id)?.nodes.has(id) === true;
   }
 
-  /**
-   * Background tone of the card that owns this call. The card is one paint borrowed by its
-   * first row, so the colour has to describe the card, not that row's own result.
-   */
-  tone(id: string): CardTone {
-    const group = findGroup(this.state, id);
-    return group ? groupTone(group.rows) : "success";
-  }
-
   /** Report what the tree currently holds for /grove status. */
   summary(): { groups: number; rows: number; mode: GroupMode } {
     let rows = 0;
@@ -262,7 +251,6 @@ function hasRunning(nodes: readonly TreeNode[]): boolean {
 // The public surface stays here: importers and tests never need to know the split.
 export { GROUP_TARGET, PHASES_TARGET, milestoneTarget, treeGlyphs } from "./tree-model.js";
 export type {
-  CardTone,
   Glyphs,
   GroupMode,
   PaintPhase,

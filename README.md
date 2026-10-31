@@ -43,7 +43,7 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
 | `groupToolNames` | on / off | on | show built-in tool names or icons only |
-| `groupProgress` | on / off | on | show the estimate as a meter, with the phase plan when one is declared |
+| `groupProgress` | on / off | on | show the derived share as a meter, with the phase plan when one is declared |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
 | `groupGutter` | on / off | on | show Story phase cards; off retains the compact call timeline |
 | `thinking` | group / inline / off | off | where reasoning appears |
@@ -59,14 +59,10 @@ across its calls; progress appears on the rollup, so milestone updates never rew
 headline. A new task starts a new title. The title is not per-call reasoning or a summary of
 the latest tool action.
 
-When grouping is enabled, Pi's codemode instruction makes `// task-intent:` and
-`// task-progress:` mandatory on every top-level call. Progress is the agent's best-judgment estimate
-of how much of the requested task is done and how much remains—not a tool-call count or a fixed
-formula. Repeat the integer estimate (0–100) on ordinary calls; update it at meaningful milestones,
-and lower it if scope grows. The final tool call intended to complete and verify the task passes 100;
-Grove shows 100 only after that call succeeds. Filled cells blend smoothly from the theme's error red
-to success green; empty cells stay dim. The percentage keeps its estimate-based color.
-Both annotations are stored with calls so replay restores the same title and estimate.
+When grouping is enabled, Pi's codemode instruction makes `// task-intent:` mandatory on every
+top-level call. A call never declares its own percentage: Grove derives it from the phase plan, so
+the card credits one equal slice per finished phase and reads 100% as soon as the last phase ends
+without a failed call, so a card is complete before the final answer, not after the turn closes. The annotations are stored with calls so replay restores the same title and plan.
 
 A card can also carry a phase plan: declare `// task-milestones: inspect=Inspect; build=Build; verify=Verify`
 once, then repeat `// task-milestone: <id>` for the active phase on each top-level call. A plan holds
@@ -74,22 +70,22 @@ one to seven phases and may close on a `verify` phase when the work needs checki
 when the work leaves temp files, scratch scripts, or other throwaway artifacts behind. Both are preferences,
 not requirements: a plan that ends on plain work is valid, and Grove never invents filler phases.
 
-The plan and the estimate share one line, because they answer one question: the meter is a written ruler
-whose needle is the estimate. The filled span keeps the estimate's own ramp from error red at the left edge to
-success green at the right, so the bar's colour and its number can never disagree. A finished phase is pinned at
-the estimate it actually reached, so the order the phases closed in is history rather than arithmetic and never
-moves later; its boundary keeps a vertical tick of its own inside the filled span, in the ramp colour of the
-cell it divides. Nobody can say where a phase will end before it does, so the bar draws a division only after
-one is crossed and never forecasts one, and only a boundary the estimate has since retreated behind turns into
-a warning tick right of the needle. The phase in flight is the only one that spends width on a name, with
+The plan and the percentage share one line, because the percentage is nothing but the plan's finished
+share: each finished phase fills one equal slice, and a card still in flight reads the share of the
+phases already closed. The filled span keeps the ramp from error red at the left edge to success green
+at the right, so the bar's colour and its number can never disagree, and every finished boundary leaves
+a vertical tick of its own at the fill edge, in the ramp colour of the cell it divides. A settled card
+with a failed call keeps its finished share and warns on the rail instead of reading complete. The phase
+in flight is the only one that spends width on a name, with
 a `2/3` position beside it, and the caret says whether the plan is open. Clicking the meter expands the whole
-plan under it—every name joined by arrows, plus the estimate that closed each finished phase—while clicking the
+plan under it—every name joined by arrows—while clicking the
 frame border still reveals the rows. Each arrow behind a finished phase turns green, so a completed plan reads as
 one green line. Narrow cards drop the label, then the name while keeping the position, before they concede the
 cells the bar needs. Phases
 only move forward: every call restates the plan, so a restatement is adopted only while it keeps the phases
 already finished, and a plan that would drop or rewrite them is ignored instead of clearing the pins. The plan
-is transcript-backed and independent of the percentage, and a successful final `task-progress: 100` closes it.
+is transcript-backed and the percentage is derived from it on every paint, so no stored estimate can drift from
+the phases on screen.
 While a call is live, the needle's own cell breathes between the accent and muted roles on a cosine curve
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
@@ -130,7 +126,7 @@ position. From the outside in:
 | Status line | GROVE / TASK plus the percentage and current phase, or the complete marker | Reveals every row |
 | Rollup | One metrics line: meter, failed count, call count, duration sparkline, tool mix, elapsed | Expands the plan |
 | Progress meter | The filled bar and its phase ticks | Expands the plan |
-| Plan line | The expanded phase names joined by arrows, with the estimate that closed each phase | Expands the plan |
+| Plan line | The expanded phase names joined by arrows, with the share each finished phase closed | Expands the plan |
 | Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
 | Call row | Tool label, its goal, nested counts, and duration | Opens that call |
 | Nested row | A tool the call ran, such as a bash step inside a codemode script | Opens that step |

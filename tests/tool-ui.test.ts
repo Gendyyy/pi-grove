@@ -8,24 +8,19 @@ const intent = "// task-intent: Make payment retries safe from duplicate charges
 const progress = "// task-progress: 6";
 const plan = "// task-milestones: inspect=Inspect; build=Build; verify=Verify";
 const phase = "// task-milestone: inspect";
-test("grouped top-level codemode calls require stable identity and current progress", () => {
+test("grouped top-level codemode calls require a stable identity and a phase plan", () => {
   const missingTask = {
     toolName: "codemode",
     input: { code: script("// reasoning: inspect the retry path", "return 1;") },
   };
   assert.match(codemodeGroupMetadataViolation(missingTask, "prompt") ?? "", /requires a model-written.*task-intent/);
 
-  const missingProgress = {
+  // Progress is derived from the plan, so a call needs no percentage to pass the gate.
+  const planned = {
     toolName: "codemode",
-    input: { code: script("// reasoning: inspect the retry path", intent, "return 1;") },
+    input: { code: script("// reasoning: inspect the retry path", intent, plan, phase, "return 1;") },
   };
-  assert.match(codemodeGroupMetadataViolation(missingProgress, "prompt") ?? "", /task-progress.*every top-level call/);
-
-  const invalidProgress = {
-    toolName: "codemode",
-    input: { code: script("// reasoning: inspect the retry path", intent, "// task-progress: 101", "return 1;") },
-  };
-  assert.match(codemodeGroupMetadataViolation(invalidProgress, "prompt") ?? "", /task-progress/);
+  assert.equal(codemodeGroupMetadataViolation(planned, "prompt"), undefined);
 
   const validTask = {
     toolName: "codemode",
@@ -75,21 +70,16 @@ test("grouped top-level codemode calls require stable identity and current progr
   assert.equal(codemodeGroupMetadataViolation({ ...missingTask, parentToolCallId: "parent" }, "prompt"), undefined);
 });
 
-test("a phase may not claim more than its equal share of the estimate", () => {
+test("a declared percentage never blocks a call, whatever phase it names", () => {
   const call = (value: number, milestone: string) => ({
     toolName: "codemode",
     input: { code: script(intent, "// task-progress: " + value, plan, "// task-milestone: " + milestone, "return 1;") },
   });
 
-  // Three phases split 100 evenly, so Inspect tops out at 33 and Build at 67.
-  assert.match(codemodeGroupMetadataViolation(call(40, "inspect"), "prompt") ?? "", /exceeds this phase's share.*"Inspect" may claim at most 33%/);
-  assert.match(codemodeGroupMetadataViolation(call(80, "build"), "prompt") ?? "", /"Build" may claim at most 67%/);
-  assert.match(codemodeGroupMetadataViolation(call(100, "build"), "prompt") ?? "", /may claim at most 67%/);
-  assert.equal(codemodeGroupMetadataViolation(call(33, "inspect"), "prompt"), undefined);
-  assert.equal(codemodeGroupMetadataViolation(call(67, "build"), "prompt"), undefined);
-  // The last phase owns the last slice, so only it may report the task finished.
-  assert.equal(codemodeGroupMetadataViolation(call(100, "verify"), "prompt"), undefined);
-  assert.match(codemodeGroupMetadataViolation(call(100, "inspect"), "prompt") ?? "", /may claim at most 33%/);
+  // The gate stopped reading percentages: the phase plan decides what the card reports.
+  assert.equal(codemodeGroupMetadataViolation(call(100, "inspect"), "prompt"), undefined);
+  assert.equal(codemodeGroupMetadataViolation(call(0, "verify"), "prompt"), undefined);
+  assert.equal(codemodeGroupMetadataViolation(call(101, "build"), "prompt"), undefined);
 });
 
 test("registerToolUi injects stable-title guidance and blocks missing identity", () => {
@@ -120,13 +110,13 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
 
   const promptEvent = { systemPromptOptions: { selectedTools: ["codemode"], sections: {} as Record<string, string> } };
   handlers.get("before_agent_start")?.(promptEvent);
-  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /must include a model-written.*task-intent:.*task-progress:/s);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /must include a model-written.*task-intent:/s);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /stable border title, not a phase update/);
-  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /best judgment.*not.*tool-call count.*fixed denominator/s);
-  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /final tool call.*100.*only after that call succeeds/s);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /derives the completion percentage from the phases/s);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /never send a percentage/s);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /one to seven short labeled phases/);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /task-milestone: <id>.*every top-level call/);
-  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /phase state stays independent of the percentage/);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /derives the completion percentage from the phases/);
   assert.doesNotMatch(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /group-phase/);
 
   const toolCall = handlers.get("tool_call")!;
@@ -145,20 +135,20 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
 });
 
 test("Pi-agent guidance keeps task identity as the sole border title", () => {
-  assert.match(CODEMODE_GROUP_GUIDANCE, /must include a model-written \/\/ task-intent:.*task-progress:/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /must include a model-written \/\/ task-intent:.*task-milestones:/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /stable border title, not a phase update/);
-  assert.match(CODEMODE_GROUP_GUIDANCE, /finishes the task must end with a top-level call carrying task-progress: 100/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /finishes the task must end with a top-level call naming the plan's final/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /answer itself needs no tool call.*still make one last top-level codemode call/s);
-  assert.match(CODEMODE_GROUP_GUIDANCE, /never write 100 just to clear the bar/);
-  assert.match(CODEMODE_GROUP_GUIDANCE, /best judgment.*not.*tool-call count.*fixed denominator/s);
-  assert.match(CODEMODE_GROUP_GUIDANCE, /final tool call.*100.*only after that call succeeds/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /derives the completion percentage from the phases/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /never send a percentage/);
+  assert.doesNotMatch(CODEMODE_GROUP_GUIDANCE, /task-progress/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /one to seven short labeled phases/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /outcome, uncertainty, risk, and scale/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /one phase for simple work/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /Examples are inspiration, not mandatory templates/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /discoveries change the work.*preserving the IDs and order of completed phases/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /task-milestone: <id>.*every top-level call/);
-  assert.match(CODEMODE_GROUP_GUIDANCE, /@options:.*reasoning:.*task-intent:.*task-progress:/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /@options:.*reasoning:.*task-intent:.*task-milestones:/s);
   assert.doesNotMatch(CODEMODE_GROUP_GUIDANCE, /group-phase/);
 });
 
@@ -178,10 +168,7 @@ const uiOptions = {
   thinking: "inline" as const,
 };
 
-/**
- * Render the card for a run of calls and report which host background role it asked for:
- * the card is one paint borrowed by its first row, so this is what the block actually wears.
- */
+/** Render the card for a run of calls and report which host background roles it asked for. */
 function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
   const handlers = new Map<string, (event: unknown, context?: unknown) => unknown>();
   let resolve: ((name: string, next: () => unknown) => unknown) | undefined;
@@ -235,8 +222,8 @@ function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
   return [...new Set(roles)];
 }
 
-test("the card background describes the whole card, not its first call", () => {
-  assert.deepEqual(cardBackgrounds(["error", "ok"]), ["toolSuccessBg"]);
-  assert.deepEqual(cardBackgrounds(["ok", "error"]), ["toolSuccessBg"]);
-  assert.deepEqual(cardBackgrounds(["error", "error"]), ["toolErrorBg"]);
+test("the card background never reacts to the work inside it", () => {
+  assert.deepEqual(cardBackgrounds(["error", "ok"]), ["toolPendingBg"]);
+  assert.deepEqual(cardBackgrounds(["ok", "error"]), ["toolPendingBg"]);
+  assert.deepEqual(cardBackgrounds(["error", "error"]), ["toolPendingBg"]);
 });

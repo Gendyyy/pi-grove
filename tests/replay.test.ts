@@ -133,7 +133,7 @@ function lines(component: Component, width = 100): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
   // The card is one bordered object now, so the body is what the assertions index.
   if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+  return painted.slice(1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 /** Raw line index inside the frame, the coordinate the mouse reports. */
@@ -215,7 +215,7 @@ test("replay keeps the stable task title and ignores legacy phase annotations", 
   assert.match(frame[0]!, /Inspect payment retry safeguards/);
   assert.doesNotMatch(frame[0]!, /Add regression coverage for timeout retries/);
   assert.doesNotMatch(frame[0]!, /Trace where timeout handling resets retry count/);
-  assert.match(frame[1]!, /53%/, "replay keeps the latest repeated estimate");
+  assert.ok(frame.every(line => !/\d+%/.test(line)), "a replayed estimate never paints");
 });
 
 test("replay shows the equal share of each phase it restored", () => {
@@ -253,42 +253,42 @@ return 1;` },
     ]),
     result("2026-01-01T00:00:02.000Z", "m1", "codemode"),
     result("2026-01-01T00:00:03.000Z", "m2", "codemode"),
-    result("2026-01-01T00:00:04.000Z", "m3", "codemode"),
   ];
   const tree = new ToolTree(settings());
   tree.restore(readTranscript(entries, "prompt"));
   const component = tree.render(row("m1"));
   const card = lines(component);
-  const meter = card.find(line => line.includes("▰")) ?? "";
-  // Two thirds is the most Build may claim, so the restored 70% paints as 67%.
-  assert.match(meter, /67% > \* Build 2\/3/, meter);
+  const meter = card.find(line => /[▰▱]/.test(line)) ?? "";
+  // The restored transcript is still in flight on Build, so its declared 70% buys nothing.
+  assert.match(meter, / 33%/, meter);
+  assert.doesNotMatch(meter, /70%/, "a replayed estimate never paints");
 
-  component.handleMouse?.(click(clickAt(component, /▰/)));
-  const expanded = lines(tree.render(row("m1")));
-  const inspect = expanded.find(line => line.includes("Inspect 33%"));
-  assert.ok(inspect, "the expanded replay plan shows the completed phase");
-  assert.match(inspect, /Inspect 33%/);
+  const inspect = card.find(line => line.includes("Inspect") && line.includes("Verify")) ?? "";
+  assert.ok(inspect, "the replay plan row shows the completed phase unprompted");
+  assert.match(inspect, /Inspect \|-{3}\| Build/, inspect);
 });
 
-test("replay commits 100 only for a successful final tool call", () => {
+test("replay reads complete only when every restored call succeeded", () => {
+  const plan = "inspect=Inspect; build=Build; verify=Verify";
   for (const isError of [false, true]) {
     const entries = [
       user("2026-01-01T00:00:00.000Z", "finish the retry fix"),
       assistant("2026-01-01T00:00:01.000Z", [
-        { id: "p1", name: "read", arguments: { taskIntent: "Complete the retry fix", taskProgress: 58 } },
-        { id: "p2", name: "bash", arguments: { taskIntent: "Complete the retry fix", taskProgress: 100 } },
+        { id: "p1", name: "read", arguments: { taskIntent: "Complete the retry fix", taskMilestones: plan, taskMilestone: "inspect" } },
+        { id: "p2", name: "read", arguments: { taskIntent: "Complete the retry fix", taskMilestones: plan, taskMilestone: "build" } },
+        { id: "p3", name: "bash", arguments: { taskIntent: "Complete the retry fix", taskMilestones: plan, taskMilestone: "verify" } },
       ]),
       result("2026-01-01T00:00:02.000Z", "p1", "read"),
-      result("2026-01-01T00:00:03.000Z", "p2", "bash", { isError }),
+      result("2026-01-01T00:00:03.000Z", "p2", "read"),
+      result("2026-01-01T00:00:04.000Z", "p3", "bash", { isError }),
     ];
     const tree = new ToolTree(settings());
     tree.restore(readTranscript(entries, "prompt"));
     const frame = tree.render(row("p1")).render(100)[1]!;
-    assert.match(frame, isError ? /58%/ : /100%/);
+    // A restored card is settled, so the finished phases decide the number and one failure holds it back.
+    assert.match(frame, isError ? /67%/ : /100%/, frame);
   }
-});
-
-test("a restored call without a result still paints its own card", () => {
+});test("a restored call without a result still paints its own card", () => {
   const entries = [
     user("2026-01-01T00:00:00.000Z", "go"),
     assistant("2026-01-01T00:00:01.000Z", [{ id: "a1", name: "bash", arguments: { reasoning: "run the tests" } }]),

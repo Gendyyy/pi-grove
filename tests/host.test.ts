@@ -10,7 +10,7 @@ import { FakeHost, okay } from "./host.js";
 function body(frame: { lines: string[] }): string[] {
   const painted = frame.lines;
   if (painted.length < 2 || !/^[╭+]-/.test(painted[0]!.trim())) return painted;
-  return painted.slice(1, -1);
+  return painted.slice(1);
 }
 
 /** One transcript entry carrying a message, the way pi stores it. */

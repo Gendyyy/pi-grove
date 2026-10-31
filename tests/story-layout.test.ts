@@ -68,7 +68,8 @@ test("expand-all reveals nested steps and Story colors distinguish phase outcome
   const row = { toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: roleTheme, expanded: true, invalidate: () => {} };
   const lines = tree.render(row).render(400);
   assert.ok(lines.some(line => line.includes("[success]x 01")));
-  assert.ok(lines.some(line => line.includes("[warning]! 02")));
+  const verifyRow = lines.find(line => line.includes("[warning]") && line.includes(" 02")) ?? "";
+  assert.doesNotMatch(verifyRow, /\[warning\]! 02/, "a failed phase still in flight keeps its spinner");
   assert.ok(lines.some(line => line.includes("Request registry")));
 });
 
@@ -102,10 +103,12 @@ test("expanded output is indented beneath its tool and stays within the card", (
     const child = lines.find(line => line.includes("* bash")) ?? "";
     const output = lines.find(line => line.includes("OUTPUT:")) ?? "";
     assert.ok(phase && parent && child && output, `all hierarchy levels are visible at ${width}: ${JSON.stringify(lines)}`);
-    assert.equal(phase.indexOf("|", 1), parent.indexOf("|", 1));
-    assert.equal(parent.indexOf("|", 1), child.indexOf("|", 1));
-    assert.equal(child.indexOf("|", 1), output.indexOf("|", 1));
-    assert.ok(output.indexOf("OUTPUT:") > child.indexOf("bash"), "output is nested under its tool");
+    const phaseColumn = phase.indexOf("Verify");
+    const parentColumn = parent.indexOf("codemode");
+    const childColumn = child.indexOf("bash");
+    assert.ok(parentColumn > phaseColumn, "the call hangs off its phase: " + JSON.stringify([phase, parent]));
+    assert.ok(childColumn > parentColumn, "a nested call sits deeper than its parent: " + JSON.stringify([parent, child]));
+    assert.ok(output.indexOf("OUTPUT:") > phaseColumn, "the output is indented past the phase label: " + JSON.stringify([phase, output]));
     assert.ok(lines.every(line => visibleWidth(line) <= width));
   }
 });

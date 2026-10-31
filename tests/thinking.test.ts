@@ -55,7 +55,7 @@ function lines(component: Component, width = 100): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
   // The card is one bordered object now, so the body is what the assertions index.
   if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+  return painted.slice(1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 test("consecutive thinking parts collapse into one run with ordered ids", () => {

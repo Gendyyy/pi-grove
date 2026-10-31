@@ -95,10 +95,8 @@ export function currentGroup(state: TreeState, now: number): TreeGroup {
 function updateGroupIntent(group: TreeGroup, intent: string): boolean {
   if (!intent || group.intent === intent) return false;
   group.intent = intent;
-  group.progress = undefined;
   group.milestones = undefined;
   group.activeMilestoneId = undefined;
-  group.pendingCompletionId = undefined;
   group.openPhases = undefined;
   group.expandedMilestones = undefined;
   return true;
@@ -143,13 +141,6 @@ function updateGroupMilestones(
   return changed;
 }
 
-/** Keep the last valid estimate; repeated idempotent values do not repaint the card. */
-function updateGroupProgress(group: TreeGroup, progress: number | undefined): boolean {
-  if (progress === undefined || group.progress === progress) return false;
-  group.progress = progress;
-  return true;
-}
-
 /** Build one row from a tool call, with the goal it stated and its code size. */
 function makeNode(
   state: TreeState,
@@ -168,7 +159,6 @@ function makeNode(
     goal: goalOf(record),
     target: targetOf(record),
     taskIntent: parent || !includeTaskMetadata ? undefined : taskIntentOf(record) || undefined,
-    completesTask: !parent && includeTaskMetadata && taskProgressOf(record) === 100,
     milestone: parent || !includeTaskMetadata ? undefined : taskMilestoneOf(record) || undefined,
     status: "running",
     started,
@@ -221,42 +211,30 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
   const parent = typeof input.parentId === "string" ? group.nodes.get(input.parentId) : undefined;
   const streaming = input.streaming === true;
   const statedIntent = parent || streaming ? "" : taskIntentOf(record);
-  const statedProgress = parent || streaming ? undefined : taskProgressOf(record);
   const statedMilestones = parent || streaming ? undefined : taskMilestonesOf(record);
   const statedMilestone = parent || streaming ? undefined : taskMilestoneOf(record);
   const intentChanged = parent || streaming ? false : updateGroupIntent(group, statedIntent);
-  const progressChanged = parent || statedProgress === 100
-    ? false
-    : updateGroupProgress(group, statedProgress);
   const milestonesChanged = parent || streaming
     ? false
     : updateGroupMilestones(group, statedMilestones, statedMilestone);
-  const pendingCompletionId = statedProgress === undefined
-    ? group.pendingCompletionId
-    : statedProgress === 100 ? input.id : undefined;
   const known = group.nodes.get(input.id);
   if (known) {
     // Streaming rows report their arguments in pieces; keep the row text in step.
     const goal = goalOf(record);
     const target = targetOf(record);
     const intentNodeChanged = !parent && statedIntent !== "" && known.taskIntent !== statedIntent;
-    const completion = !parent && statedProgress === 100;
-    const completionChanged = statedProgress !== undefined && known.completesTask !== completion;
     const milestoneNodeChanged = !parent && statedMilestone !== undefined && known.milestone !== statedMilestone;
-    if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
-    if (goal === known.goal && target === known.target && !intentChanged && !milestonesChanged && !progressChanged &&
-      !intentNodeChanged && !completionChanged && !milestoneNodeChanged) return undefined;
+    if (goal === known.goal && target === known.target && !intentChanged && !milestonesChanged &&
+      !intentNodeChanged && !milestoneNodeChanged) return undefined;
     known.goal = goal;
     known.target = target;
     if (!parent && statedIntent) known.taskIntent = statedIntent;
     if (!parent && statedMilestone) known.milestone = statedMilestone;
-    if (statedProgress !== undefined) known.completesTask = completion;
     return group;
   }
   const node = makeNode(state, input.id, input.toolName, input.args, input.now, parent, !streaming);
   group.nodes.set(input.id, node);
   (parent ? parent.children : group.rows).push(node);
-  if (!parent && statedProgress !== undefined) group.pendingCompletionId = pendingCompletionId;
   // The card stays on the oldest call of the group, so it grows in place instead of
   // sliding to every new row, which read as each call rendering itself separately.
   if (!parent && group.leaderId === undefined) group.leaderId = node.id;
@@ -327,24 +305,6 @@ export interface EndInput {
   now: number;
 }
 
-/** Commit 100 only after the declared final call succeeds and all top-level calls settle. */
-function finishPendingCompletion(group: TreeGroup): void {
-  const id = group.pendingCompletionId;
-  if (!id) return;
-  const node = group.nodes.get(id);
-  if (!node || node.taskIntent !== group.intent) {
-    group.pendingCompletionId = undefined;
-    return;
-  }
-  if (node.status === "error" || node.status === "cancelled" || node.status === "incomplete") {
-    group.pendingCompletionId = undefined;
-    return;
-  }
-  if (node.status !== "success" || group.rows.some(row => row.kind !== "thinking" && row.status === "running")) return;
-  group.pendingCompletionId = undefined;
-  updateGroupProgress(group, 100);
-}
-
 /** Finish one recorded call and adopt the steps a codemode snapshot kept of its children. */
 export function finishCall(state: TreeState, input: EndInput): TreeGroup | undefined {
   const group = findGroup(state, input.id);
@@ -354,7 +314,6 @@ export function finishCall(state: TreeState, input: EndInput): TreeGroup | undef
   finalizeNode(group, node, input.result, input.status, durationMs);
   // The codemode snapshot is the only record of the steps that ran inside the call.
   attachCalls(state, group, readNested((input.result as { details?: unknown } | undefined)?.details), node);
-  finishPendingCompletion(group);
   return group;
 }
 
@@ -369,13 +328,7 @@ export function attachCalls(
     if (!parent) {
       const args = (call.args ?? undefined) as Record<string, unknown> | undefined;
       updateGroupIntent(group, taskIntentOf(args));
-      const progress = taskProgressOf(args);
-      if (progress === 100) group.pendingCompletionId = call.id;
-      else if (progress !== undefined) {
-        updateGroupProgress(group, progress);
-        group.pendingCompletionId = undefined;
-      }
-      // Pin after this call's estimate, matching live milestone transitions.
+      // Pin after this call's phase, matching live milestone transitions.
       updateGroupMilestones(group, taskMilestonesOf(args), taskMilestoneOf(args));
     }
     const existing = group.nodes.get(call.id);
@@ -438,10 +391,11 @@ export function restoreSegments(state: TreeState, segments: ReplaySegment[]): vo
       started: leader.started,
       budget: PREVIEW_TOTAL,
       openAll: false,
+      settled: true,
     };
     state.groups.set(group.key, group);
     attachCalls(state, group, calls);
-    finishPendingCompletion(group);
+    // A replayed card is history, so its plan counts as closed and finished.
     // A card needs a tool row to be painted on, so reasoning alone keeps no group.
     const first = group.rows.find(row => row.kind !== "thinking");
     if (first) group.leaderId = first.id;
@@ -474,7 +428,7 @@ export function closeGroup(state: TreeState, group: TreeGroup, now: number): voi
     }
   };
   closeNodes(group.rows);
-  group.pendingCompletionId = undefined;
+  group.settled = true;
   // Reasoning without a tool call has no row to paint on, so the group is worthless.
   if (!group.rows.some(node => node.kind !== "thinking")) {
     state.groups.delete(group.key);
@@ -486,7 +440,7 @@ export function closeGroup(state: TreeState, group: TreeGroup, now: number): voi
 export function toggleTarget(state: TreeState, group: TreeGroup, target: string): void {
   if (target === GROUP_TARGET) group.openAll = !group.openAll;
   // The meter line owns the plan gesture, so the border stays the row gesture.
-  else if (target === PHASES_TARGET) group.openPhases = !group.openPhases;
+  else if (target === PHASES_TARGET) group.openPhases = group.openPhases === false;
   else if (target.startsWith(MILESTONE_TARGET_PREFIX)) {
     const id = target.slice(MILESTONE_TARGET_PREFIX.length);
     if (!group.milestones?.some(milestone => milestone.id === id)) return;

@@ -291,8 +291,6 @@ export function createGroveExtension(
         reasoningGuideline: 'Always pass a "reasoning" phrase to ' + source.name + ': state the GOAL/intent, not the file or command (those are shown already). Write the reasoning in English.',
         taskIntent: settings.group !== "off",
         taskIntentGuideline: 'Always pass "taskIntent" to ' + source.name + ': give the concise high-level objective for the current atomic task, ideally no more than 45 characters. Keep it unchanged across calls advancing that task; change it only when starting a distinct task. This is the stable task identity and the border title remains fixed for that task.',
-        taskProgress: settings.group !== "off",
-        taskProgressGuideline: 'Always pass "taskProgress" to ' + source.name + ': your best-judgment estimate (integer 0–100) of how much of the requested task is complete and how much remains. Do not base it on tool-call count or invent a fixed denominator. Repeat the same value on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. Phases split the estimate evenly: with N phases the phase at position i may claim at most (i + 1) / N of 100, so a three-phase plan stands at 33 or less during its first phase and only the last phase may pass 100. Grove rejects a call that claims more than its phase\'s share. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds.',
       });
     };
     const sources = [

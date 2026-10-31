@@ -47,10 +47,8 @@ export interface TreeNode {
   name: string;
   goal: string;
   target: string;
-  /** Task identity captured from this top-level call for completion gating. */
+  /** Task identity captured from this top-level call. */
   taskIntent?: string;
-  /** True when this call declares itself the task-completing final action. */
-  completesTask?: boolean;
   /** Phase this call declared, so the rows can show where the plan moved. */
   milestone?: string;
   /** Model-authored summary shared by consecutive related calls. */
@@ -96,19 +94,19 @@ export interface TreeGroup {
   openAll: boolean;
   /** Stable model-authored identity shared by calls advancing one atomic task. */
   intent?: string;
-  /** Agent's subjective completion estimate, updated only at meaningful milestones. */
-  progress?: number;
   /** Declared ordered phases, one to seven, shared by calls advancing one task. */
   milestones?: TaskMilestone[];
   /** Current phase id; earlier phases are complete and later phases are pending. */
   activeMilestoneId?: string;
-  /** Top-level call awaiting successful completion before the card can reach 100%. */
-  pendingCompletionId?: string;
   /**
    * Percent at which each phase boundary was crossed, so a finished phase keeps the width
    * it actually earned. Monotone, one longer than the plan, and written only from an
    * observed crossing: a boundary we have not reached yet stays a guess until it happens.
    */
+  /** True once the card was closed at its turn boundary, so its plan can be judged done. */
+  settled?: boolean;
+  /** Highest share this plan has reported, so the meter never walks backwards mid-flight. */
+  reached?: number;
   /** True while the full plan is expanded under the meter. */
   openPhases?: boolean;
   /** Phase ids whose nested call rows are expanded from their timeline marker. */
@@ -160,11 +158,8 @@ export interface Glyphs {
   tick: string;
   /** Milestone mark on a timeline row, so a phase never reads as another call. */
   diamond: string;
-  /** Frame corners and edges of the group card. */
-  tl: string;
-  tr: string;
-  bl: string;
-  br: string;
+  /** The card's left edge: one tone column instead of a box. */
+  rail: string;
   h: string;
   v: string;
   /** Glyph style used for duration bars. */
@@ -173,30 +168,50 @@ export interface Glyphs {
   chart: string;
   /** Font Awesome percent cue beside the progress meter; empty in ASCII mode. */
   progress: string;
+  /** Five-state progress circle: empty, a quarter, half, three quarters, full. */
+  pie: readonly string[];
+  /** Quarter-circle frames a running call cycles through, so motion marks what is still live. */
+  spinner: readonly string[];
   /** Completed milestone marker, with an ASCII fallback for plain consoles. */
   check: string;
   /** Warning indicator with a plain-console fallback. */
   warning: string;
+  /** Rounded corners of a plan box, square in ASCII mode. */
+  box: { tl: string; tr: string; bl: string; br: string };
+  /** Border of a phase still ahead: dotted, so its stage reads even with the colour stripped. */
+  boxAhead: string;
 }
 
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
-  tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", arrow: "→", tick: "┆", diamond: "◆", spark: "bars", chart: "\uf080", progress: "", check: "✓", warning: "\uf071",
-};
-const ASCII_GLYPHS: Glyphs = {
-  tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
-  tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", arrow: "->", tick: ":", diamond: "*", spark: "ascii", chart: "", progress: "", check: "x", warning: "!",
+  rail: "▌", h: "─", v: "│", arrow: "→", tick: "┆", pie: ["○", "◔", "◑", "◕", "●"],
+  // Ten braille frames, one every 80 ms: the smoothest motion a single cell can hold. Nothing
+  // in this table is a private-use codepoint, so no terminal has to guess how wide it is.
+  spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+  diamond: "◆", spark: "bars", chart: "", progress: "", check: "✓", warning: "!",
+  box: { tl: "╭", tr: "╮", bl: "╰", br: "╯" }, boxAhead: "╌",
 };
 
-/** Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable. */
+const ASCII_GLYPHS: Glyphs = {
+  tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
+  rail: "|", h: "-", v: "|", arrow: "->", tick: ":", pie: ["o", "o", "O", "O", "#"], spinner: ["|", "/", "-", "\\"], diamond: "*", spark: "ascii", chart: "", progress: "", check: "x", warning: "!",
+  box: { tl: "+", tr: "+", bl: "+", br: "+" }, boxAhead: ".",
+};
+
+/**
+ * Box-drawing connectors survive UTF-8 terminals; forced ASCII keeps plain consoles readable.
+ * The nerd mode no longer swaps in Font Awesome codepoints: private-use glyphs land at whatever
+ * width the installed font happens to give them, and half of them render double-width.
+ */
 export function treeGlyphs(mode: IconMode): Glyphs {
   return resolveIconMode(mode) === "ascii" ? ASCII_GLYPHS : UNICODE_GLYPHS;
 }
 
 /** Strip terminal escapes from tool output before it is measured or stored. */
 export function clean(value: unknown): string {
+  // A tab reads as one cell to the width counter and several on screen, so it becomes spaces here.
   return typeof value === "string"
-    ? stripVTControlCharacters(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "")
+    ? stripVTControlCharacters(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "").replaceAll("\t", "   ")
     : "";
 }
 
@@ -403,23 +418,6 @@ export function countErrors(nodes: TreeNode[]): number {
 
 /** Background tone a card wears, read from the card itself rather than one borrowed row. */
 export type CardTone = "pending" | "success" | "error";
-
-/**
- * Read one card's tone from its own calls: a live call keeps the card pending, only a card
- * whose every call failed turns red, and a mix of failures and successes stays neutral.
- */
-export function groupTone(rows: readonly TreeNode[]): CardTone {
-  const calls = rows.filter(row => row.kind !== "thinking");
-  if (calls.some(row => row.status === "running")) return "pending";
-  if (calls.length > 0 && calls.every(row => row.status === "error")) return "error";
-  return "success";
-}
-
-/** Host background role that carries a card tone. */
-export function toneBackground(tone: CardTone): "toolPendingBg" | "toolSuccessBg" | "toolErrorBg" {
-  if (tone === "pending") return "toolPendingBg";
-  return tone === "error" ? "toolErrorBg" : "toolSuccessBg";
-}
 
 /** Count tool calls anywhere in the subtree, excluding reasoning rows. */
 export function countToolCalls(nodes: TreeNode[]): number {

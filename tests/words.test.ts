@@ -13,10 +13,9 @@ import { plainTheme } from "../theme.js";
 const READ = "\uf15c";
 const CODEMODE = "\uf121";
 const BASH = "\uf120";
+const STOP = "\uf05e";
 const CHECK = "\uf00c";
 const CROSS = "\uf00d";
-const STOP = "\uf05e";
-const PERCENT = "";
 
 /** Tree settings with the glyph style switched on. */
 function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> = {}): TreeSettings {
@@ -45,7 +44,7 @@ function lines(tree: ToolTree, id: string): string[] {
   const painted = tree.render(row(id)).render(90).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
   // The card is one bordered object now, so the body is what the assertions index.
   if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+  return painted.slice(1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 test("a nerd font adds the tool glyph and still names the tool", () => {
@@ -86,17 +85,26 @@ test("built-in names can be replaced by icons without hiding custom names", () =
   assert.doesNotMatch(asciiOnly, /codemode/);
 });
 
-test("a Nerd Font percent icon sits beside the progress meter", () => {
-  const nerd = new ToolTree(settings("nerd"));
-  nerd.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Finish the retry fix", taskProgress: 35 } });
-  const nerdRollup = lines(nerd, "a")[0]!;
-  assert.ok(nerdRollup.includes(PERCENT + "  ▰"), JSON.stringify(nerdRollup));
+test("the nerd icon mode paints the unicode state cues", () => {
+  const plan = "inspect=Inspect; build=Build";
+  /** Paint a card whose first phase finished, so the meter carries a share. */
+  const paint = (iconMode: "nerd" | "ascii"): string => {
+    const tree = new ToolTree(settings(iconMode));
+    tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Finish the retry fix", taskMilestones: plan, taskMilestone: "inspect" } });
+    tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+    tree.start({ toolCallId: "b", toolName: "read", args: { taskIntent: "Finish the retry fix", taskMilestones: plan, taskMilestone: "build" } });
+    return lines(tree, "a").join(String.fromCharCode(10));
+  };
 
-  const ascii = new ToolTree(settings("ascii"));
-  ascii.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Finish the retry fix", taskProgress: 35 } });
-  const asciiRollup = lines(ascii, "a")[0]!;
-  assert.ok(asciiRollup.includes("▰"));
-  assert.ok(!asciiRollup.includes(PERCENT), JSON.stringify(asciiRollup));
+  const nerd = paint("nerd");
+  assert.ok(/[▰▱]/.test(nerd), "the meter paints a bar");
+  assert.match(nerd, /[◔◑◕○●]/, "the meter cue is the unicode pie: " + JSON.stringify(nerd));
+  assert.match(nerd, /[├└]─/, "branch guides come from the unicode table: " + JSON.stringify(nerd));
+  assert.ok(!/[▸▾]/.test(nerd), "no chevron survives in the card: " + JSON.stringify(nerd));
+
+  const ascii = paint("ascii");
+  assert.ok(/[▰▱]/.test(ascii), "the meter paints a bar");
+  assert.ok(!/[\uE000-\uF8FF]/.test(ascii), JSON.stringify(ascii));
 });
 
 test("the same card keeps every word on a plain terminal", () => {

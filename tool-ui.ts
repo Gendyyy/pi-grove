@@ -7,7 +7,7 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
-import { phaseShare, taskIntentOf, taskMilestoneOf, taskMilestonesOf, taskProgressOf, toneBackground } from "./tree-model.js";
+import { taskIntentOf, taskMilestoneOf, taskMilestonesOf } from "./tree-model.js";
 import { ToolTree, type GroupMode, type TreeRow, type TreeSettings } from "./tool-tree.js";
 
 interface ToolUiOptions {
@@ -49,13 +49,16 @@ export interface ToolUiController {
   /** Update mutable presentation settings and repaint existing cards. */
   updateSettings(settings: Partial<ToolUiLiveSettings>): void;
 }
+// The card wears one background for its whole life: the rows report the work, the box never changes colour.
+const CARD_BACKGROUND = "toolPendingBg" as const;
+
 const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
-When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line and a // task-progress: <0-100> line. Keep task-intent concise, ideally no more than 45 characters, and unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Estimate completion by your best judgment of how much of the requested task is done and how much remains; do not base it on tool-call count or invent a fixed denominator. Repeat the current integer estimate on ordinary top-level calls; update it at meaningful milestones, and lower it if scope grows. Phases split that estimate evenly: with N phases the phase at position i may claim at most (i+1)/N of 100, so a three-phase plan reports 33 or less during its first phase; Grove blocks a call that claims more. The final tool call intended to complete and verify the task must pass 100; Grove shows 100 only after that call succeeds.
+When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line. Keep task-intent concise, ideally no more than 45 characters, and unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Grove derives the completion percentage from the phases below, so never send a percentage: the card reads one equal slice per finished phase, and reaches 100% as soon as the last phase ends without a failure — so put the call that finishes the work in the final phase.
 Every top-level call also carries a phase plan, for example // task-milestones: explore=Explore; refine=Refine. A plan holds one to seven short labeled phases. Choose the smallest meaningful sequence for the actual request: consider its outcome, uncertainty, risk, and scale. Use one phase for simple work; clarify first when needed, investigate uncertainty before committing to a solution, and include verification appropriate to the risk. Examples are inspiration, not mandatory templates: a discussion might explore then refine, research might frame then investigate then synthesize, and a bug fix might reproduce then diagnose then fix then verify. Adapt the sequence and labels to the task instead of defaulting to a coding workflow or inventing filler. Add a clean phase before verification only when the work can leave temp files, scratch scripts, or throwaway artifacts behind.
-Use unique lowercase IDs of at most 24 characters, starting with a letter and followed only by lowercase letters, digits, or hyphens; labels are safely limited to 24 characters. Include // task-milestone: <id> on every top-level call, naming a phase from that plan. Advance the current id only after finishing that phase; Grove marks earlier phases complete and later ones pending. Re-state the plan on every call; when discoveries change the work, adapt the remaining phases while preserving the IDs and order of completed phases. Grove ignores a restated plan that drops, reorders, or replaces completed phases. A different task needs a new // task-intent: rather than a rewritten plan. A successful task-progress: 100 call completes all phases; phase state stays independent of the percentage.
-Closing the card is part of the task. A turn that finishes the task must end with a top-level call carrying task-progress: 100 and the plan's final // task-milestone:. If your answer itself needs no tool call, still make one last top-level codemode call with task-progress: 100 and the final phase before you answer. Leave the plan open only when the task is genuinely unfinished or the user asked a question mid-task, and never write 100 just to clear the bar.
-With // @options:, put that header first, then // reasoning:, // task-intent:, // task-progress:, then the // task-milestones: plan and // task-milestone: id.
+Use unique lowercase IDs of at most 24 characters, starting with a letter and followed only by lowercase letters, digits, or hyphens; labels are safely limited to 24 characters. Include // task-milestone: <id> on every top-level call, naming a phase from that plan. Advance the current id only after finishing that phase; Grove marks earlier phases complete and later ones pending. Re-state the plan on every call; when discoveries change the work, adapt the remaining phases while preserving the IDs and order of completed phases. Grove ignores a restated plan that drops, reorders, or replaces completed phases. A different task needs a new // task-intent: rather than a rewritten plan.
+Closing the card is part of the task. A turn that finishes the task must end with a top-level call naming the plan's final // task-milestone:. If your answer itself needs no tool call, still make one last top-level codemode call on the final phase before you answer. Leave the plan open only when the task is genuinely unfinished or the user asked a question mid-task.
+With // @options:, put that header first, then // reasoning:, // task-intent:, then the // task-milestones: plan and // task-milestone: id.
 `;
 
 /** Require a stable model-authored task title for grouped top-level codemode calls. */
@@ -66,8 +69,6 @@ export function codemodeGroupMetadataViolation(
   if (group === "off" || event.toolName !== "codemode" || event.parentToolCallId !== undefined) return undefined;
   if (!taskIntentOf(event.input))
     return "Grove blocked this codemode call: grouping requires a model-written // task-intent: <objective> line. Keep it stable for the same task, then retry.";
-  if (taskProgressOf(event.input) === undefined)
-    return "Grove blocked this codemode call: grouping requires the current // task-progress: <integer 0-100> estimate on every top-level call. Repeat it unchanged until a meaningful milestone, then retry.";
   const milestones = taskMilestonesOf(event.input);
   if (!milestones)
     return "Grove blocked this codemode call: grouping requires a // task-milestones: <id>=<label> plan of one to seven short labeled phases. Split the task into meaningful phases, then retry.";
@@ -77,11 +78,6 @@ export function codemodeGroupMetadataViolation(
   const index = milestones.findIndex(milestone => milestone.id === milestoneId);
   if (index < 0)
     return "Grove blocked this codemode call: // task-milestone: must name a phase from the declared // task-milestones: plan. Fix the id, then retry.";
-  // Each phase owns an equal slice of the estimate, so a single phase can never claim more.
-  const limit = phaseShare(milestones.length, index);
-  const progress = taskProgressOf(event.input) ?? 0;
-  if (progress > limit)
-    return `Grove blocked this codemode call: // task-progress: ${progress} exceeds this phase's share. With ${milestones.length} phases, "${milestones[index]!.label}" may claim at most ${limit}%. Send ${limit} or less, then retry.`;
   return undefined;
 }
 
@@ -331,7 +327,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
           phase: "call",
           expanded: context.expanded,
           invalidate: context.invalidate,
-          background: text => theme.bg(toneBackground(tree.tone(context.toolCallId)), text),
+          background: text => theme.bg(CARD_BACKGROUND, text),
           outputPad: context.outputPad,
         });
       },
@@ -347,7 +343,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
           phase: "result",
           expanded: options.expanded,
           invalidate: context.invalidate,
-          background: text => theme.bg(toneBackground(tree.tone(context.toolCallId)), text),
+          background: text => theme.bg(CARD_BACKGROUND, text),
           outputPad: context.outputPad,
         });
       },
