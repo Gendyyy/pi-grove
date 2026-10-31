@@ -188,6 +188,9 @@ export class ToolTree {
     const group = findGroup(this.state, row.toolCallId);
     const node: TreeNode | undefined = group?.nodes.get(row.toolCallId);
     if (!group || !node) return row.inner;
+    // A nested call has no captured output until it ends, so its own pi component is the
+    // only thing an open row can show while it runs.
+    if (node.parent) node.live = row.inner;
     const claim = claimSlot({ group, node, phase: row.phase ?? "result", invalidate: row.invalidate });
     if (claim.repaint) this.defer(claim.repaint);
     if (!claim.paint) return new Container();

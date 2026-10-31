@@ -13,6 +13,11 @@ function body(frame: { lines: string[] }): string[] {
   return painted.slice(1);
 }
 
+/** The card's summary row: the call count and the tool breakdown under its title. */
+function summary(frame: { lines: string[] }): string {
+  return body(frame).find(line => /calls?/.test(line)) ?? "";
+}
+
 /** One transcript entry carrying a message, the way pi stores it. */
 function entry(timestamp: string, message: Record<string, unknown>): unknown {
   return { type: "message", id: timestamp, timestamp, message };
@@ -63,20 +68,20 @@ test("one card paints once even though pi mounts a row and a result row", () => 
   const frame = host.frame();
   // The result rows take the card over, and the live rows go blank in the same frame.
   assert.deepEqual(host.painters(), ["a"]);
-  assert.match(body(frame)[0]!, /3 calls/);
-  assert.match(body(frame)[0]!, /bash x2/);
-  assert.equal(body(frame).length, 4, "headline and one branch row per call, without blank links");
+  assert.match(summary(frame), /3 calls/);
+  assert.match(summary(frame), /bash x2/);
+  assert.equal(body(frame).length, 5, "a title, a summary, and one branch row per call without blank links");
 });
 
 test("the card never moves while calls arrive", () => {
   const host = new FakeHost();
   host.start("a", "read", { reasoning: "read the manifest" });
-  const first = body(host.frame())[0]!;
+  const first = summary(host.frame());
   for (const [index, name] of ["bash", "grep", "ls"].entries()) {
     host.start("n" + index, name, { reasoning: "step " + index });
     const frame = host.frame();
     // A card that migrated to the newest row reflowed the whole transcript every call.
-    assert.match(body(frame)[0]!, /calls?/);
+    assert.match(summary(frame), /calls?/);
     assert.equal(frame.rows.filter(row => row.lines.length > 0).length, 1);
   }
   assert.match(first, /1 call/);
@@ -108,7 +113,7 @@ test("a step registered live is not duplicated by the codemode snapshot", () => 
   // The rollup is the first line inside the frame, so click it where it now sits.
   host.click(host.frame().lines.findIndex(line => /calls/.test(line)));
   const revealed = host.frame();
-  assert.match(body(revealed)[0]!, /2 calls/);
+  assert.match(summary(revealed), /2 calls/);
   host.click(revealed.lines.findIndex(line => /audit the types/.test(line)));
   const drilled = host.frame();
   // The live event stream registered each step once; the snapshot must not add a second row.
@@ -128,8 +133,8 @@ test("a reload rebuilds the same cards from the transcript", () => {
     result("t4", "c2", "bash"),
   ]);
   const frame = host.frame();
-  assert.match(body(frame)[0]!, /2 calls/);
-  assert.match(body(frame)[0]!, /read x1/);
+  assert.match(summary(frame), /2 calls/);
+  assert.match(summary(frame), /read x1/);
   // Only the card paints: the historical rows must not reappear above it.
   assert.deepEqual(host.painters(), ["c1"]);
 });
@@ -142,7 +147,7 @@ test("reasoning shows up inside the card, between the calls that used it", () =>
   host.start("b", "bash", { reasoning: "run the suite" });
   host.end("b", okay("2 passed"));
   const frame = host.frame();
-  assert.equal(body(frame).length, 4, "headline, call/reasoning rows, and no blank inter-call links");
+  assert.equal(body(frame).length, 5, "a title, a summary, the call, the narration and the second call");
   assert.equal(body(frame).filter(line => /thinking/.test(line)).length, 1);
   assert.doesNotMatch(body(frame).join("\n"), /manifest names the entry/);
   host.click(frame.lines.findIndex(line => /thinking/.test(line)));

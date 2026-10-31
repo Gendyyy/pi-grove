@@ -73,6 +73,8 @@ export interface TreeNode {
   seq: number;
   /** Set on a reasoning row: it narrates the card but is not a tool call. */
   kind?: "thinking";
+  /** Live pi component of a running child, the only content an open row can show before its result lands. */
+  live?: { render: (width: number) => string[] };
   /** Raw reasoning text, kept so a streaming repaint can be told from a real update. */
   text?: string;
 }

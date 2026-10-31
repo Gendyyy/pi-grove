@@ -52,11 +52,11 @@ test("a nerd font adds the tool glyph and still names the tool", () => {
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
   const painted = lines(tree, "a");
+  const body = painted.join(String.fromCharCode(10));
   // The glyph is an indicator, never a replacement: the row still says "read".
-  assert.match(painted[0]!, /read/);
-  assert.match(painted[0]!, /1/);
-  assert.match(painted[1]!, new RegExp(READ));
-  assert.match(painted[1]!, /read/);
+  assert.match(painted[0]!, /GROVE/, "the card leads with its own name");
+  assert.match(body, /1 call/, "the card still counts the call");
+  assert.match(body, new RegExp(READ + "  read"), "the glyph sits ahead of the word it stands for");
 });
 
 test("built-in names can be replaced by icons without hiding custom names", () => {
@@ -111,9 +111,9 @@ test("the same card keeps every word on a plain terminal", () => {
   const tree = new ToolTree(settings("ascii"));
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
-  const painted = lines(tree, "a");
-  assert.match(painted[0]!, /read/);
-  assert.doesNotMatch(painted[0]!, new RegExp(READ));
+  const body = lines(tree, "a").join(String.fromCharCode(10));
+  assert.match(body, /read · check the manifest/, "the plain terminal keeps the word");
+  assert.doesNotMatch(body, new RegExp(READ), "no private-use glyph leaks into the plain card");
 });
 
 test("an outstanding outcome becomes one coloured glyph", () => {
@@ -182,7 +182,7 @@ test("the glyph keeps a gap ahead of the tool word", () => {
   const tree = new ToolTree(settings("nerd"));
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
-  const row = lines(tree, "a")[1]!;
+  const row = lines(tree, "a").find(line => line.includes("check the manifest")) ?? "";
   assert.ok(row.includes(READ + "  read · check the manifest"), JSON.stringify(row));
 });
 
@@ -190,7 +190,7 @@ test("a plain word keeps its single space before the dot", () => {
   const tree = new ToolTree(settings("ascii"));
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
-  assert.ok(lines(tree, "a")[1]!.includes("read · check the manifest"));
+  assert.ok((lines(tree, "a").find(line => line.includes("check the manifest")) ?? "").includes("read · check the manifest"));
 });
 
 test("the standalone card pads its label the same way", () => {

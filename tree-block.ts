@@ -9,6 +9,7 @@ import type { PaintPhase, TreeGroup } from "./tree-model.js";
 import type { ToolTree } from "./tool-tree.js";
 
 /** One tool row handed to the tree: its live component and the host paint context. */
+
 export interface TreeRow {
   toolCallId: string;
   inner: Component;

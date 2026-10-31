@@ -26,9 +26,9 @@ test("story phases retain failures and open one level at a time", () => {
   const { tree, card } = storyCard();
   const render = (width = 96) => card.render(width);
   const lines = render();
-  assert.ok(lines.some(line => line.includes("GROVE / TASK")));
+  assert.ok(lines.some(line => line.includes("| Check updates")), "the card states the task intent");
   assert.ok(lines.some(line => line.includes("x 01 Inspect")));
-  const phase = lines.findIndex(line => line.includes("! 02 Verify") && line.includes("1 failed"));
+  const phase = lines.findIndex(line => line.includes("02 Verify") && line.includes("1 failed"));
   assert.ok(phase >= 0);
   assert.ok(!lines.some(line => line.includes("Request registry")));
   assert.equal((tree as unknown as { targetAt(index: number): string | undefined }).targetAt(phase), milestoneTarget("verify"));
@@ -68,8 +68,12 @@ test("expand-all reveals nested steps and Story colors distinguish phase outcome
   const row = { toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: roleTheme, expanded: true, invalidate: () => {} };
   const lines = tree.render(row).render(400);
   assert.ok(lines.some(line => line.includes("[success]x 01")));
-  const verifyRow = lines.find(line => line.includes("[warning]") && line.includes(" 02")) ?? "";
-  assert.doesNotMatch(verifyRow, /\[warning\]! 02/, "a failed phase still in flight keeps its spinner");
+  const turning = lines.find(line => line.includes("[warning]") && line.includes(" 02")) ?? "";
+  assert.doesNotMatch(turning, /\[warning\]! 02/, "the last phase is still open while the turn runs");
+  // Only the final response closes the last phase, and the failure it holds then stays a failure.
+  tree.settle();
+  const verifyRow = tree.render(row).render(400).find(line => line.includes("[warning]") && line.includes(" 02")) ?? "";
+  assert.match(verifyRow, /\[warning\]! 02/, "a failed phase whose calls returned holds the failure, not a spinner");
   assert.ok(lines.some(line => line.includes("Request registry")));
 });
 
@@ -78,12 +82,13 @@ test("expanded Story rows replace summaries and keep the phase rail through nest
   const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: true, invalidate: () => {} });
   const lines = card.render(400);
-  const phase = lines.find(line => line.includes("! 02") && line.includes("Verify")) ?? "";
+  const phase = lines.find(line => line.includes(" 02 ") && line.includes("Verify")) ?? "";
   const call = lines.find(line => line.includes("codemode") && line.includes("Check registry")) ?? "";
   const child = lines.find(line => line.includes("bash") && line.includes("Request registry")) ?? "";
-  assert.match(phase, /\[warning\]\| /);
-  assert.match(call, /\[warning\]\| /, "the phase rail must not change to the call outcome color");
-  assert.match(child, /\[warning\]\| /);
+  assert.match(phase, /\[dim\]\| /, "the rail keeps one colour whatever the phase outcome");
+  assert.match(phase, /\[warning\]1 failed/, "the phase rollup carries the failure");
+  assert.match(call, /\[dim\]\| /, "the phase rail must not change to the call outcome color");
+  assert.match(child, /\[dim\]\| /);
   assert.match(child, /\[error\]\*/, "the failing call keeps its error marker");
   assert.equal(lines.filter(line => line.includes("Check registry")).length, 1, "the collapsed summary is replaced by its call");
   assert.ok(child.indexOf("Request registry") > call.indexOf("Check registry"), "nested tools are indented further");
@@ -113,16 +118,16 @@ test("expanded output is indented beneath its tool and stays within the card", (
   }
 });
 
-test("Story titles wrap from the border without hiding text or breaking targets", () => {
+test("Story titles wrap under the rail without hiding text or breaking targets", () => {
   const intent = "Inspect 東京 settings and verify the complete configuration without losing important details";
   const tree = new ToolTree(settings);
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "Inspect settings", taskIntent: intent, taskProgress: 30, taskMilestones: "inspect=Inspect; verify=Verify", taskMilestone: "inspect" } });
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
   for (const width of [35, 60, 96]) {
     const lines = card.render(width);
-    const header = lines.findIndex(line => line.includes("GROVE / TASK"));
+    const header = lines.findIndex(line => line.includes("\u25b1"));
 
-    const title = lines.slice(0, header).map((line, index) => index === 0 ? line.replace(/^\s*\+[-─] /, "").replace(/ [-─]+\+$/, "") : line.replace(/^\s*[|│]\s*/, "").replace(/\s*[|│]$/, "")).join(" ").replace(/\s+/g, " ").trim();
+    const title = lines.slice(0, header).map(line => line.replace(/^\s*[|\u2502]\s*/, "").replace(/\s*[|\u2502]$/, "")).join(" ").replace(/\s+/g, " ").trim();
     assert.equal(title, intent, `full title at ${width}`);
     assert.ok(lines.every(line => visibleWidth(line) <= width));
     const targetAt = (tree as unknown as { targetAt(index: number): string | undefined }).targetAt.bind(tree);
@@ -157,10 +162,11 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
     tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: true });
     tree.start({ toolCallId: "b", toolName: "codemode", args: { reasoning: "Finish checks", taskIntent: "Verify changes", taskProgress: 100, taskMilestones: "verify=Verify", taskMilestone: "verify" } });
     tree.end({ toolCallId: "b", toolName: "codemode", result: { content: [] }, isError: false });
+    tree.settle();
     const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
     const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
     const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
-    assert.ok(phase.includes(`[warning]${iconMode === "ascii" ? "!" : "\uf071"} 01`));
-    assert.match(phase, /\[warning\] · 1 failed/);
+    assert.ok(phase.includes("[warning]! 01"), "a closed phase with a failure wears the warning mark");
+    assert.match(phase, /\[warning\]1 failed/);
   }
 });

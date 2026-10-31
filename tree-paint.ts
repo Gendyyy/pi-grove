@@ -223,7 +223,6 @@ export function spinnerGlyph(glyphs: Glyphs, now: number): string {
   return frames[Math.floor(now / SPIN_MS) % frames.length] ?? glyphs.dot;
 }
 
-/** True when every call in the card succeeded, so a closed plan may count as finished. */
 /** True when no call failed: a reasoning row is not work, so one still in flight never blocks a finished plan. */
 function allSucceeded(nodes: TreeNode[]): boolean {
   return nodes.every(
@@ -232,27 +231,92 @@ function allSucceeded(nodes: TreeNode[]): boolean {
 }
 
 /**
- * True once the plan is over: every call succeeded and the card itself has settled. Reaching the
- * last phase only means it is the one still working, so the plan believes nothing about the end
- * until the card closes — a phase is over when the card is, never earlier.
+ * The phase each call is painted under: a call that names a phase joins it, and one that names
+ * nothing joins the phase of the work it follows, so no call floats outside the plan.
  */
+export function phaseCallIds(group: TreeGroup): Map<string, string> {
+  const plan = group.milestones ?? [];
+  const byCall = new Map<string, string>();
+  let latest = -1;
+  for (const node of group.rows) {
+    if (node.kind === "thinking") continue;
+    if (node.milestone) {
+      const declared = plan.findIndex(phase => phase.id === node.milestone);
+      if (declared > latest) latest = declared;
+    }
+    const phase = plan[Math.max(latest, 0)];
+    if (phase) byCall.set(node.id, phase.id);
+  }
+  return byCall;
+}
+
+/**
+ * How many phases are over, counted from the first: a phase is done when its own calls have all
+ * returned. The milestone pointer cannot answer this, because it only moves when a later phase
+ * speaks — the last phase would keep working after its work came back. A phase nothing called is
+ * over once the plan moved past it, or once the card itself closed.
+ */
+export function finishedPhases(group: TreeGroup): number {
+  const plan = group.milestones ?? [];
+  const byCall = phaseCallIds(group);
+  const active = plan.findIndex(phase => phase.id === group.activeMilestoneId);
+  let count = 0;
+  for (const [index, phase] of plan.entries()) {
+    const calls = group.rows.filter(node => node.kind !== "thinking" && byCall.get(node.id) === phase.id);
+    const over = calls.length > 0
+      ? calls.every(node => node.status !== "running")
+      : index < active || (index === active && group.settled === true);
+    if (!over) break;
+    count += 1;
+  }
+  return count;
+}
+
+/** True once the plan is over: every phase's work came back, none of it failed, and the turn ended. */
 export function planFinished(group: TreeGroup): boolean {
   const plan = group.milestones;
   if (!plan || plan.length === 0) return false;
-  return allSucceeded(group.rows) && group.settled === true;
+  return group.settled === true && allSucceeded(group.rows) && finishedPhases(group) === plan.length;
+}
+
+/**
+ * Phases the card paints as over: the ones the plan pointer has moved past, and the whole plan
+ * once the card ends. A phase is over when the work moved on, not when its last call returned —
+ * a gap between two calls is still that phase working, so it can never flash green and back.
+ */
+function closedPhases(group: TreeGroup): number {
+  const plan = group.milestones ?? [];
+  if (planFinished(group)) return plan.length;
+  const active = plan.findIndex(phase => phase.id === group.activeMilestoneId);
+  const byCall = phaseCallIds(group);
+  let count = 0;
+  // A phase the pointer left while one of its calls still runs is not over either.
+  for (let index = 0; index < Math.max(0, active); index += 1) {
+    const id = plan[index]?.id;
+    const running = group.rows.some(node => node.kind !== "thinking" && byCall.get(node.id) === id && node.status === "running");
+    if (running) break;
+    count += 1;
+  }
+  return count;
 }
 
 /**
  * Percent the plan has earned: one equal slice per phase already finished, and the full bar once
- * the last phase closed clean, so a card reads complete before the turn ends — a broken one never does.
+ * every phase came back clean and the turn ended — a broken plan never earns the last slice.
  * The number only ever climbs: a call starting after the plan looked finished means work remains,
  * not that the finished phases were undone, so the meter holds instead of falling back a phase.
  */
 export function derivedProgress(group: TreeGroup): number | undefined {
   const plan = group.milestones;
   if (!plan || plan.length === 0) return undefined;
-  const active = plan.findIndex(phase => phase.id === group.activeMilestoneId);
-  const earned = planFinished(group) ? 100 : active <= 0 ? 0 : phaseShare(plan.length, active - 1);
+  const closed = closedPhases(group);
+  // A failed phase still finished its work, but only a clean plan earns the last share: the meter
+  // counts the work that came back, and a full bar is a claim that the plan went well.
+  const earned = planFinished(group)
+    ? 100
+    : closed === 0
+      ? 0
+      : phaseShare(plan.length, Math.min(closed, plan.length - 1) - 1);
   group.reached = Math.max(group.reached ?? 0, earned);
   return group.reached;
 }
@@ -292,10 +356,11 @@ function phaseMeterText(
   const value = derivedProgress(group) ?? 0;
   // The bar holds the share it earned; only the plan itself can say the work is over.
   const complete = planFinished(group);
-  const activeIndex = complete
-    ? plan.length - 1
-    : plan.findIndex(milestone => milestone.id === group.activeMilestoneId);
-  if (activeIndex < 0) return undefined;
+  // A phase's boundary is crossed the moment its own calls return: the pointer only moves once the
+  // next phase speaks, so it cannot be the evidence the bar reads.
+  const crossed = closedPhases(group);
+  const activeIndex = plan.findIndex(milestone => milestone.id === group.activeMilestoneId);
+  if (activeIndex < 0 && crossed === 0) return undefined;
 
   const pct = ` ${value}%`;
   // The pie rides the share it describes, so the headline stays a bare name.
@@ -324,7 +389,7 @@ function phaseMeterText(
     ? progressCellText(theme, 0, cells, glyphs.tick)
     : themeText(theme, "dim", glyphs.tick);
   const ticks = new Set<number>([0]);
-  for (let index = 1; index <= activeIndex; index += 1) {
+  for (let index = 1; index <= crossed; index += 1) {
     const tick = cellAt(phaseShare(plan.length, index - 1));
     if (tick <= 0 || tick >= cells) continue;
     painted[tick] = tick <= fill
@@ -372,7 +437,13 @@ function phasePlanLines(
 ): string[] {
   const plan = group.milestones ?? [];
   if (plan.length === 0) return [];
-  const complete = planFinished(group);
+  // A box turns green when its own calls return, so the chain fills from the left as work lands.
+  const closed = closedPhases(group);
+  const byCall = phaseCallIds(group);
+  // A phase can finish badly: its box and the link it closed warn instead of claiming success.
+  const failed = new Set(
+    group.rows.filter(node => byCall.has(node.id) && countErrors([node]) > 0).map(node => byCall.get(node.id)!),
+  );
   const widths = plan.map(phase => visibleWidth(phase.label) + PLAN_PAD * 2 + 2);
   let over = widths.reduce((sum, box) => sum + box, 0) + (widths.length - 1) * PLAN_LINK - (width - 2);
   while (over > 0) {
@@ -398,15 +469,18 @@ function phasePlanLines(
   widths.forEach((box, index) => {
     const phase = plan[index];
     if (!phase) return;
-    const done = complete || index < activeIndex;
-    const current = !complete && index === activeIndex;
-    const role: Foreground = done ? "success" : current ? "accent" : "dim";
+    const done = index < closed;
+    // A failure keeps warning even while the phase is still the one in flight.
+    const broke = failed.has(phase.id);
+    const current = !done && index === activeIndex;
+    const role: Foreground = broke ? "warning" : done ? "success" : current ? "accent" : "dim";
     if (index > 0) {
       // The link closes only once the phase on its left does, so a finished run reads as one chain.
-      const closed = complete || index - 1 < activeIndex;
+      const linkClosed = index - 1 < closed;
+      const linkRole: Foreground = !linkClosed ? "dim" : failed.has(plan[index - 1]!.id) ? "warning" : "success";
       top.push(" ".repeat(PLAN_LINK));
       bottom.push(" ".repeat(PLAN_LINK));
-      middle.push(themeText(theme, closed ? "success" : "dim", glyphs.h.repeat(PLAN_LINK)));
+      middle.push(themeText(theme, linkRole, glyphs.h.repeat(PLAN_LINK)));
     }
     const border = themeText(theme, role, (role === "dim" ? glyphs.boxAhead : glyphs.h).repeat(box - 2));
     const corner = (glyph: string) => themeText(theme, role, glyph);
@@ -497,19 +571,9 @@ export function paintGroup(
   const story = plan.length > 0;
   // One clock for the whole card, so every spinning mark lands on the same frame.
   const now = Date.now();
-  const phaseByCall = new Map<string, string>();
-  let latestObservedPhase = -1;
-  // Every call belongs to a phase once a plan exists. A call whose milestone is missing or
-  // names something the plan does not have joins the phase of the work it follows, so no row
-  // floats outside the plan and the phase counts always add up to the calls on the card.
-  for (const node of tools) {
-    if (node.milestone) {
-      const declaredIndex = phasePlan.findIndex(phase => phase.id === node.milestone);
-      if (declaredIndex > latestObservedPhase) latestObservedPhase = declaredIndex;
-    }
-    const phase = phasePlan[Math.max(latestObservedPhase, 0)];
-    if (phase) phaseByCall.set(node.id, phase.id);
-  }
+  // Every call belongs to a phase once a plan exists, and the rule lives with the progress rule so
+  // the rows a phase paints and the rows that make it finished can never disagree.
+  const phaseByCall = phaseCallIds(group);
   const displayPhaseByCall = state.settings.groupGutter ? phaseByCall : new Map<string, string>();
   const durationNow = Date.now();
   // Every declared phase starts at zero, so the meter still scales against the whole plan.
@@ -595,10 +659,12 @@ export function paintGroup(
     if (cached) return cached;
     const phase = plan[index];
     if (!phase) return "dim";
-    const finished = planFinished(group);
-    const activeIndex = finished ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
-    const role: Foreground = countErrors(tools.filter(node => displayPhaseByCall.get(node.id) === phase.id))
-      ? "warning" : finished || index < activeIndex ? "success" : index === activeIndex ? "warning" : "dim";
+    // Colour answers one question: has the plan moved past this phase? Only a failure overrides it,
+    // so a phase cannot turn green and back while the pointer still sits on it.
+    const closed = closedPhases(group);
+    const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
+    const failed = countErrors(tools.filter(node => displayPhaseByCall.get(node.id) === phase.id)) > 0;
+    const role: Foreground = failed ? "warning" : index < closed ? "success" : index === activeIndex ? "accent" : "dim";
     phaseRoles.set(index, role);
     return role;
   };
@@ -607,17 +673,19 @@ export function paintGroup(
   const emitPhase = (index: number): void => {
     const phase = plan[index];
     if (!phase) return;
-    const complete = planFinished(group);
-    const activeIndex = complete ? plan.length - 1 : plan.findIndex(item => item.id === group.activeMilestoneId);
+    // A phase closes the moment its own calls return, whatever the pointer still says — but the last
+    // one, which waits for the final response like the meter does.
+    const closed = closedPhases(group);
+    const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
     if (story) {
       const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
       const failures = countErrors(phaseRows);
-      const done = complete || index < activeIndex;
+      const done = index < closed;
       const role = phaseRole(index);
-      // The phase in flight turns the same spinner as its calls and keeps turning until the phase ends,
-      // so a gap between two calls never reads as work that stopped. A failed call inside it changes the
-      // row's colour and rollup, never the spinner: the phase has not stopped working.
-      const live = !done && index === activeIndex && group.settled !== true;
+      // The phase in flight turns the same spinner as its calls and keeps turning until the plan moves
+      // past it or the card closes: a gap between two calls is still that phase working, so its own
+      // calls returning never stops the spinner. A failed call changes colour, never motion.
+      const live = index === activeIndex && group.settled !== true && !planFinished(group);
       const settled = failures ? glyphs.warning : done ? glyphs.check : glyphs.hollow;
       const mark = live ? spinnerGlyph(glyphs, now) : failures || done || index !== activeIndex ? settled : glyphs.dot;
       const target = milestoneTarget(phase.id);
@@ -641,7 +709,7 @@ export function paintGroup(
       targets.set(lines.length - 1, target);
       return;
     }
-    const role: Foreground = complete || index < activeIndex ? "success" : index === activeIndex ? "accent" : "dim";
+    const role: Foreground = phaseRole(index);
     const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
     // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
     const calls = phaseRows.length;
@@ -650,7 +718,7 @@ export function paintGroup(
     const phaseTarget = milestoneTarget(phase.id);
     // A live phase turns instead of holding a still diamond, from the moment it opens until it closes,
     // even after a call inside it failed: the error cell reports that, the marker reports motion.
-    const live = !(complete || index < activeIndex) && index === activeIndex && group.settled !== true;
+    const live = index === activeIndex && group.settled !== true;
     const prefix = themeText(theme, role, (live ? spinnerGlyph(glyphs, now) : glyphs.diamond) + " " + phase.label, true);
     const detailParts = [
       calls > 0 ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls")) : "",
@@ -851,6 +919,22 @@ export function paintGroup(
         }
         if (node.previewTruncated || painted.length > PREVIEW_LINES) {
           lines.push(fitToolLine(prefix + themeText(theme, "dim", ELLIPSIS), width));
+          targets.set(lines.length - 1, node.id);
+        }
+      }
+      // A call still running has nothing captured yet, so its own live component is the
+      // only output there is; painting it keeps opening the row from being a no-op.
+      if (open && preview.length === 0 && node.status === "running" && node.live) {
+        const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
+        const prefix = themeText(theme, "dim", phaseIndent + childGuide + glyphs.pipe + " ");
+        let live: string[] = [];
+        try {
+          live = node.live.render(Math.max(1, width - visibleWidth(prefix)));
+        } catch {
+          live = [];
+        }
+        for (const text of live.slice(0, PREVIEW_LINES)) {
+          lines.push(fitToolLine(prefix + text, width));
           targets.set(lines.length - 1, node.id);
         }
       }

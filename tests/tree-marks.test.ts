@@ -141,6 +141,21 @@ test("the meter keeps only the share, and the plan row names every phase", () =>
   assert.ok(narrow.length <= 35, `compact meter exceeds its viewport: ${narrow}`);
 });
 
+test("a failed phase warns instead of claiming success", () => {
+  const tree = new ToolTree(settings);
+  step(tree, "a", "inspect", 30);
+  tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 4 });
+  const open = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
+  assert.match(open, /\[warning\]\| \[warning\]Inspect \[warning\]\|/, "a failure paints its own phase, in flight or not");
+  assert.match(open, /\[dim\]\| \[dim\]Verify \[dim\]\|/, "the phases ahead stay dim");
+  assert.doesNotMatch(open, /Inspect \[warning\]\|\[warning\]---/, "the link closes only when the plan moves on");
+
+  // Moving on closes the phase, and the failure travels with it instead of turning green.
+  step(tree, "b", "build", 60);
+  const moved = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
+  assert.match(moved, /Inspect \[warning\]\|\[warning\]---\[accent\]\| \[accent\]Build/, moved);
+});
+
 test("a crowded plan drops whole boxes and counts the rest instead of cutting one", () => {
   const tree = new ToolTree(settings);
   const plan = "a=Inspect; b=Build; c=Verify; d=Lint; e=Docs; f=Commit; g=Push";
@@ -339,14 +354,13 @@ test("a finished card keeps a quiet marker", () => {
   assert.doesNotMatch(marker, /warning/);
 });
 
-test("the phase in flight keeps turning while no call is running", () => {
+test("the phase in flight keeps turning until the plan moves on", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     step(tree, "a", "build", 55);
-    settle(tree, "a");
     const base = 1_000_000;
-    // Nothing is running, but the phase is still open: its mark turns on the same clock as a live call.
+    // The phase's mark turns on the same clock as a live call while that call is in flight.
     const mark = (offset: number): string => {
       Date.now = () => base + offset;
       // The plan row also names Build, so pick the numbered phase row below it.
@@ -356,34 +370,46 @@ test("the phase in flight keeps turning while no call is running", () => {
       return /(\S) \d\d /.exec(row)![1]!;
     };
     const first = mark(0);
-    assert.notEqual(mark(SPIN_MS), first, "the phase mark turns while the phase is open");
-    assert.notEqual(mark(SPIN_MS * 2), mark(SPIN_MS), "it keeps turning between two finished calls");
+    assert.notEqual(mark(SPIN_MS), first, "the phase mark turns while its call runs");
+    assert.notEqual(mark(SPIN_MS * 2), mark(SPIN_MS), "it keeps turning between two frames");
     // One revolution is as long as the glyph table's frame list, whatever mode is painting.
     assert.equal(mark(SPIN_MS * treeGlyphs(settings.iconMode).spinner.length), first, "one revolution returns to the first frame");
-    // Closing the card ends the motion, so a settled phase holds one still mark.
+    // A call returning is work, not an ending: the gap before the next call still shows motion.
+    tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false, durationMs: 4 });
+    assert.notEqual(mark(SPIN_MS), mark(0), "a returned call never stops its phase turning");
+    // The plan moving past the phase is what closes it.
+    step(tree, "b", "verify", 80);
+    const closed = mark(0);
+    assert.equal(closed, treeGlyphs(settings.iconMode).check, "a phase the plan moved past holds a check");
+    assert.equal(mark(SPIN_MS), closed, "a closed phase stops turning");
     tree.settle();
-    assert.equal(mark(0), mark(SPIN_MS), "a settled phase stops turning");
+    assert.equal(mark(0), closed, "settling the card changes nothing once the plan is over");
   } finally {
     Date.now = real;
   }
 });
 
-test("a phase keeps turning after one of its own calls failed", () => {
+test("a failed phase keeps turning while it is in flight, then holds the failure", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     step(tree, "a", "build", 55);
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 4 });
     const base = 2_000_000;
-    // The phase is still the one being worked on: the failure belongs in its rollup, not in place of its motion.
+    // Nothing runs in the phase, yet it is still the one in flight, so the mark keeps turning.
+    const frames = treeGlyphs(settings.iconMode).spinner;
     const mark = (offset: number): string => {
       Date.now = () => base + offset;
       const line = painted(tree, WIDE, plainTheme).find(candidate => /(\S) \d\d /.test(candidate) && candidate.includes("Build"));
       assert.ok(line, "expected the phase row in the painted card");
       return /(\S) \d\d /.exec(line)![1]!;
     };
-    assert.notEqual(mark(0), "!", "a failure inside the live phase never replaces the spinner");
-    assert.notEqual(mark(SPIN_MS), mark(0), "the phase keeps turning after the failure");
+    assert.ok(frames.includes(mark(0)), "a phase still in flight keeps turning after a failure");
+    assert.notEqual(mark(SPIN_MS), mark(0), "a failure changes the colour, not the motion");
+    // The plan moving past it is what ends the phase, and the failure is what it then holds.
+    step(tree, "b", "verify", 80);
+    assert.equal(mark(0), "!", "a failed phase the plan left behind holds the failure");
+    assert.equal(mark(SPIN_MS), "!", "and stops turning");
   } finally {
     Date.now = real;
   }
@@ -538,7 +564,7 @@ test("a collapsed phase keeps the recent window and reports phase-level failures
   const initial = rendered();
   const styled = card(tree, "a", theme).render(WIDE).map(plain);
   const inspectHeader = styled.find(line => line.includes("Inspect") && line.includes("1 failed")) ?? "";
-  assert.match(inspectHeader, /\[warning\] · 1 failed/, "the collapsed phase reports its failure");
+  assert.match(inspectHeader, /\[warning\]1 failed/, "the collapsed phase reports its failure");
   assert.ok(!initial.some(line => line.includes("Read release notes")), "a folded call never resurfaces as a summary row");
   for (const width of [35, 60, 96, WIDE]) {
     const lines = card(tree, "a", plainTheme).render(width).map(plain);
@@ -604,13 +630,13 @@ test("phase gutter hides phase markers and leaves calls as branches", () => {
   const lines = painted(tree, 60, plainTheme);
   assert.equal(lines.some(line => /◆ (?:Inspect|Build|Verify)/.test(line)), false, "the existing phase-gutter option still hides phase markers");
   assert.equal(lines.filter(isConnectorLine).length, 0, "hidden phases do not leave a detached spine");
-  assert.equal(lines.filter(line => /^ │ [├└] ●/.test(line)).length, 3, "calls remain a branch list");
+  assert.equal(lines.filter(line => /[├└]─ /.test(line)).length, 3, "calls remain a branch list");
 });
 
 test("a completed phase marker turns green when the plan moves on", () => {
   const tree = twoPhases();
   const phaseMarker = () => painted(tree, WIDE).find(line => line.includes("02") && line.includes("Build")) ?? "";
-  assert.match(phaseMarker(), /\[warning\]. 02/, "the active phase marker carries the warning color and turns");
+  assert.match(phaseMarker(), /\[accent\]. 02/, "the active phase marker carries the accent color and turns");
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");
@@ -634,7 +660,7 @@ test("phase call counts do not reveal nested totals hidden from codemode summari
   assert.match(phase, /1 .*call/, "phase count describes its direct codemode row");
   assert.doesNotMatch(phase, /3 .*calls/, "hidden nested tools do not leak through the phase rollup");
   const styledPhase = painted(tree, WIDE).find(line => line.includes("01") && line.includes("Inspect") && line.includes("call")) ?? "";
-  assert.match(styledPhase, /\[dim\] · 1 calls?/, "the phase count and its unit share the dim role");
+  assert.match(styledPhase, /\[dim\]1 calls?/, "the phase count and its unit share the dim role");
 });
 
 test("the duration scale includes calls outside the collapsed window", () => {
@@ -672,7 +698,7 @@ test("the duration scale includes calls outside the collapsed window", () => {
       /old_tool/,
       "the older tool row is outside the visible window",
     );
-    const rail = /[━─]+(?= · 5s │$)/.exec(current)?.[0];
+    const rail = /[━─]+(?= · 5s$)/.exec(current)?.[0];
     assert.ok(rail, "the visible row retains its rail and elapsed label");
     assert.equal(
       [...rail].filter(cell => cell === "━").length,
@@ -684,12 +710,12 @@ test("the duration scale includes calls outside the collapsed window", () => {
   }
 });
 
-test("no phase but the last may paint a finished bar", () => {
+test("the bar stops behind the phase the plan has left", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "build", 100);
   settle(tree, "a");
   const meter = painted(tree, WIDE, plainTheme).find(line => line.includes("▰") || line.includes("▱")) ?? "";
-  // Build has only the first third to its name, so the bar stops there while Verify is ahead.
+  // Build is the phase in flight: its call came back, but the plan has not moved past it.
   assert.match(meter, / 33%/, meter);
   assert.match(meter, /▱/, "the last third stays empty");
 

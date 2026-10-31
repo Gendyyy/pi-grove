@@ -165,11 +165,12 @@ test("restored groups paint one card at their oldest row", () => {
   tree.restore(readTranscript(entries, "prompt"));
 
   const card = lines(tree.render(row("c1")));
-  assert.match(card[0]!, /3 calls/);
-  assert.match(card[0]!, /bash x2/);
-  assert.match(card[0]!, /read x2/);
-  assert.match(card[0]!, /codemode x1/);
-  assert.match(card[0]!, /1 error/);
+  const summary = card.find(line => line.includes(" calls")) ?? "";
+  assert.match(summary, /3 calls/);
+  assert.match(summary, /bash x2/);
+  assert.match(summary, /read x2/);
+  assert.match(summary, /codemode x1/);
+  assert.match(summary, /1 error/);
   // Siblings must stay blank, or pi would paint the same card once per row.
   assert.deepEqual(tree.render(row("c2")).render(80), []);
   assert.deepEqual(tree.render(row("c3")).render(80), []);
@@ -259,7 +260,7 @@ return 1;` },
   const component = tree.render(row("m1"));
   const card = lines(component);
   const meter = card.find(line => /[▰▱]/.test(line)) ?? "";
-  // The restored transcript is still in flight on Build, so its declared 70% buys nothing.
+  // The plan moved past Inspect; Build is still the phase in flight, and the declared 70% buys nothing.
   assert.match(meter, / 33%/, meter);
   assert.doesNotMatch(meter, /70%/, "a replayed estimate never paints");
 
@@ -296,9 +297,9 @@ test("replay reads complete only when every restored call succeeded", () => {
   const tree = new ToolTree(settings());
   tree.restore(readTranscript(entries, "prompt"));
   const painted = lines(tree.render(row("a1")));
-  assert.equal(painted.length, 2);
-  assert.match(painted[1]!, /run the tests/);
-  assert.match(painted[1]!, /incomplete/);
+  const call = painted.find(line => line.includes("run the tests")) ?? "";
+  assert.ok(call, "the call keeps its own row");
+  assert.match(call, /incomplete/);
 });
 test("reasoning is replayed only when the card shows it", () => {
   const transcript = [

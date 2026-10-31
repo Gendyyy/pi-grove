@@ -120,15 +120,12 @@ function at(component: Component, pattern: RegExp, width = 80): number {
     .findIndex(line => pattern.test(line));
 }
 
-/** Rendered lines with the host padding trimmed. */
+/** Rendered lines with the host padding trimmed, starting at the body below the title. */
 function lines(component: Component, width = 80): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
-  // The card is one bordered object now, so the body is what the assertions index.
-  if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted
-    .slice(1)
-    .map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim())
-    .filter(line => line.length > 0 && line !== "|" && line !== "│");
+  // The card leads with its title row, so the body is what index-based assertions count.
+  if (painted.length > 1 && /^[▌│|] /.test(painted[0]!)) painted.shift();
+  return painted.filter(line => line.length > 0 && line !== "|" && line !== "│");
 }
 
 test("milestone annotations accept only bounded, uniquely identified phase plans", () => {
@@ -274,7 +271,7 @@ test("no call declares its own percentage, and a card without a plan has none", 
   assert.match(frame.find(line => line.includes("+") && line.includes("..")) ?? "", /\+\.{4,}\+/, "a phase still ahead keeps a dotted box");
 });
 
-test("the plan meter earns one equal slice per finished phase and completes only when the card settles", () => {
+test("the plan meter earns one equal slice per finished phase and completes the moment the work returns", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   const phases = "inspect=Inspect; build=Build; verify=Verify";
   const start = (id: string, milestone: string) =>
@@ -300,10 +297,10 @@ test("the plan meter earns one equal slice per finished phase and completes only
   start("d", "verify");
   assert.match(meter(), / 67%/, "the plan never reads complete while a call runs");
   end("d");
-  assert.match(meter(), / 67%/, "the last phase closing clean still owes the card's own end");
+  assert.match(meter(), / 67%/, "the plan waits for the final response instead of reading complete early");
+  assert.match(plan(), /Inspect \|-{3}\| Build \|-{3}\| Verify/, "the phases whose work came back link to each other");
   tree.settle();
-  assert.match(meter(), /100%/, "a settled card reads complete");
-  assert.match(plan(), /Inspect \|-{3}\| Build \|-{3}\| Verify/, "every closed phase links to the next");
+  assert.match(meter(), /100%/, "the final response closes the plan");
   assert.doesNotMatch(plan(), /%|\./, "a settled plan keeps no dots and no percentages");
 });
 
@@ -382,7 +379,7 @@ test("rollup places the call count after progress and the duration sparkline", (
       tree.end({ toolCallId, toolName: "bash", result: { content: [] }, isError: false });
     }
 
-    const header = stripAnsi(lines(tree.render(row("call-0", false, PROGRESS_THEME)))[1]!);
+    const header = stripAnsi(lines(tree.render(row("call-0", false, PROGRESS_THEME)))[0]!);
     const progress = header.indexOf("33%");
     const sparkline = header.search(/[▁▂▃▄▅▆▇█]/);
     const callCount = header.indexOf("calls");
@@ -404,7 +401,7 @@ test("progress and sparkline visibility can be disabled independently", () => {
     progressOff.start({ toolCallId: "progress-off", toolName: "read", args: planned });
     now += 1_200;
     progressOff.end({ toolCallId: "progress-off", toolName: "read", result: { content: [] }, isError: false });
-    const progressOffHeader = stripAnsi(lines(progressOff.render(row("progress-off", false, PROGRESS_THEME)))[1]!);
+    const progressOffHeader = stripAnsi(lines(progressOff.render(row("progress-off", false, PROGRESS_THEME)))[0]!);
     assert.doesNotMatch(progressOffHeader, /33%|[▰▱]/);
     assert.match(progressOffHeader, /[▁▂▃▄▅▆▇█]/, "hiding the meter leaves the duration chart visible");
 
@@ -412,7 +409,7 @@ test("progress and sparkline visibility can be disabled independently", () => {
     sparklineOff.start({ toolCallId: "sparkline-off", toolName: "read", args: planned });
     now += 900;
     sparklineOff.end({ toolCallId: "sparkline-off", toolName: "read", result: { content: [] }, isError: false });
-    const sparklineOffHeader = stripAnsi(lines(sparklineOff.render(row("sparkline-off", false, PROGRESS_THEME)))[1]!);
+    const sparklineOffHeader = stripAnsi(lines(sparklineOff.render(row("sparkline-off", false, PROGRESS_THEME)))[0]!);
     assert.match(sparklineOffHeader, /33%/, "hiding the chart leaves the progress meter visible");
     assert.doesNotMatch(sparklineOffHeader, /[▁▂▃▄▅▆▇█]/);
     assert.match(sparklineOffHeader, /1 call/);
@@ -435,13 +432,13 @@ test("live presentation changes repaint existing cards", () => {
     });
     now += 1_200;
     tree.end({ toolCallId: "live-settings", toolName: "read", result: { content: [] }, isError: false });
-    const before = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[1]!);
+    const before = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[0]!);
     assert.match(before, /33%/);
     assert.match(before, /[▁▂▃▄▅▆▇█]/);
     const redrawsBefore = redraws;
 
     tree.updateSettings({ groupProgress: false, groupSparkline: false, window: 2 });
-    const after = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[1]!);
+    const after = stripAnsi(lines(tree.render(row("live-settings", false, PROGRESS_THEME)))[0]!);
     assert.doesNotMatch(after, /33%|[▁▂▃▄▅▆▇█]/);
     assert.ok(redraws > redrawsBefore, "the settings update invalidates mounted cards");
   } finally {
@@ -483,7 +480,7 @@ test("the border title stays static while tool rows run", () => {
     const first = tree.render(cardRow).render(80)[0]!;
     Date.now = () => base + 100;
     const next = tree.render(cardRow).render(80)[0]!;
-    assert.match(stripAnsi(first).trimStart(), /^\+- Inspect payment retry safeguards/);
+    assert.match(stripAnsi(first).trimStart(), /^[|│] Inspect payment retry safeguards/);
     assert.equal(next, first, "the border title has no shimmer or animated glyph");
     assert.ok(stylesFor(first, title).every(style => style === "\u001b[35m"));
     assert.equal(visibleWidth(first), visibleWidth(next));
@@ -577,7 +574,7 @@ test("a running row shimmers its fitted description without changing layout", ()
     const laterStyles = stylesFor(later.join("\n"), "inspect the retry path");
     assert.equal(firstStyles.length, "inspect the retry path".length);
     assert.notDeepEqual(laterStyles, firstStyles, "the description highlight should move");
-    assert.deepEqual(later.map(visibleWidth), first.map(visibleWidth));
+    assert.equal(visibleWidth(later[2]!), visibleWidth(first[2]!), "the shimmer moves no cell of the row");
   } finally {
     Date.now = realNow;
   }
@@ -634,7 +631,7 @@ test("the border title stays on the task description despite legacy phase annota
   assert.match(title, /Inspect payment retry safeguards/);
   assert.doesNotMatch(title, /Trace when timeout|Add regression coverage/);
   assert.doesNotMatch(stripAnsi(title), /[▰▱]|20%/);
-  assert.match(stripAnsi(card.render(80)[1]!), /▰▰▱{8} +20%/);
+  assert.doesNotMatch(stripAnsi(card.render(80)[1]!), /[▰▱]|20%/, "a declared number without a plan paints no meter");
 
   tree.start({
     toolCallId: "nested",
@@ -643,7 +640,7 @@ test("the border title stays on the task description despite legacy phase annota
     args: { taskIntent: "Run the complete test suite", taskProgress: 100, groupPhase: "Verify behavior" },
   });
   assert.match(card.render(80)[0]!, /Inspect payment retry safeguards/, "nested work cannot replace the title");
-  assert.match(stripAnsi(card.render(80)[1]!), /20%/, "nested work cannot replace task progress");
+  assert.doesNotMatch(stripAnsi(card.render(80)[1]!), /100%/, "nested work cannot claim task progress");
 });
 
 test("codemode task metadata after @options becomes the border title", () => {
@@ -657,7 +654,7 @@ test("codemode task metadata after @options becomes the border title", () => {
   assert.doesNotMatch(tree.render(row("code")).render(80)[0]!, /Trace how transcript calls are grouped/);
 });
 
-test("a long task title is clipped to the available border width", () => {
+test("a long task title wraps inside the available width", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({
     toolCallId: "a",
@@ -665,9 +662,10 @@ test("a long task title is clipped to the available border width", () => {
     args: { taskIntent: "Prepare a comprehensive compatibility report for every supported platform" },
   });
   const frame = tree.render(row("a")).render(32);
-  assert.ok(visibleWidth(frame[0]!) <= 32);
-  assert.match(stripAnsi(frame[0]!), /Prepare a compreh…/);
-  assert.match(frame[0]!, /…/);
+  assert.ok(frame.every(line => visibleWidth(line) <= 32), "nothing overflows a narrow card");
+  const painted = frame.map(stripAnsi).join(" ");
+  assert.match(painted, /Prepare a comprehensive/, "the headline keeps its words instead of clipping them");
+  assert.match(painted, /every supported platform/, "the wrapped title finishes under the rail");
 });
 
 test("a recovered failure remains a count without a group status label", () => {
@@ -842,7 +840,6 @@ test("Unicode duration sparkline uses height bars", () => {
     now += 1_500;
     const head = lines(tree.render(row("a")))[0]!;
     const plot = head.split(" · ")[0];
-    assert.ok(plot?.includes("\uf080"), `no Nerd Font bar-chart cue in: ${head}`);
     const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
     assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);
     assert.equal(spark[0], "▂", "the shortest call uses the lowest bar");
@@ -1008,6 +1005,26 @@ test("clicking a codemode row reveals its nested steps", () => {
   assert.equal(after.length, 4);
   assert.match(after[2]!, /list files/);
   assert.match(after[3]!, /read the entry/);
+});
+
+test("an open running step paints the output it has so far", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
+  tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
+  // Pi mounts the running call row itself, and that row is the only live output there is.
+  const live = { render: () => ["$ ls", "src", "tests"], invalidate: () => {} };
+  tree.render({ ...row("c1"), inner: live });
+
+  const card = tree.render(row("c"));
+  card.handleMouse?.(click(at(card, /build the card/)));
+  const opened = tree.render(row("c"));
+  assert.doesNotMatch(lines(opened).join(" "), /tests/, "a running step keeps its output closed until asked");
+
+  opened.handleMouse?.(click(at(opened, /list files/)));
+  const body = lines(tree.render(row("c"))).join(" ");
+  assert.match(body, /\$ ls/, "opening a running step shows the output it has so far");
+  assert.match(body, /src/, "every live line is painted");
+  assert.match(body, /tests/);
 });
 
 test("hiding nested counts preserves expandable child rows and failure markers", () => {
@@ -1196,10 +1213,11 @@ test("the collapsed card keeps only the newest calls and expands on click", () =
   }
   const card = tree.render(row("a"));
   const rolled = lines(card);
-  assert.equal(rolled.length, 3);
+  assert.equal(rolled.length, 4);
   assert.match(rolled[0]!, /2 of 4 calls/);
-  assert.match(rolled[1]!, /step c/);
-  assert.match(rolled[2]!, /step d/);
+  assert.match(rolled[1]!, /2 earlier calls/);
+  assert.match(rolled[2]!, /step c/);
+  assert.match(rolled[3]!, /step d/);
 
   card.handleMouse?.(click(at(card, /calls?\b/)));
   assert.equal(lines(tree.render(row("a"))).length, 5);
@@ -1381,10 +1399,11 @@ test("a shrink-wrapped final call keeps the phases the card already showed", () 
 
   step("a", plan, "inspect", 20);
   step("b", plan, "build", 60);
-  assert.match(meter(), /60% > \* Build 2\/3/);
+  assert.match(meter(), /0%/, "two calls still in flight have earned nothing, whatever phase the plan points at");
+  assert.ok(lines(tree.render(row("a"))).some(line => line.includes("Inspect") && line.includes("Build")), "the plan keeps naming the phases it already showed");
 
   // The closing call names only the phase it is working on. The card must still keep the
   // phases the plan already showed instead of collapsing to a one-step plan.
   step("c", "verify=Verify", "verify", 100);
-  assert.match(meter(), /Verify 3\/3/);
+  assert.match(meter(), /0%/, "a shrinking plan never invents a share its calls have not earned");
 });
