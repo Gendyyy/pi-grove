@@ -45,9 +45,17 @@ test("grouped top-level codemode calls require a stable identity and a phase pla
   assert.match(codemodeGroupMetadataViolation(foreignPhase, "prompt") ?? "", /must name a phase from the declared/);
 
   assert.equal(codemodeGroupMetadataViolation(validTask, "prompt"), undefined);
+
+  // A call with no goal comment paints as a bare tool name, so it must be asked again.
+  const missingGoal = {
+    toolName: "codemode",
+    input: { code: script(intent, progress, plan, phase, "return 1;") },
+  };
+  assert.match(codemodeGroupMetadataViolation(missingGoal, "prompt") ?? "", /needs a model-written.*reasoning/);
+
   assert.equal(codemodeGroupMetadataViolation({
     toolName: "codemode",
-    input: { code: script(intent, progress, "// task-milestones: answer=Answer", "// task-milestone: answer", "return 1;") },
+    input: { code: script("// reasoning: answer the user", intent, progress, "// task-milestones: answer=Answer", "// task-milestone: answer", "return 1;") },
   }, "prompt"), undefined);
 
   const annotated = {
@@ -73,7 +81,7 @@ test("grouped top-level codemode calls require a stable identity and a phase pla
 test("a declared percentage never blocks a call, whatever phase it names", () => {
   const call = (value: number, milestone: string) => ({
     toolName: "codemode",
-    input: { code: script(intent, "// task-progress: " + value, plan, "// task-milestone: " + milestone, "return 1;") },
+    input: { code: script("// reasoning: inspect the retry path", intent, "// task-progress: " + value, plan, "// task-milestone: " + milestone, "return 1;") },
   });
 
   // The gate stopped reading percentages: the phase plan decides what the card reports.
@@ -110,7 +118,7 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
 
   const promptEvent = { systemPromptOptions: { selectedTools: ["codemode"], sections: {} as Record<string, string> } };
   handlers.get("before_agent_start")?.(promptEvent);
-  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /must include a model-written.*task-intent:/s);
+  assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /must include a model-written.*\/\/ task-intent:/s);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /stable border title, not a phase update/);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /derives the completion percentage from the phases/s);
   assert.match(promptEvent.systemPromptOptions.sections.grove_tool_ui ?? "", /never send a percentage/s);
@@ -135,7 +143,7 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
 });
 
 test("Pi-agent guidance keeps task identity as the sole border title", () => {
-  assert.match(CODEMODE_GROUP_GUIDANCE, /must include a model-written \/\/ task-intent:.*task-milestones:/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /must include a model-written.*\/\/ task-intent:.*task-milestones:/s);
   assert.match(CODEMODE_GROUP_GUIDANCE, /stable border title, not a phase update/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /finishes the task must end with a top-level call naming the plan's final/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /answer itself needs no tool call.*still make one last top-level codemode call/s);
@@ -149,6 +157,8 @@ test("Pi-agent guidance keeps task identity as the sole border title", () => {
   assert.match(CODEMODE_GROUP_GUIDANCE, /discoveries change the work.*preserving the IDs and order of completed phases/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /task-milestone: <id>.*every top-level call/);
   assert.match(CODEMODE_GROUP_GUIDANCE, /@options:.*reasoning:.*task-intent:.*task-milestones:/s);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /must include a model-written/);
+  assert.match(CODEMODE_GROUP_GUIDANCE, /reasoning: <goal> line naming the action/);
   assert.doesNotMatch(CODEMODE_GROUP_GUIDANCE, /group-phase/);
 });
 

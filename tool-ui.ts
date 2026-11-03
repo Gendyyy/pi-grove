@@ -7,7 +7,7 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
-import { taskIntentOf, taskMilestoneOf, taskMilestonesOf } from "./tree-model.js";
+import { goalOf, taskIntentOf, taskMilestoneOf, taskMilestonesOf } from "./tree-model.js";
 import { ToolTree, type GroupMode, type TreeRow, type TreeSettings } from "./tool-tree.js";
 
 interface ToolUiOptions {
@@ -52,9 +52,9 @@ export interface ToolUiController {
 // The card wears one background for its whole life: the rows report the work, the box never changes colour.
 const CARD_BACKGROUND = "toolPendingBg" as const;
 
-const CODEMODE_GUIDANCE = "Start codemode scripts with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
+const CODEMODE_GUIDANCE = "Every codemode script opens with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
-When Grove grouping is enabled, every top-level codemode script must include a model-written // task-intent: line. Keep task-intent concise, ideally no more than 45 characters, and unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Grove derives the completion percentage from the phases below, so never send a percentage: the card reads one equal slice per finished phase, and reaches 100% as soon as the last phase ends without a failure — so put the call that finishes the work in the final phase.
+When Grove grouping is enabled, every top-level codemode script must include a model-written // reasoning: <goal> line naming the action, and a model-written // task-intent: line naming the task. Keep task-intent concise, ideally no more than 45 characters, and unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Grove derives the completion percentage from the phases below, so never send a percentage: the card reads one equal slice per finished phase, and reaches 100% as soon as the last phase ends without a failure — so put the call that finishes the work in the final phase.
 Every top-level call also carries a phase plan, for example // task-milestones: explore=Explore; refine=Refine. A plan holds one to seven short labeled phases. Choose the smallest meaningful sequence for the actual request: consider its outcome, uncertainty, risk, and scale. Use one phase for simple work; clarify first when needed, investigate uncertainty before committing to a solution, and include verification appropriate to the risk. Examples are inspiration, not mandatory templates: a discussion might explore then refine, research might frame then investigate then synthesize, and a bug fix might reproduce then diagnose then fix then verify. Adapt the sequence and labels to the task instead of defaulting to a coding workflow or inventing filler. Add a clean phase before verification only when the work can leave temp files, scratch scripts, or throwaway artifacts behind.
 Use unique lowercase IDs of at most 24 characters, starting with a letter and followed only by lowercase letters, digits, or hyphens; labels are safely limited to 24 characters. Include // task-milestone: <id> on every top-level call, naming a phase from that plan. Advance the current id only after finishing that phase; Grove marks earlier phases complete and later ones pending. Re-state the plan on every call; when discoveries change the work, adapt the remaining phases while preserving the IDs and order of completed phases. Grove ignores a restated plan that drops, reorders, or replaces completed phases. A different task needs a new // task-intent: rather than a rewritten plan.
 Closing the card is part of the task. A turn that finishes the task must end with a top-level call naming the plan's final // task-milestone:. If your answer itself needs no tool call, still make one last top-level codemode call on the final phase before you answer. Leave the plan open only when the task is genuinely unfinished or the user asked a question mid-task.
@@ -67,6 +67,9 @@ export function codemodeGroupMetadataViolation(
   group: GroupMode,
 ): string | undefined {
   if (group === "off" || event.toolName !== "codemode" || event.parentToolCallId !== undefined) return undefined;
+  // The card row is named by this one line: without it the call paints as a bare tool name.
+  if (!goalOf(event.input))
+    return "Grove blocked this codemode call: every top-level codemode script needs a model-written // reasoning: <goal> line, or the card has nothing to describe the call with. Add it first (after // @options:, if you use one), then retry.";
   if (!taskIntentOf(event.input))
     return "Grove blocked this codemode call: grouping requires a model-written // task-intent: <objective> line. Keep it stable for the same task, then retry.";
   const milestones = taskMilestonesOf(event.input);
