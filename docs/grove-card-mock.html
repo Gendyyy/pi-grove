@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>grove card — rounded frame variants</title>
+<style>
+  :root {
+    --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+    --page: #0b0d12; --card: #14171e; --accent: #d9c15c; --title: #ecdc8f;
+    --text: #dcdfe6; --dim: #7d8496; --line: #232733; --green: #7cc27e; --red: #e0705f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px 40px; background: var(--page); color: var(--text);
+         font: 12.5px/1.5 var(--mono); }
+  h1 { margin: 0 0 4px; font-size: 14px; letter-spacing: .6px; color: var(--title); font-weight: 600; }
+  .sub { color: var(--dim); margin-bottom: 22px; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 22px; }
+
+  .slot { min-width: 0; }
+  .name { margin: 10px 2px 0; color: var(--dim); font-size: 11.5px; }
+  .name b { color: var(--text); font-weight: 600; }
+
+  /* ---- shared card chrome ---- */
+  fieldset.card, .card {
+    margin: 0; min-width: 0; padding: 4px 18px 12px;
+    background: var(--card); border: 1.5px solid var(--accent);
+    border-radius: 16px; color: var(--text);
+  }
+  legend { padding: 0 10px; margin-left: 6px; color: var(--title);
+           font-size: 13.5px; font-weight: 600; letter-spacing: .3px; white-space: nowrap; }
+
+  .meter-row { display: flex; align-items: center; gap: 10px; padding: 2px 0 8px; }
+  .pct { color: var(--accent); font-weight: 600; }
+  .meter { display: flex; gap: 2px; }
+  .meter i { width: 7px; height: 9px; border-radius: 2px; background: var(--accent); }
+  .meter i.off { background: var(--track, #232733); }
+  .stats { margin-left: auto; color: var(--dim); font-size: 11.5px; }
+  .stats b { color: var(--red); font-weight: 400; }
+
+  .phases { display: flex; align-items: center; gap: 8px; margin: 2px 0 12px; flex-wrap: wrap; }
+  .pill { border: 1.2px solid var(--line); border-radius: 999px; padding: 3px 12px;
+          color: var(--dim); font-size: 11.5px; }
+  .pill.on { border-color: var(--accent); color: var(--title); background: rgba(217,193,92,.12); }
+  .phases .join { width: 16px; height: 1.5px; background: var(--line); }
+
+  .phase-head { display: flex; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+                font-weight: 600; font-size: 12.5px; color: var(--text); }
+  .phase-head span:last-child { margin-left: auto; color: var(--dim); font-weight: 400; font-size: 11.5px; }
+  .rows { margin-top: 6px; }
+  .row { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; }
+  .mark { width: 12px; text-align: center; }
+  .icon { color: var(--dim); }
+  .row .desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .dur { color: var(--dim); font-size: 11.5px; }
+  .ok { color: var(--green); } .bad { color: var(--red); } .live { color: var(--accent); }
+  .fold { display: flex; justify-content: space-between; color: var(--dim);
+          font-size: 11.5px; margin-top: 10px; }
+
+  /* ---- variant frames ---- */
+  /* A — notched, left aligned */
+  .v-a legend { }
+
+  /* B — notched, centred */
+  .v-b legend { margin: 0 auto; }
+
+  /* C — hairline pill floating over an unbroken border */
+  .v-c { border-radius: 16px; }
+  .v-c legend { margin: -14px 0 0 8px; padding: 2px 12px; border: 1.4px solid var(--accent);
+                border-radius: 999px; background: var(--card); }
+
+  /* D — solid pill, dark text on accent */
+  .v-d legend { margin: -14px 0 0 8px; padding: 2px 12px; border-radius: 999px;
+                background: var(--accent); color: #17130a; border: 1.4px solid var(--accent); }
+
+  /* E — heavier stroke, larger radius, soft glow */
+  .v-e { border-width: 2.5px; border-radius: 22px;
+         box-shadow: 0 0 22px rgba(217,193,92,.16), inset 0 0 0 1px rgba(217,193,92,.05); }
+
+  /* F — hairline border with a second offset line */
+  .v-f { border-width: 1px; outline: 1px solid rgba(217,193,92,.32); outline-offset: 4px; }
+  .v-f legend { margin-left: 14px; }
+
+  /* G — legend flush into the top-left corner, tight radius */
+  .v-g { border-radius: 10px; }
+  .v-g legend { margin: -14px 0 0 -14px; padding: 2px 10px; background: var(--card);
+                border: 1.4px solid var(--accent); border-radius: 8px; }
+
+  /* H — no frame at all, title as a rule (baseline for comparison) */
+  .v-h { border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+  .v-h legend { margin: 0 0 0 0; padding: 0 12px 0 0; color: var(--title); }
+
+  /* I — two-line title inside a tall notch */
+  .v-i { border-radius: 18px; }
+  .v-i legend { white-space: normal; max-width: 62%; line-height: 1.25; }
+
+  /* J — squared corners with a single accent tick at the seam */
+  .v-j { border-radius: 4px; }
+  .v-j legend { margin-left: 10px; }
+
+  .ph-pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ph-pills .pill { border: 1.2px solid var(--line); border-radius: 999px; padding: 3px 12px; color: var(--dim); font-size: 11.5px; }
+  .ph-pills .pill.on { border-color: var(--accent); color: var(--title); background: rgba(217,193,92,.12); }
+
+  .ph-chips { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+  .ph-chips .chip { border: 1.2px solid var(--line); padding: 3px 10px; color: var(--dim); font-size: 11.5px; }
+  .ph-chips .chip.on { border-color: var(--accent); color: var(--title); }
+  .ph-chips .link { width: 18px; height: 1.2px; background: var(--line); }
+  .ph-chips .link.on { background: var(--accent); }
+
+  .ph-steps { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--dim); }
+  .ph-steps .step { display: flex; gap: 6px; align-items: center; }
+  .ph-steps .step.on { color: var(--title); }
+  .ph-steps .step.done { color: var(--green); }
+  .ph-steps .dot-sep { color: #2c313d; }
+</style>
+</head>
+<body>
+  <h1>grove card · task intent in the top border</h1>
+  <div class="sub">same content in every slot — only the frame changes. say the letter and I'll wire it into tree-paint.</div>
+  <div class="grid" id="grid"></div>
+
+<script>
+const rows = [
+  ["live", "register the MCP server in ~/.pi/agent/mcp.json", "4s"],
+  ["bad",  "list tools from the running server", "1s"],
+  ["ok",   "spot the duplicate bpc_ prefix", "&lt;1s"],
+];
+const mark = { live: "⠋", bad: "✗", ok: "✓" };
+const meter = () => `
+    <div class="meter-row">
+      <span class="pct">67%</span>
+      <div class="meter">${Array.from({ length: 20 }, (_, i) => '<i class="' + (i < 14 ? "" : "off") + '"></i>').join("")}</div>
+      <span class="stats"><b>2 failed</b> · 11 calls · 45m 09s</span>
+    </div>`;
+
+const phaseRow = {
+  pills: () => `<div class="phases ph-pills"><span class="pill on">✓ 01 Inspect MCP server</span><span class="pill">02 Configure pi MCP</span><span class="pill">03 Verify load</span></div>`,
+  chips: () => `<div class="phases ph-chips"><span class="chip on">✓ 01 Inspect MCP server</span><span class="link on"></span><span class="chip">02 Configure pi MCP</span><span class="link"></span><span class="chip">03 Verify load</span></div>`,
+  steps: () => `<div class="phases ph-steps"><span class="step done">✓ 01 Inspect MCP server</span><span class="dot-sep">·</span><span class="step on">◐ 02 Configure pi MCP</span><span class="dot-sep">·</span><span class="step">○ 03 Verify load</span></div>`,
+};
+
+const body = (phaseKind) => `
+    ${meter()}
+    ${phaseRow[phaseKind]()}
+    <div class="phase-head"><span>01 Inspect MCP server</span><span>2 failed · 7 calls · 4s</span></div>
+    <div class="rows">${rows.map(([k, d, t]) =>
+      '<div class="row"><span class="mark ' + k + '">' + mark[k] + '</span><span class="icon">▣</span>' +
+      '<span class="desc">' + d + '</span><span class="dur">' + t + '</span></div>').join("")}</div>
+    <div class="fold"><span>6 earlier calls  ctrl+o</span><span>ctrl+o  expand</span></div>`;
+
+const variants = [
+  ["a", "A", "notched, left aligned", "the fieldset read — title sits in the stroke, radius 16"],
+  ["b", "B", "notched, centred", "same, label centred; plays well with a short title"],
+  ["c", "C", "hairline pill floating over the border", "unbroken frame, label detached"],
+  ["d", "D", "solid accent pill", "highest contrast, best for the active card only"],
+  ["e", "E", "heavier stroke + glow", "weightier card, radius 22"],
+  ["f", "F", "hairline + offset second line", "double frame, quieter than E"],
+  ["g", "G", "label flush in the corner", "tight radius 10, label becomes a tab"],
+  ["h", "H", "no frame, title as a rule", "baseline: what you get if the box stays open"],
+  ["i", "I", "two-line title in a tall notch", "long intents wrap inside the border"],
+  ["j", "J", "square corners + accent seam", "terminal-native, radius 4"],
+];
+
+const grid = document.getElementById("grid");
+for (const [id, letter, name, note] of variants) {
+  const slot = document.createElement("div");
+  slot.className = "slot";
+  const tag = id === "h" ? "div" : "fieldset";
+  const label = id === "i"
+    ? "Install powerbi-custom-mcp into pi and wire its tools into codemode"
+    : "Install powerbi-custom-mcp into pi";
+  slot.innerHTML = `
+    <${tag} class="card v-${id}">
+      <legend>${label}</legend>
+      ${body("pills")}
+    </${tag}>
+    <div class="name"><b>${letter} · ${name}</b> — ${note}</div>`;
+  grid.appendChild(slot);
+}
+
+// D with three phase rows
+const strip = document.createElement("div");
+strip.className = "strip";
+strip.innerHTML = '<h2>D · the phase row</h2><div class="grid" id="phases"></div>';
+document.body.appendChild(strip);
+const phGrid = strip.querySelector("#phases");
+for (const [kind, letter, note] of [
+  ["pills", "P1", "rounded pills, active filled — what the mock above uses"],
+  ["chips", "P2", "square chips joined by links — closest to today's strip"],
+  ["steps", "P3", "a stepper, no boxes at all — quietest, cheapest in cells"],
+]) {
+  const slot = document.createElement("div");
+  slot.className = "slot";
+  slot.innerHTML = `
+    <fieldset class="card v-d">
+      <legend>Install powerbi-custom-mcp into pi</legend>
+      ${body(kind)}
+    </fieldset>
+    <div class="name"><b>${letter} · ${note}</b></div>`;
+  phGrid.appendChild(slot);
+}
+</script>
+</body>
+</html>

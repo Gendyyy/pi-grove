@@ -543,6 +543,17 @@ function stateMark(node: TreeNode, glyphs: Glyphs): StateMark {
  * Draw one group as a tree of rows. Returns ANSI text per line and, when a target map is
  * provided, records which node id owns each clickable line.
  */
+/** The card's top border, with the task intent set into it as a plain label. */
+function titleBorder(title: string, theme: GroveTheme, glyphs: Glyphs, width: number): string {
+  const leadIn = themeText(theme, "dim", glyphs.box.tl + glyphs.h);
+  // The label keeps a cell of air either side, so it reads as set into the stroke, not glued on.
+  const room = Math.max(1, width - visibleWidth(leadIn) - 4);
+  const label = truncateToWidth(title, room, ELLIPSIS);
+  const lead = leadIn + themeText(theme, "accent", " " + label + " ", true);
+  const rule = themeText(theme, "dim", glyphs.h.repeat(Math.max(0, width - visibleWidth(lead) - 1)));
+  return lead + rule + themeText(theme, "dim", glyphs.box.tr);
+}
+
 export function paintGroup(
   state: PaintState,
   group: TreeGroup,
@@ -554,8 +565,10 @@ export function paintGroup(
   targets.clear();
   const lines: string[] = [];
   if (group.rows.length === 0) return lines;
-  // The card spends two columns on its rail instead of four on a box, so narrow cards keep more.
-  const inner = width < 24 ? width : Math.max(8, width - 2);
+  // A framed card spends two cells per side; under that width the frame cannot hold a row, so the
+  // card falls back to the rail and keeps the cells instead.
+  const framed = width >= 24;
+  const inner = framed ? Math.max(8, width - 4) : width;
   const glyphs = treeGlyphs(state.settings.iconMode);
   // Two different gestures: the header reveals every row of the group, while pi own
   // expand-all (ctrl+o) opens every level. A revealed row still opens only by click.
@@ -779,11 +792,8 @@ export function paintGroup(
   }
   // The card names itself first and measures second: one headline line, then the meter, then
   // the work. The share rides the meter beside its own bar, so the headline stays a name.
-  const titleLines = wrapTextWithAnsi(group.intent || "GROVE", Math.max(1, inner));
-  for (const line of titleLines) {
-    lines.push(fitToolLine(themeText(theme, "accent", line, true), inner));
-    targets.set(lines.length - 1, GROUP_TARGET);
-  }
+  // The task intent lives in the card's own top border, so the title never costs a content row.
+  const topBorder = framed ? titleBorder(group.intent || "GROVE", theme, glyphs, width) : "";
   // One line, one gesture: the meter opens the plan it draws, the rail opens the rows.
   if (story) {
     const pieces: string[] = [];
@@ -954,10 +964,28 @@ export function paintGroup(
   }
   if (lines.length === 0 || width < 24) return lines;
 
-  // The rail is the card: one tone column on the left edge, no right border and no rules, so
-  // a group reads as narration inside pi's own row box instead of a box inside a box. The tone
-  // is fixed: chrome says where the card is, the rows inside say how the work is going.
-  const rail = themeText(theme, "dim", glyphs.rail) + " ";
-  return lines.map(line => rail + fitToolLine(line, inner));
+  if (!framed) {
+    const rail = themeText(theme, "dim", glyphs.rail) + " ";
+    return lines.map(line => rail + fitToolLine(line, inner));
+  }
+  // The card is its own box: the title rides the top border, the sides carry the frame, and the
+  // chrome keeps one tone so the rows inside say how the work is going.
+  const edge = (text: string) => themeText(theme, "dim", text);
+  const side = edge(glyphs.v + " ");
+  const sideEnd = edge(" " + glyphs.v);
+  // Every row is padded to the frame's content width, or the right border would wander.
+  const body = lines.map(line => {
+    const fitted = fitToolLine(line, inner);
+    const pad = " ".repeat(Math.max(0, inner - visibleWidth(fitted)));
+    return side + fitted + pad + sideEnd;
+  });
+  const bottom = edge(glyphs.box.bl + glyphs.h.repeat(Math.max(0, width - 2)) + glyphs.box.br);
+  // Every click target moves one row down once the border is above them, and the border itself
+  // is the gesture that reveals the whole card.
+  const shifted = [...targets].map(([line, target]) => [line + 1, target] as const);
+  targets.clear();
+  targets.set(0, GROUP_TARGET);
+  for (const [line, target] of shifted) targets.set(line, target);
+  return [topBorder, ...body, bottom];
 }
 

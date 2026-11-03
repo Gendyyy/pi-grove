@@ -120,12 +120,17 @@ function at(component: Component, pattern: RegExp, width = 80): number {
     .findIndex(line => pattern.test(line));
 }
 
-/** Rendered lines with the host padding trimmed, starting at the body below the title. */
+/** Rendered lines with the host padding trimmed, starting at the body below the border. */
 function lines(component: Component, width = 80): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
-  // The card leads with its title row, so the body is what index-based assertions count.
-  if (painted.length > 1 && /^[▌│|] /.test(painted[0]!)) painted.shift();
-  return painted.filter(line => line.length > 0 && line !== "|" && line !== "│");
+  // The card is one framed object now: the title rides the top border, so the body is what
+  // index-based assertions count.
+  const body = painted.length >= 2 && /^[╭+┌][-─]/.test(painted[0]!)
+    ? painted.slice(1, -1)
+    : painted;
+  return body
+    .map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim())
+    .filter(line => line.length > 0 && line !== "|" && line !== "│");
 }
 
 test("milestone annotations accept only bounded, uniquely identified phase plans", () => {
@@ -480,7 +485,7 @@ test("the border title stays static while tool rows run", () => {
     const first = tree.render(cardRow).render(80)[0]!;
     Date.now = () => base + 100;
     const next = tree.render(cardRow).render(80)[0]!;
-    assert.match(stripAnsi(first).trimStart(), /^[|│] Inspect payment retry safeguards/);
+    assert.match(stripAnsi(first), /Inspect payment retry safeguards/);
     assert.equal(next, first, "the border title has no shimmer or animated glyph");
     assert.ok(stylesFor(first, title).every(style => style === "\u001b[35m"));
     assert.equal(visibleWidth(first), visibleWidth(next));
@@ -654,7 +659,7 @@ test("codemode task metadata after @options becomes the border title", () => {
   assert.doesNotMatch(tree.render(row("code")).render(80)[0]!, /Trace how transcript calls are grouped/);
 });
 
-test("a long task title wraps inside the available width", () => {
+test("a long task title fits the border instead of overflowing", () => {
   const tree = new ToolTree(settings({ mode: "prompt" }));
   tree.start({
     toolCallId: "a",
@@ -663,9 +668,9 @@ test("a long task title wraps inside the available width", () => {
   });
   const frame = tree.render(row("a")).render(32);
   assert.ok(frame.every(line => visibleWidth(line) <= 32), "nothing overflows a narrow card");
-  const painted = frame.map(stripAnsi).join(" ");
-  assert.match(painted, /Prepare a comprehensive/, "the headline keeps its words instead of clipping them");
-  assert.match(painted, /every supported platform/, "the wrapped title finishes under the rail");
+  const border = stripAnsi(frame[0]!).trim();
+  assert.match(border, /Prepare a compreh/, "the border names the task instead of dropping it");
+  assert.match(border, /…/, "a title that cannot fit is elided, never cut mid-word");
 });
 
 test("a recovered failure remains a count without a group status label", () => {
@@ -705,7 +710,7 @@ test("the rollup ends in height bars for call durations", () => {
     now += 900;
     tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
     const head = lines(tree.render(row("a")))[0]!;
-    const spark = head.split(" · ")[0]?.slice(2);
+    const spark = head.split(" · ")[0]?.trim();
     assert.equal(spark, ":@+", `no ASCII duration bars in: ${head}`);
     assert.equal(spark!.length, 3);
     assert.doesNotMatch(spark!, /[\/\\]/);
@@ -785,7 +790,7 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false });
     tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
     const head = lines(tree.render(row("a")))[0]!;
-    const spark = head.split(" · ")[0]?.slice(2, 4);
+    const spark = head.split(" · ")[0]?.trim().slice(0, 2);
     assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
     assert.equal(spark?.[0], "*", "a 2s call sits above the middle of the absolute ramp");
     assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");

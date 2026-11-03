@@ -54,7 +54,7 @@ test("a nerd font adds the tool glyph and still names the tool", () => {
   const painted = lines(tree, "a");
   const body = painted.join(String.fromCharCode(10));
   // The glyph is an indicator, never a replacement: the row still says "read".
-  assert.match(painted[0]!, /GROVE/, "the card leads with its own name");
+  assert.match(tree.render(row("a")).render(90)[0]!, /GROVE/, "the card leads with its own name");
   assert.match(body, /1 call/, "the card still counts the call");
   assert.match(body, new RegExp(READ + "  read"), "the glyph sits ahead of the word it stands for");
 });

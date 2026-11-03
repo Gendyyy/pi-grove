@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme } from "../theme.js";
-import { ToolTree, milestoneTarget, type TreeSettings } from "../tool-tree.js";
+import { GROUP_TARGET, ToolTree, milestoneTarget, type TreeSettings } from "../tool-tree.js";
 
 const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
 
@@ -26,7 +26,7 @@ test("story phases retain failures and open one level at a time", () => {
   const { tree, card } = storyCard();
   const render = (width = 96) => card.render(width);
   const lines = render();
-  assert.ok(lines.some(line => line.includes("| Check updates")), "the card states the task intent");
+  assert.ok(lines[0]!.includes("Check updates"), "the card states the task intent in its border");
   assert.ok(lines.some(line => line.includes("x 01 Inspect")));
   const phase = lines.findIndex(line => line.includes("02 Verify") && line.includes("1 failed"));
   assert.ok(phase >= 0);
@@ -118,20 +118,20 @@ test("expanded output is indented beneath its tool and stays within the card", (
   }
 });
 
-test("Story titles wrap under the rail without hiding text or breaking targets", () => {
+test("the task intent rides the border without hiding text or breaking targets", () => {
   const intent = "Inspect 東京 settings and verify the complete configuration without losing important details";
   const tree = new ToolTree(settings);
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "Inspect settings", taskIntent: intent, taskProgress: 30, taskMilestones: "inspect=Inspect; verify=Verify", taskMilestone: "inspect" } });
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
+  const targetAt = (tree as unknown as { targetAt(index: number): string | undefined }).targetAt.bind(tree);
   for (const width of [35, 60, 96]) {
     const lines = card.render(width);
-    const header = lines.findIndex(line => line.includes("\u25b1"));
-
-    const title = lines.slice(0, header).map(line => line.replace(/^\s*[|\u2502]\s*/, "").replace(/\s*[|\u2502]$/, "")).join(" ").replace(/\s+/g, " ").trim();
-    assert.equal(title, intent, `full title at ${width}`);
+    const border = lines[0]!.replace(/\u001b\[[0-9;]*m/g, "");
+    // The border opens with the task, and a title that cannot fit is elided, never clipped.
+    assert.match(border, /Inspect 東京 settings/, `the border names the task at ${width}`);
+    assert.match(border, /…/, `an oversized title is elided at ${width}`);
     assert.ok(lines.every(line => visibleWidth(line) <= width));
-    const targetAt = (tree as unknown as { targetAt(index: number): string | undefined }).targetAt.bind(tree);
-    for (let i = 1; i < header; i++) assert.equal(targetAt(i), targetAt(0));
+    assert.equal(targetAt(0), GROUP_TARGET, "the border is the gesture that reveals the card");
     const phase = lines.findIndex(line => line.includes("01 Inspect"));
     assert.equal(targetAt(phase), milestoneTarget("inspect"));
   }
@@ -169,4 +169,22 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
     assert.ok(phase.includes("[warning]! 01"), "a closed phase with a failure wears the warning mark");
     assert.match(phase, /\[warning\]1 failed/);
   }
+});
+test("the card is one rounded frame whose top border carries the task intent", () => {
+  const tree = new ToolTree({ ...settings, iconMode: "unicode", icons: true });
+  tree.start({
+    toolCallId: "a",
+    toolName: "read",
+    args: { reasoning: "read the manifest", taskIntent: "Frame the card", taskMilestones: "one=One; two=Two", taskMilestone: "one" },
+  });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
+  // The host insets every row by one cell, so the frame starts after that pad.
+  const lines = card.render(60).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trimStart());
+  // The title is not a row of its own: it is set into the stroke.
+  assert.match(lines[0]!, /^╭─ Frame the card ─+╮$/, "the border opens with the task intent");
+  assert.match(lines.at(-1)!, /^╰─+╯$/, "the card closes on a rounded rule");
+  assert.ok(lines.every(line => visibleWidth(line) <= 60), "every row stays inside the frame width");
+  // No rail survives: the sides are the frame, so a row never reads as narration outside it.
+  assert.ok(lines.slice(1, -1).every(line => line.startsWith("│ ") && line.trimEnd().endsWith("│")), "the body sits inside the frame");
 });

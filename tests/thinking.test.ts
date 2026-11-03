@@ -54,8 +54,8 @@ function row(id: string): TreeRow {
 function lines(component: Component, width = 100): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
   // The card is one bordered object now, so the body is what the assertions index.
-  if (painted.length < 2 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted.slice(1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+  if (painted.length < 3 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
+  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 test("consecutive thinking parts collapse into one run with ordered ids", () => {
@@ -78,16 +78,16 @@ test("a reasoning row never counts as a tool call", () => {
   tree.end({ toolCallId: "c1", toolName: "read", result: { content: [{ type: "text", text: "ok" }] }, isError: false, durationMs: 100 });
 
   const painted = lines(tree.render(row("c1")));
-  // The card is now a title row, a summary row, then one row per entry.
-  assert.equal(painted.length, 4, "a title, a summary, the narration and the call");
-  assert.match(painted[0]!, /GROVE/, "the card leads with its own name");
+  // The title rides the card's border, so the body is a summary row then one row per entry.
+  assert.equal(painted.length, 3, "a summary, the narration and the call");
+  assert.match(tree.render(row("c1")).render(100)[0]!, /GROVE/, "the card leads with its own name");
   // The summary counts one call, not two: reasoning is narration, never a call.
-  assert.match(painted[1]!, /1 call/);
-  assert.match(painted[2]!, /thinking/);
+  assert.match(painted[0]!, /1 call/);
+  assert.match(painted[1]!, /thinking/);
   // Collapsed, a reasoning row is just its label: the text waits behind a click.
-  assert.doesNotMatch(painted[2]!, /schema/);
-  assert.doesNotMatch(painted[2]!, /words/);
-  assert.match(painted[3]!, /read/);
+  assert.doesNotMatch(painted[1]!, /schema/);
+  assert.doesNotMatch(painted[1]!, /words/);
+  assert.match(painted[2]!, /read/);
 });
 
 test(

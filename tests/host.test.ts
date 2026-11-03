@@ -9,8 +9,8 @@ import { FakeHost, okay } from "./host.js";
 /** The card's lines without its border, so assertions index the body the way they always did. */
 function body(frame: { lines: string[] }): string[] {
   const painted = frame.lines;
-  if (painted.length < 2 || !/^[╭+]-/.test(painted[0]!.trim())) return painted;
-  return painted.slice(1);
+  if (painted.length < 3 || !/^[╭+]-/.test(painted[0]!.trim())) return painted;
+  return painted.slice(1, -1);
 }
 
 /** The card's summary row: the call count and the tool breakdown under its title. */
@@ -70,7 +70,8 @@ test("one card paints once even though pi mounts a row and a result row", () => 
   assert.deepEqual(host.painters(), ["a"]);
   assert.match(summary(frame), /3 calls/);
   assert.match(summary(frame), /bash x2/);
-  assert.equal(body(frame).length, 5, "a title, a summary, and one branch row per call without blank links");
+  // The title rides the border, so the body is the summary plus one row per call.
+  assert.equal(body(frame).length, 4, "a summary and one branch row per call without blank links");
 });
 
 test("the card never moves while calls arrive", () => {
@@ -147,7 +148,7 @@ test("reasoning shows up inside the card, between the calls that used it", () =>
   host.start("b", "bash", { reasoning: "run the suite" });
   host.end("b", okay("2 passed"));
   const frame = host.frame();
-  assert.equal(body(frame).length, 5, "a title, a summary, the call, the narration and the second call");
+  assert.equal(body(frame).length, 4, "a summary, the call, the narration and the second call");
   assert.equal(body(frame).filter(line => /thinking/.test(line)).length, 1);
   assert.doesNotMatch(body(frame).join("\n"), /manifest names the entry/);
   host.click(frame.lines.findIndex(line => /thinking/.test(line)));

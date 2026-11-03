@@ -164,7 +164,7 @@ test("a crowded plan drops whole boxes and counts the rest instead of cutting on
   // Seven phases cannot fit a narrow card, so the tail becomes a count rather than a sliced box.
   const row = planRow(painted(tree, 60, plainTheme), "Inspect", "Build").trimEnd();
   assert.ok(row, "the leading phases keep their boxes");
-  assert.match(row, /- \+\d+$/, "the plan ends in a count: " + row);
+  assert.match(row, /- \+\d+/, "the plan ends in a count: " + row);
   assert.ok(visibleWidth(row) <= 60, "the plan exceeds its viewport: " + visibleWidth(row));
 });
 
@@ -303,7 +303,8 @@ test("a settled call shows a filled dot in its status colour", () => {
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, durationMs: 900 } as never, undefined);
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: true, durationMs: 800 } as never, undefined);
-  const rows = painted(tree);
+  // This theme tags text instead of emitting escapes, so the card needs room for its tags.
+  const rows = painted(tree, 160);
   const ok = rows.find(line => line.includes("[success]*"));
   const failed = rows.find(line => line.includes("[error]*"));
   assert.ok(ok);
@@ -698,7 +699,7 @@ test("the duration scale includes calls outside the collapsed window", () => {
       /old_tool/,
       "the older tool row is outside the visible window",
     );
-    const rail = /[━─]+(?= · 5s$)/.exec(current)?.[0];
+    const rail = /[━─]+(?= · 5s)/.exec(current)?.[0];
     assert.ok(rail, "the visible row retains its rail and elapsed label");
     assert.equal(
       [...rail].filter(cell => cell === "━").length,
