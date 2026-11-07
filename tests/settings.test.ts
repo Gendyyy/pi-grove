@@ -52,7 +52,7 @@ test("settings classify startup composition separately from live presentation", 
   const reload = SETTINGS.filter(spec => spec.apply === "reload").map(spec => spec.key);
   const live = SETTINGS.filter(spec => spec.apply === "live").map(spec => spec.key);
   assert.deepEqual(reload, ["enabled", "mode", "group", "thinking"]);
-  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupToolNames", "groupProgress", "groupSparkline", "groupGutter", "thinkingLabel"]);
+  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupToolNames", "groupProgress", "groupPercent", "groupPhases", "groupSparkline", "groupGutter", "thinkingLabel"]);
   const rows = panelRows(readSettings("/nonexistent/grove.json"));
   assert.match(rows.find(row => row.key === "groupProgress")?.description ?? "", /applies immediately/);
   assert.match(rows.find(row => row.key === "group")?.description ?? "", /requires Grove reload/);
@@ -72,11 +72,15 @@ test("visibility defaults preserve current output and nested error visibility st
   assert.equal(settings.groupNestedTools, true);
   assert.equal(settings.groupToolNames, true);
   assert.equal(settings.groupProgress, true);
+  assert.equal(settings.groupPercent, false);
+  assert.equal(settings.groupPhases, false);
   assert.equal(settings.groupSparkline, true);
-  const hidden = readSettings(await scratch({ groupNestedTools: false, groupToolNames: false, groupProgress: false, groupSparkline: false }));
+  const hidden = readSettings(await scratch({ groupNestedTools: false, groupToolNames: false, groupProgress: false, groupPercent: true, groupPhases: true, groupSparkline: false }));
   assert.equal(hidden.groupNestedTools, false);
   assert.equal(hidden.groupToolNames, false);
   assert.equal(hidden.groupProgress, false);
+  assert.equal(hidden.groupPercent, true);
+  assert.equal(hidden.groupPhases, true);
   assert.equal(hidden.groupSparkline, false);
   assert.equal(settings.thinking, "off");
   assert.equal(settings.thinkingLabel, "");
@@ -93,6 +97,8 @@ test("stored junk never reaches the renderer", async () => {
     groupNestedTools: "maybe",
     groupToolNames: "maybe",
     groupProgress: "maybe",
+    groupPercent: "maybe",
+    groupPhases: "maybe",
     groupSparkline: "maybe",
     thinking: "loud",
     thinkingLabel: "x".repeat(200),
@@ -107,6 +113,8 @@ test("stored junk never reaches the renderer", async () => {
   assert.equal(settings.groupNestedTools, true);
   assert.equal(settings.groupToolNames, true);
   assert.equal(settings.groupProgress, true);
+  assert.equal(settings.groupPercent, false);
+  assert.equal(settings.groupPhases, false);
   assert.equal(settings.groupSparkline, true);
   assert.equal(settings.thinking, "off");
   assert.equal(settings.thinkingLabel?.length, 60);
@@ -135,6 +143,8 @@ test("the longest command words win", () => {
   assert.deepEqual(resolveCommand(["group", "nested", "off"])?.command.keys, ["groupNestedTools"]);
   assert.deepEqual(resolveCommand(["group", "tool-names", "off"])?.command.keys, ["groupToolNames"]);
   assert.deepEqual(resolveCommand(["group", "progress", "off"])?.command.keys, ["groupProgress"]);
+  assert.deepEqual(resolveCommand(["group", "percent", "on"])?.command.keys, ["groupPercent"]);
+  assert.deepEqual(resolveCommand(["group", "phases", "on"])?.command.keys, ["groupPhases"]);
   assert.deepEqual(resolveCommand(["group", "sparkline", "off"])?.command.keys, ["groupSparkline"]);
   const label = resolveCommand(["thinking", "label", "warming", "up"]);
   assert.deepEqual(label?.command.keys, ["thinkingLabel"]);
@@ -161,6 +171,12 @@ test("values are validated before they are saved", () => {
   assert.equal(toolNames.ok && toolNames.value, false);
   const progress = run("group progress off");
   assert.equal(progress.ok && progress.key, "groupProgress");
+  const percent = run("group percent on");
+  assert.equal(percent.ok && percent.key, "groupPercent");
+  assert.equal(percent.ok && percent.value, true);
+  const phases = run("group phases on");
+  assert.equal(phases.ok && phases.key, "groupPhases");
+  assert.equal(phases.ok && phases.value, true);
   const sparkline = run("group sparkline off");
   assert.equal(sparkline.ok && sparkline.key, "groupSparkline");
   const bogusThinking = run("thinking loud");
@@ -176,6 +192,8 @@ test("saveSetting writes the key it names and round-trips", async () => {
   await saveSetting("groupNestedTools", false, path);
   await saveSetting("groupToolNames", false, path);
   await saveSetting("groupProgress", false, path);
+  await saveSetting("groupPercent", true, path);
+  await saveSetting("groupPhases", true, path);
   await saveSetting("groupSparkline", false, path);
   await saveSetting("thinkingLabel", "", path);
   assert.equal(readRawConfig(path).groupWindow, 2);
@@ -184,6 +202,8 @@ test("saveSetting writes the key it names and round-trips", async () => {
   assert.equal(settings.groupNestedTools, false);
   assert.equal(settings.groupToolNames, false);
   assert.equal(settings.groupProgress, false);
+  assert.equal(settings.groupPercent, true);
+  assert.equal(settings.groupPhases, true);
   assert.equal(settings.groupSparkline, false);
   assert.equal(settings.thinkingLabel, "");
   assert.match(await readFile(path, "utf8"), /"thinkingLabel": ?""/);

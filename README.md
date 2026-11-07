@@ -43,7 +43,9 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
 | `groupToolNames` | on / off | on | show built-in tool names or icons only |
-| `groupProgress` | on / off | on | show the derived share as a meter, with the phase plan when one is declared |
+| `groupProgress` | on / off | on | show the derived progress bar in the card rollup |
+| `groupPercent` | on / off | off | show the numeric share beside the progress meter |
+| `groupPhases` | on / off | off | show the linked phase plan under the progress meter |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
 | `groupGutter` | on / off | on | show Story phase cards; off retains the compact call timeline |
 | `thinking` | group / inline / off | off | where reasoning appears |
@@ -70,14 +72,16 @@ one to seven phases and may close on a `verify` phase when the work needs checki
 when the work leaves temp files, scratch scripts, or other throwaway artifacts behind. Both are preferences,
 not requirements: a plan that ends on plain work is valid, and Grove never invents filler phases.
 
-The plan and the percentage share one line, because the percentage is nothing but the plan's finished
-share: each finished phase fills one equal slice, and a card still in flight reads the share of the
-phases already closed. The filled span keeps the ramp from error red at the left edge to success green
-at the right, so the bar's colour and its number can never disagree, and every finished boundary leaves
+The progress meter derives its share from the phase plan: each finished phase fills one equal slice,
+and a card still in flight reads the share of the phases already closed. The numeric share and
+phase boxes are separate opt-ins, both off by default. With `groupProgress` on, the bar remains
+visible without either detail. Enable them with `groupPercent` and `groupPhases` in the settings
+panel, or `/grove group percent on` and `/grove group phases on`. The filled span keeps the ramp
+from error red at the left edge to success green
+at the right, so the bar's colour and optional number never disagree, and every finished boundary leaves
 a vertical tick of its own at the fill edge, in the ramp colour of the cell it divides. A settled card
-with a failed call keeps its finished share and warns on the rail instead of reading complete. The phase
-in flight is the only one that spends width on a name, with
-a `2/3` position beside it, and the caret says whether the plan is open. Clicking the meter expands the whole
+with a failed call keeps its finished share and warns on the rail instead of reading complete. When shown, the active phase box spends width on its name, with a `2/3` position beside it;
+the caret says whether the plan is open. With `groupPhases` on, clicking the meter expands the whole
 plan under it—every name joined by arrows—while clicking the
 frame border still reveals the rows. Each arrow behind a finished phase turns green, so a completed plan reads as
 one green line. Narrow cards drop the label, then the name while keeping the position, before they concede the
@@ -96,14 +100,13 @@ calls counts as one entry, so a phase that just finished keeps its tail on scree
 fold away entirely: a closed phase shows one header carrying its call count, never a second row
 of summarized goals. Click the phase header to reveal the phase's direct calls; click a call to
 reveal its nested steps and output. Failures remain visible when collapsed. The same tail rule covers calls
-without a visible phase. The meter separately
-opens the full plan, and Pi's expand-all opens the entire tree. Setting `groupGutter` off
-uses the compact timeline instead of the Story phase cards.
+without a visible phase. With `groupPhases` on, the meter opens the full plan; Pi's expand-all opens the entire tree. Setting `groupGutter` off
+uses the compact timeline instead of the Story phase cards; `groupPhases` never changes these cards.
 
 ```text
 ╭─ Check updates ────────────────────────────────────────────╮
-│ GROVE / TASK  ● 65% · Verify 2/2                           │
-│ ▰▰▰▰▰▰▱▱▱▱  65% · 2 calls                                  │
+│ GROVE / TASK  ● Verify 2/2                                 │
+│ ▰▰▰▰▰▰▱▱▱▱ · 2 calls                                       │
 │ ────────────────────────────────────────────────────────── │
 │ │ ✓ 01 Inspect · 1 call · 1s ▸                             │
 │ │   ▸ Read settings                                        │
@@ -123,9 +126,9 @@ position. From the outside in:
 | Layer | What it is | Click target |
 | --- | --- | --- |
 | Card frame | The border, including the task title and its wrapped continuation lines | Reveals every row |
-| Status line | GROVE / TASK plus the percentage and current phase, or the complete marker | Reveals every row |
-| Rollup | One metrics line: meter, failed count, call count, duration sparkline, tool mix, elapsed | Expands the plan |
-| Progress meter | The filled bar and its phase ticks | Expands the plan |
+| Status line | GROVE / TASK plus the optional percentage and current phase, or the complete marker | Reveals every row |
+| Rollup | One metrics line: meter, failed count, call count, duration sparkline, tool mix, elapsed | Toggles plan when phase cards are on, else reveals rows |
+| Progress meter | The filled bar and its phase ticks | Toggles plan when phase cards are on, else reveals rows |
 | Plan line | The expanded phase names joined by arrows, with the share each finished phase closed | Expands the plan |
 | Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
 | Call row | Tool label, its goal, nested counts, and duration | Opens that call |
@@ -148,7 +151,9 @@ block heights, while ASCII mode uses increasing intensity characters. Bar colors
 bands of that same scale: the theme's success color for fast calls, warning in the middle,
 error for slow ones. Exact times stay on each row. Live call times use Grove's full start-to-finish
 elapsed interval, not the host-reported execution duration. `/grove group progress off` hides only
-the meter, not milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
+the meter, not milestone tracking; `/grove group percent off` hides only the numeric share, not the
+bar or milestone tracking; `/grove group phases off` hides only the linked phase boxes under the
+meter, not the Story gutter or milestone tracking; `/grove group sparkline off` hides only the chart, not row times.
 `/grove group nested off` hides nested tool names/counts from both the summary strip and codemode
 rows while preserving top-level tool counts, expandable child rows, and parent failure markers.
 `/grove group tool-names off` replaces recognized names with their selected Nerd or ASCII icons in
@@ -222,13 +227,15 @@ option above. Enter cycles a value or opens a submenu, typing filters, Escape cl
 /grove group nested off      hide inline nested names/counts
 /grove group tool-names off  show built-ins as icons only
 /grove group progress off    hide the progress meter
+/grove group percent on      show the numeric share (off by default)
+/grove group phases on       show linked phase boxes (off by default)
 /grove group sparkline off   hide duration bars from the rollup
 /grove thinking label Plan  free text, quoted output, empty hides the label
 /grove on | off | toggle
 ```
 
 Tool icons, built-in tool names, icon set, visible-call window, failure visibility, nested counts, progress,
-duration bars, and the thinking label apply immediately. Enabled state, row-label mode,
+percentage, phase cards, duration bars, and the thinking label apply immediately. Enabled state, row-label mode,
 grouping, and reasoning placement require Grove to reload because they change startup-time
 tool composition or event behavior. The settings panel labels each option with its policy.
 

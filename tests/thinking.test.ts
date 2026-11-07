@@ -34,6 +34,8 @@ function settings(): TreeSettings {
     window: 4,
     groupNestedTools: true,
     groupProgress: true,
+    groupPercent: true,
+    groupPhases: true,
     groupSparkline: true,
     groupGutter: true,
     groupToolNames: true,

@@ -21,6 +21,8 @@ function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
     window: 4,
     groupNestedTools: true,
     groupProgress: true,
+    groupPercent: true,
+    groupPhases: true,
     groupSparkline: true,
     groupGutter: true,
     groupToolNames: true,
@@ -421,6 +423,74 @@ test("progress and sparkline visibility can be disabled independently", () => {
   } finally {
     Date.now = realNow;
   }
+});
+
+test("progress percentage and phase cards are independent opt-ins", () => {
+  const phases = "a=Alpha; b=Beta; c=Gamma";
+  /** Build a card with one closed phase and one live phase, so the meter has a share to show. */
+  const card = (overrides: Partial<TreeSettings>) => {
+    const tree = new ToolTree(settings({ mode: "prompt", groupGutter: false, ...overrides }));
+    for (const [id, milestone] of [["a", "a"], ["b", "b"]] as const) {
+      tree.start({ toolCallId: id, toolName: "read", args: { taskIntent: "Toggle progress details", taskMilestones: phases, taskMilestone: milestone } });
+      if (id === "a") tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
+    }
+    return tree;
+  };
+  const planLine = (painted: string[]) => painted.find(line => line.includes("Alpha") && line.includes("Beta"));
+
+  const plain = lines(card({ groupPercent: false, groupPhases: false }).render(row("a")));
+  const meter = plain.find(line => /[▰▱]{4,}/.test(line));
+  assert.ok(meter, "the bar stays visible when both new options are off");
+  assert.doesNotMatch(meter!, /\d+%/, "the numeric share is absent by default");
+  assert.equal(planLine(plain), undefined, "phase boxes are absent by default");
+
+  const percentOnly = lines(card({ groupPercent: true, groupPhases: false }).render(row("a")));
+  assert.match(percentOnly.find(line => /[▰▱]{4,}/.test(line))!, /33%/, "percentage can be enabled alone");
+  assert.equal(planLine(percentOnly), undefined, "percentage alone cannot add phase boxes");
+
+  const phasesOnly = lines(card({ groupPercent: false, groupPhases: true }).render(row("a")));
+  const phasesMeter = phasesOnly.find(line => /[▰▱]{4,}/.test(line));
+  assert.ok(phasesMeter, "phase boxes can be enabled without the percentage");
+  assert.doesNotMatch(phasesMeter!, /\d+%/, "phase boxes alone cannot add the percentage");
+  assert.ok(planLine(phasesOnly), "phase boxes can be enabled alone");
+});
+
+test("live updates toggle the percentage and phase cards", () => {
+  let redraws = 0;
+  const tree = new ToolTree(settings({ mode: "prompt", groupGutter: false, groupPercent: false, groupPhases: false }), () => { redraws += 1; });
+  const phases = "a=Alpha; b=Beta; c=Gamma";
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Update progress detail", taskMilestones: phases, taskMilestone: "a" } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  tree.start({ toolCallId: "b", toolName: "read", args: { taskIntent: "Update progress detail", taskMilestones: phases, taskMilestone: "b" } });
+  const before = lines(tree.render(row("a")));
+  assert.equal(before.find(line => line.includes("Alpha") && line.includes("Beta")), undefined);
+  assert.doesNotMatch(before.find(line => /[▰▱]{4,}/.test(line))!, /\d+%/);
+
+  const redrawsBefore = redraws;
+  tree.updateSettings({ groupPercent: true, groupPhases: true });
+  assert.ok(redraws > redrawsBefore, "live settings repaint existing cards");
+  const enabled = lines(tree.render(row("a")));
+  assert.match(enabled.find(line => /[▰▱]{4,}/.test(line))!, /33%/);
+  assert.ok(enabled.some(line => line.includes("Alpha") && line.includes("Beta")));
+
+  tree.updateSettings({ groupPercent: false, groupPhases: false });
+  const disabled = lines(tree.render(row("a")));
+  const disabledMeter = disabled.find(line => /[▰▱]{4,}/.test(line))!;
+  assert.ok(disabledMeter, "disabling the details leaves the bar");
+  assert.doesNotMatch(disabledMeter, /\d+%/);
+  assert.equal(disabled.find(line => line.includes("Alpha") && line.includes("Beta")), undefined);
+});
+
+test("phase cards do not affect the Story gutter", () => {
+  const phases = "a=Alpha; b=Beta; c=Gamma";
+  const tree = new ToolTree(settings({ mode: "prompt", groupGutter: true, groupPercent: false, groupPhases: false }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Keep the story gutter", taskMilestones: phases, taskMilestone: "a" } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  tree.start({ toolCallId: "b", toolName: "read", args: { taskIntent: "Keep the story gutter", taskMilestones: phases, taskMilestone: "b" } });
+  const painted = lines(tree.render(row("a")));
+  assert.ok(painted.some(line => /01 Alpha/.test(line)), "the Story phase card remains");
+  assert.ok(painted.some(line => /02 Beta/.test(line)), "the live Story phase card remains");
+  assert.equal(painted.find(line => line.includes("Alpha") && line.includes("Beta")), undefined);
 });
 
 test("live presentation changes repaint existing cards", () => {

@@ -25,6 +25,8 @@ interface ToolUiOptions {
   groupNestedTools: boolean;
   groupToolNames: boolean;
   groupProgress: boolean;
+  groupPercent: boolean;
+  groupPhases: boolean;
   groupSparkline: boolean;
   groupGutter: boolean;
   /** Where reasoning appears: a row of the card, pi own rows, or nowhere. */
@@ -40,6 +42,8 @@ export type ToolUiLiveSettings = Pick<
   | "groupNestedTools"
   | "groupToolNames"
   | "groupProgress"
+  | "groupPercent"
+  | "groupPhases"
   | "groupSparkline"
   | "groupGutter"
 >;
@@ -121,6 +125,8 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       groupNestedTools: options.groupNestedTools,
       groupToolNames: options.groupToolNames,
       groupProgress: options.groupProgress,
+      groupPercent: options.groupPercent,
+      groupPhases: options.groupPhases,
       groupSparkline: options.groupSparkline,
       groupGutter: options.groupGutter,
     },
@@ -136,6 +142,8 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       ...(settings.groupNestedTools === undefined ? {} : { groupNestedTools: settings.groupNestedTools }),
       ...(settings.groupToolNames === undefined ? {} : { groupToolNames: settings.groupToolNames }),
       ...(settings.groupProgress === undefined ? {} : { groupProgress: settings.groupProgress }),
+      ...(settings.groupPercent === undefined ? {} : { groupPercent: settings.groupPercent }),
+      ...(settings.groupPhases === undefined ? {} : { groupPhases: settings.groupPhases }),
       ...(settings.groupSparkline === undefined ? {} : { groupSparkline: settings.groupSparkline }),
       ...(settings.groupGutter === undefined ? {} : { groupGutter: settings.groupGutter }),
     };

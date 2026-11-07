@@ -174,8 +174,8 @@ function progressCellText(theme: GroveTheme, index: number, cells = PROGRESS_CEL
   return progressRamp(theme, cells > 1 ? index / (cells - 1) : 0, glyph);
 }
 
-/** Paint a static progress bar and percentage, leaving empty cells visually quiet. */
-function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): string {
+/** Paint a static progress bar with an optional percentage, leaving empty cells visually quiet. */
+function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs, showPercent = true): string {
   const value = Math.max(0, Math.min(100, Math.round(progress)));
   const filled = Math.round((value / 100) * PROGRESS_CELLS);
   const cue = glyphs.progress ? progressRamp(theme, value / 100, glyphs.progress + "  ") : "";
@@ -185,7 +185,7 @@ function taskProgressText(progress: number, theme: GroveTheme, glyphs: Glyphs): 
   ).join("");
   return cue + bar +
     themeText(theme, "dim", "▱".repeat(PROGRESS_CELLS - filled)) +
-    progressRamp(theme, value / 100, ` ${String(value).padStart(3, " ")}%`);
+    (showPercent ? progressRamp(theme, value / 100, ` ${String(value).padStart(3, " ")}%`) : "");
 }
 
 /** One breathe cycle for the active phase marker, slow enough to read as a pulse. */
@@ -350,6 +350,8 @@ function phaseMeterText(
   width: number,
   now: number,
   running: boolean,
+  showPercent: boolean,
+  showPhases: boolean,
 ): MeterPaint | undefined {
   const plan = group.milestones;
   if (!plan || plan.length === 0 || plan.length > TASK_MILESTONE_MAX) return undefined;
@@ -364,7 +366,7 @@ function phaseMeterText(
 
   const pct = ` ${value}%`;
   // The pie rides the share it describes, so the headline stays a bare name.
-  const share = (complete ? glyphs.check : progressGlyph(value, glyphs)) + pct;
+  const share = (complete ? glyphs.check : progressGlyph(value, glyphs)) + (showPercent ? pct : "");
   const cue = glyphs.progress ? progressRamp(theme, value / 100, glyphs.progress + "  ") : "";
   const cueWidth = glyphs.progress ? 3 : 0;
   // The bar keeps the whole line: the phase it is in lives on the plan row below, which
@@ -409,8 +411,8 @@ function phaseMeterText(
   // A finished plan is green; a plan left open at 100 already says the estimate is wrong.
   return {
     line: cue + bar + " " + progressRamp(theme, value / 100, share),
-    // The plan is on screen unless the card was told to fold it: a click on the meter folds it.
-    plan: group.openPhases === false ? undefined : phasePlanLines(group, theme, glyphs, width, activeIndex),
+    // The plan is on screen unless the card was told to fold it or phase cards are off.
+    plan: group.openPhases === false || !showPhases ? undefined : phasePlanLines(group, theme, glyphs, width, activeIndex),
   };
 }
 
@@ -761,7 +763,7 @@ export function paintGroup(
   // Progress is never declared: it is the share of the plan already finished.
   const shownProgress = derivedProgress(group);
   const meter = state.settings.groupProgress
-    ? phaseMeterText(group, theme, glyphs, inner, Date.now(), running)
+    ? phaseMeterText(group, theme, glyphs, inner, Date.now(), running, state.settings.groupPercent, state.settings.groupPhases)
     : undefined;
   let headerLine = "";
   if (tools.length > 0) {
@@ -776,7 +778,7 @@ export function paintGroup(
     // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
     const parts: string[] = [];
     if (!meter && state.settings.groupProgress && shownProgress !== undefined)
-      parts.push(taskProgressText(shownProgress, theme, glyphs));
+      parts.push(taskProgressText(shownProgress, theme, glyphs, state.settings.groupPercent));
     // Keep the duration shape ahead of the count and tool mix when space gets tight.
     if (state.settings.groupSparkline) {
       const spark = durationSpark(tools, theme, glyphs);
@@ -798,7 +800,7 @@ export function paintGroup(
   if (story) {
     const pieces: string[] = [];
     if (meter) pieces.push(meter.line);
-    else if (state.settings.groupProgress && shownProgress !== undefined) pieces.push(taskProgressText(shownProgress, theme, glyphs));
+    else if (state.settings.groupProgress && shownProgress !== undefined) pieces.push(taskProgressText(shownProgress, theme, glyphs, state.settings.groupPercent));
     if (errors) pieces.push(themeText(theme, "error", `${errors} failed`));
     pieces.push(counted(theme, tools.length, "call", "calls"));
     if (state.settings.groupSparkline) {
@@ -809,14 +811,15 @@ export function paintGroup(
     const elapsed = formatElapsed(Math.max(0, durationNow - group.started));
     pieces.push(themeText(theme, "dim", elapsed));
     lines.push(fitToolLine(pieces.join(themeText(theme, "dim", DOT)), inner));
-    targets.set(lines.length - 1, PHASES_TARGET);
+    // Without phase cards the meter owns no plan gesture, so the strip falls back to the row gesture.
+    targets.set(lines.length - 1, state.settings.groupPhases ? PHASES_TARGET : GROUP_TARGET);
     for (const line of meter?.plan ?? []) {
       lines.push(line);
       targets.set(lines.length - 1, PHASES_TARGET);
     }
   } else if (meter) {
     lines.push(meter.line);
-    targets.set(lines.length - 1, PHASES_TARGET);
+    targets.set(lines.length - 1, state.settings.groupPhases ? PHASES_TARGET : GROUP_TARGET);
     for (const line of meter.plan ?? []) {
       lines.push(line);
       targets.set(lines.length - 1, PHASES_TARGET);

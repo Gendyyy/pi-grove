@@ -5,7 +5,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme } from "../theme.js";
 import { GROUP_TARGET, ToolTree, milestoneTarget, type TreeSettings } from "../tool-tree.js";
 
-const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
+const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
 
 /** Build a card with completed and failed phases and one nested tool call. */
 function storyCard() {

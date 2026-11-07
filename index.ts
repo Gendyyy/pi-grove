@@ -123,6 +123,8 @@ export function createGroveExtension(
         case "groupNestedTools": toolUi?.updateSettings({ groupNestedTools: settings.groupNestedTools }); return;
         case "groupToolNames": toolUi?.updateSettings({ groupToolNames: settings.groupToolNames }); return;
         case "groupProgress": toolUi?.updateSettings({ groupProgress: settings.groupProgress }); return;
+        case "groupPercent": toolUi?.updateSettings({ groupPercent: settings.groupPercent }); return;
+        case "groupPhases": toolUi?.updateSettings({ groupPhases: settings.groupPhases }); return;
         case "groupSparkline": toolUi?.updateSettings({ groupSparkline: settings.groupSparkline }); return;
         case "groupGutter": toolUi?.updateSettings({ groupGutter: settings.groupGutter }); return;
         case "thinkingLabel":
@@ -314,6 +316,8 @@ export function createGroveExtension(
       groupNestedTools: settings.groupNestedTools,
       groupToolNames: settings.groupToolNames,
       groupProgress: settings.groupProgress,
+      groupPercent: settings.groupPercent,
+      groupPhases: settings.groupPhases,
       groupSparkline: settings.groupSparkline,
       groupGutter: settings.groupGutter,
       thinking: settings.thinking,

@@ -31,6 +31,10 @@ export interface TreeSettings {
   groupToolNames: boolean;
   /** Show the agent progress estimate in the card rollup. */
   groupProgress: boolean;
+  /** Show the numeric share beside the progress meter. */
+  groupPercent: boolean;
+  /** Show the linked phase plan under the progress meter. */
+  groupPhases: boolean;
   /** Show relative call durations in the card rollup. */
   groupSparkline: boolean;
   /** Divide the rows wherever the plan moved on to another phase. */

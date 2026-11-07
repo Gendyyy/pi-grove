@@ -30,6 +30,10 @@ export interface GroveSettings {
   groupNestedTools: boolean;
   groupToolNames: boolean;
   groupProgress: boolean;
+  /** Show the numeric share beside the progress meter. */
+  groupPercent: boolean;
+  /** Show the linked phase plan under the progress meter. */
+  groupPhases: boolean;
   groupSparkline: boolean;
   groupGutter: boolean;
   thinking: GroveThinking;
@@ -115,6 +119,22 @@ export const SETTINGS: readonly SettingSpec[] = [
     fallback: true,
     label: "Progress meter",
     summary: "show the progress estimate in the card rollup",
+  },
+  {
+    key: "groupPercent",
+    kind: "boolean",
+    apply: "live",
+    fallback: false,
+    label: "Progress percentage",
+    summary: "show the numeric share beside the progress meter",
+  },
+  {
+    key: "groupPhases",
+    kind: "boolean",
+    apply: "live",
+    fallback: false,
+    label: "Phase cards",
+    summary: "show the linked phase plan under the progress meter",
   },
   {
     key: "groupSparkline",
@@ -217,6 +237,8 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     groupNestedTools: readFlag(settingSpec("groupNestedTools"), raw.groupNestedTools),
     groupToolNames: readFlag(settingSpec("groupToolNames"), raw.groupToolNames),
     groupProgress: readFlag(settingSpec("groupProgress"), raw.groupProgress),
+    groupPercent: readFlag(settingSpec("groupPercent"), raw.groupPercent),
+    groupPhases: readFlag(settingSpec("groupPhases"), raw.groupPhases),
     groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline),
     groupGutter: readFlag(settingSpec("groupGutter"), raw.groupGutter),
     thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS),
@@ -250,6 +272,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   { words: ["group", "nested"], keys: ["groupNestedTools"] },
   { words: ["group", "tool-names"], keys: ["groupToolNames"] },
   { words: ["group", "progress"], keys: ["groupProgress"] },
+  { words: ["group", "percent"], keys: ["groupPercent"] },
+  { words: ["group", "phases"], keys: ["groupPhases"] },
   { words: ["group", "sparkline"], keys: ["groupSparkline"] },
   { words: ["group", "gutter"], keys: ["groupGutter"] },
   { words: ["group"], keys: ["group"] },
