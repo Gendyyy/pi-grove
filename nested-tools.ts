@@ -1,4 +1,4 @@
-import { clean } from "./tree-model.js";
+import { BASH_PREVIEW_LINES, clean, ELLIPSIS, linePreview, treeGlyphs } from "./tree-model.js";
 import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
@@ -25,6 +25,12 @@ interface Call {
   summary?: string;
   preview?: string;
   previewTruncated?: boolean;
+  /** First command lines retained for expanded nested Bash rows. */
+  commandPreview?: string[];
+  commandOmitted?: number;
+  /** Explicitly distinguishes a true captured tail from legacy head-only previews. */
+  outputTail?: boolean;
+  outputOmitted?: number;
   fullOutputPath?: string;
   diff?: boolean;
   writeLines?: number;
@@ -151,12 +157,15 @@ export class NestedToolObserver {
       }
       writeDetails.writeLines = lineCount;
     }
+    const command = event.toolName === "bash" && typeof event.parentToolCallId === "string" &&
+      typeof event.args?.command === "string" ? linePreview(event.args.command, "head", BASH_PREVIEW_LINES, PREVIEW_CHARS) : undefined;
     this.calls.set(event.toolCallId, {
       id: event.toolCallId, parent: typeof event.parentToolCallId === "string" ? event.parentToolCallId.slice(0, 512) : undefined,
       name: brief(event.toolName, 100), reasoning: brief(event.args?.reasoning),
       target: target(event.args),
       status: "running", started: Date.now(),
       ...writeDetails,
+      ...(command === undefined ? {} : { commandPreview: command.lines, commandOmitted: command.omitted }),
     });
     this.update();
   }
@@ -197,13 +206,21 @@ export class NestedToolObserver {
       const hasDiff = typeof diff === "string" && diff.length > 0;
       const text = hasDiff ? diff : result.content?.find((part: any) => part.type === "text")?.text;
       const raw = clean(text);
-      const preview = raw
-        .slice(0, Math.min(PREVIEW_CHARS, this.previewRemaining))
-        .split("\n").slice(0, 24).join("\n");
-      call.preview = preview;
+      if (call.name === "bash") {
+        const preview = linePreview(raw, "tail", BASH_PREVIEW_LINES, Math.min(PREVIEW_CHARS, this.previewRemaining));
+        call.preview = preview.lines.join("\n");
+        call.outputTail = true;
+        call.outputOmitted = preview.omitted;
+        this.previewRemaining -= call.preview.length;
+      } else {
+        const preview = raw
+          .slice(0, Math.min(PREVIEW_CHARS, this.previewRemaining))
+          .split("\n").slice(0, 24).join("\n");
+        call.preview = preview;
+        call.previewTruncated = preview.length < raw.length;
+        this.previewRemaining -= preview.length;
+      }
       call.diff = hasDiff;
-      call.previewTruncated = preview.length < raw.length;
-      this.previewRemaining -= preview.length;
       const fullPath =
         result.structuredContent?.full_output_path ??
         readDetail<{ full_output_path?: string }>(result.details, "piGroveShell")?.full_output_path;
@@ -268,10 +285,12 @@ export class NestedToolObserver {
         const {
           id, parent, name, reasoning, target, status, started, duration, inferredEnd, summary,
           preview, previewTruncated, fullOutputPath, diff, writeLines, model, cost,
+          commandPreview, commandOmitted, outputTail, outputOmitted,
         } = call;
         return {
           id, parent, name, reasoning, target, status, started, duration, inferredEnd, summary,
           preview, previewTruncated, fullOutputPath, diff, writeLines, model, cost,
+          commandPreview, commandOmitted, outputTail, outputOmitted,
         };
       });
       snapshot.incomplete = !!saved.incomplete || saved.calls.length > MAX_CALLS;
@@ -359,14 +378,31 @@ export class NestedToolObserver {
         lines.push(truncateToWidth(`${indent}${toolLabel(call.name, theme, icons, iconMode)} ${themeText(theme, "text", call.reasoning || call.target || "arguments unavailable")}`, width, "…"));
       }
       lines.push(summaryLine(`${indent}  `, themeText(theme, "muted", call.target || "—"), ` ${themeText(theme, "dim", "→")} `, summary, width));
-      if (options.expanded && call.status !== "running") {
-        if (call.preview === undefined && !call.model) lines.push(`${indent}    ${themeText(theme, "muted", "Output not recorded")}`);
-        else if (call.preview) {
-          const preview = call.diff ? colorizeDiff(call.preview, theme) : call.preview.split("\n").map(line => themeText(theme, "toolOutput", line));
-          lines.push(...preview.map(line => `${indent}    ${line}`));
+      if (options.expanded) {
+        if (call.name === "bash" && call.commandPreview !== undefined) {
+          lines.push(...call.commandPreview.map(text => `${indent}    ${themeText(theme, "accent", text)}`));
+          if (call.commandOmitted) {
+            const noun = call.commandOmitted === 1 ? "line" : "lines";
+            lines.push(`${indent}    ${themeText(theme, "muted", `${ELLIPSIS} ${call.commandOmitted} more command ${noun}`)}`);
+          }
+          if (call.outputTail) {
+            const available = Math.max(3, width - visibleWidth(indent + "    "));
+            lines.push(`${indent}    ${themeText(theme, "dim", treeGlyphs(iconMode).h.repeat(available))}`);
+            if (call.outputOmitted) {
+              const noun = call.outputOmitted === 1 ? "line" : "lines";
+              lines.push(`${indent}    ${themeText(theme, "muted", `${ELLIPSIS} ${call.outputOmitted} earlier output ${noun}`)}`);
+            }
+            if (call.preview) lines.push(...call.preview.split("\n").map(text => `${indent}    ${themeText(theme, "toolOutput", text)}`));
+          }
+        } else if (call.status !== "running") {
+          if (call.preview === undefined && !call.model) lines.push(`${indent}    ${themeText(theme, "muted", "Output not recorded")}`);
+          else if (call.preview) {
+            const preview = call.diff ? colorizeDiff(call.preview, theme) : call.preview.split("\n").map(line => themeText(theme, "toolOutput", line));
+            lines.push(...preview.map(line => `${indent}    ${line}`));
+          }
+          if (call.previewTruncated) lines.push(`${indent}    ${themeText(theme, "muted", "Output preview truncated")}`);
         }
-        if (call.previewTruncated) lines.push(`${indent}    ${themeText(theme, "muted", "Output preview truncated")}`);
-        if (call.fullOutputPath) lines.push(`${indent}    ${themeText(theme, "muted", `Full output: ${call.fullOutputPath}`)}`);
+        if (call.status !== "running" && call.fullOutputPath) lines.push(`${indent}    ${themeText(theme, "muted", `Full output: ${call.fullOutputPath}`)}`);
       }
     }
     if (shown.length < calls.length) lines.push(themeText(theme, "muted", `  … ${calls.length - shown.length} more calls · Ctrl+O to expand`));

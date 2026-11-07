@@ -29,6 +29,14 @@ export interface ReplayCall {
   preview?: string[];
   previewTruncated?: boolean;
   previewDiff?: boolean;
+  /** Saved Bash target, retained without reconstructing the full command. */
+  target?: string;
+  /** First command lines retained for an expanded nested Bash row. */
+  inputPreview?: string[];
+  inputOmitted?: number;
+  /** True only when preview contains the actual captured output tail. */
+  outputTail?: boolean;
+  outputOmitted?: number;
 }
 
 /** One restored group of tool calls. */
@@ -77,6 +85,11 @@ export function readNested(details: unknown): ReplayCall[] {
       previewTruncated?: unknown;
       previewDiff?: unknown;
       diff?: unknown;
+      target?: unknown;
+      commandPreview?: unknown;
+      commandOmitted?: unknown;
+      outputTail?: unknown;
+      outputOmitted?: unknown;
     };
     if (typeof call?.id !== "string" || typeof call.name !== "string") continue;
     const reasoning = typeof call.reasoning === "string" && call.reasoning ? call.reasoning : undefined;
@@ -93,6 +106,13 @@ export function readNested(details: unknown): ReplayCall[] {
       previewTruncated: call.previewTruncated === true,
       // A live snapshot flags a diff with diff; a replayed transcript uses previewDiff.
       previewDiff: call.previewDiff === true || call.diff === true,
+      target: call.name === "bash" && typeof call.target === "string" ? call.target : undefined,
+      inputPreview: previewLines(call.commandPreview),
+      inputOmitted: typeof call.commandOmitted === "number" && Number.isFinite(call.commandOmitted) && call.commandOmitted >= 0
+        ? call.commandOmitted : undefined,
+      outputTail: call.outputTail === true,
+      outputOmitted: typeof call.outputOmitted === "number" && Number.isFinite(call.outputOmitted) && call.outputOmitted >= 0
+        ? call.outputOmitted : undefined,
       children: [],
     });
     parents.set(call.id, typeof call.parent === "string" ? call.parent : undefined);

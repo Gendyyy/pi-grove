@@ -64,6 +64,14 @@ export interface TreeNode {
   preview?: string[];
   previewDiff?: boolean;
   previewTruncated?: boolean;
+  /** First lines of a nested Bash command, kept whole because target is one line. */
+  inputPreview?: string[];
+  /** Command lines left out of inputPreview. */
+  inputOmitted?: number;
+  /** True only when preview contains the actual captured output tail. */
+  outputTail?: boolean;
+  /** Captured output lines left out when preview holds the nested Bash tail. */
+  outputOmitted?: number;
   children: TreeNode[];
   /** Repaint hook of the row currently drawing this node, used when leadership moves. */
   invalidate?: () => void;
@@ -219,6 +227,41 @@ export function clean(value: unknown): string {
   return typeof value === "string"
     ? stripVTControlCharacters(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "").replaceAll("\t", "   ")
     : "";
+}
+
+/** Lines shown from one edge of a nested Bash command or its captured output. */
+export const BASH_PREVIEW_LINES = 5;
+
+/** One edge of a captured value: the lines kept and how many were left out. */
+export interface LinePreview {
+  lines: string[];
+  omitted: number;
+}
+
+/**
+ * Take up to `limit` cleaned lines from the head or tail of a value, counting the rest.
+ * Terminal blank lines are not content, so a trailing newline cannot look like omitted output.
+ */
+export function linePreview(
+  value: string,
+  edge: "head" | "tail",
+  limit = BASH_PREVIEW_LINES,
+  maxChars = Number.POSITIVE_INFINITY,
+): LinePreview {
+  const lines = clean(value).split("\n");
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const selected = edge === "head" ? lines.slice(0, limit) : lines.slice(-limit);
+  const text = selected.join("\n");
+  if (text.length <= maxChars) return { lines: selected, omitted: Math.max(0, lines.length - selected.length) };
+
+  const bounded = Math.max(0, Math.floor(maxChars));
+  if (bounded === 0) return { lines: [], omitted: lines.length };
+  const start = edge === "tail" ? Math.max(0, text.length - bounded) : 0;
+  const clipped = edge === "head" ? text.slice(0, bounded) : text.slice(start);
+  const kept = clipped.split("\n");
+  if (edge === "head" && clipped.endsWith("\n")) kept.pop();
+  if (edge === "tail" && start > 0 && clipped.startsWith("\n")) kept.shift();
+  return { lines: kept, omitted: Math.max(0, lines.length - kept.length) };
 }
 
 /** Bound any single-line text so one card cannot dominate the transcript. */

@@ -920,7 +920,30 @@ export function paintGroup(
 
       // Keep bounded tool previews attached to their call without treating lines as markers.
       const preview = node.children.length === 0 ? node.preview ?? [] : [];
-      if (open && preview.length > 0) {
+      const nestedBash =
+        node.children.length === 0 && node.parent !== undefined && node.name === "bash" &&
+        node.inputPreview !== undefined;
+      if (open && nestedBash) {
+        const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
+        const prefix = themeText(theme, "dim", phaseIndent + childGuide + glyphs.pipe + " ");
+        const push = (text: string): void => {
+          lines.push(fitToolLine(prefix + text, width));
+          targets.set(lines.length - 1, node.id);
+        };
+        for (const text of node.inputPreview ?? []) push(themeText(theme, "accent", text));
+        if (node.inputOmitted) {
+          const noun = node.inputOmitted === 1 ? "line" : "lines";
+          push(themeText(theme, "muted", `${ELLIPSIS} ${node.inputOmitted} more command ${noun}`));
+        }
+        if (node.outputTail) {
+          push(themeText(theme, "dim", glyphs.h.repeat(Math.max(3, inner - visibleWidth(prefix)))));
+          if (node.outputOmitted) {
+            const noun = node.outputOmitted === 1 ? "line" : "lines";
+            push(themeText(theme, "muted", `${ELLIPSIS} ${node.outputOmitted} earlier output ${noun}`));
+          }
+          for (const text of preview) push(themeText(theme, "toolOutput", text));
+        }
+      } else if (open && preview.length > 0) {
         const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
         const prefix = themeText(theme, "dim", phaseIndent + childGuide + glyphs.pipe + " ");
         const painted = node.previewDiff
@@ -937,7 +960,7 @@ export function paintGroup(
       }
       // A call still running has nothing captured yet, so its own live component is the
       // only output there is; painting it keeps opening the row from being a no-op.
-      if (open && preview.length === 0 && node.status === "running" && node.live) {
+      if (open && preview.length === 0 && !nestedBash && node.status === "running" && node.live) {
         const childGuide = [...ancestors, last].map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
         const prefix = themeText(theme, "dim", phaseIndent + childGuide + glyphs.pipe + " ");
         let live: string[] = [];

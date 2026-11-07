@@ -14,11 +14,13 @@ import {
   MAX_GROUPS,
   MAX_GROUPS_TOTAL,
   MAX_ID,
+  BASH_PREVIEW_LINES,
   PREVIEW_CHARS,
   PREVIEW_LINES,
   PREVIEW_TOTAL,
   brief,
   clean,
+  linePreview,
   goalOf,
   adoptMilestones,
   taskMilestoneOf,
@@ -168,7 +170,26 @@ function makeNode(
   const code = record?.content;
   if (toolName === "write" && typeof code === "string")
     node.writeLines = code.length === 0 ? 0 : code.split(NEWLINE).length - (code.endsWith(NEWLINE) ? 1 : 0);
+  captureCommand(node, record, parent !== undefined);
   return node;
+}
+
+/** Keep a nested Bash row's command head in step with its streamed arguments. */
+function captureCommand(node: TreeNode, args: Record<string, unknown> | undefined, nested: boolean): boolean {
+  if (!nested || node.name !== "bash" || typeof args?.command !== "string") return false;
+  const preview = linePreview(args.command, "head", BASH_PREVIEW_LINES, PREVIEW_CHARS);
+  const changed = node.inputPreview?.join(NEWLINE) !== preview.lines.join(NEWLINE) || node.inputOmitted !== preview.omitted;
+  node.inputPreview = preview.lines;
+  node.inputOmitted = preview.omitted;
+  return changed;
+}
+
+/** Restore bounded nested Bash input metadata without rebuilding its full command. */
+function restoreCommandPreview(node: TreeNode, call: ReplayCall): void {
+  if (call.target !== undefined) node.target = call.target;
+  if (node.inputPreview !== undefined || call.inputPreview === undefined) return;
+  node.inputPreview = call.inputPreview.slice(0, BASH_PREVIEW_LINES);
+  node.inputOmitted = (call.inputOmitted ?? 0) + Math.max(0, call.inputPreview.length - node.inputPreview.length);
 }
 
 /** Build a reasoning row: no tool call, just what the model was weighing first. */
@@ -222,10 +243,11 @@ export function registerCall(state: TreeState, input: CallInput): TreeGroup | un
     // Streaming rows report their arguments in pieces; keep the row text in step.
     const goal = goalOf(record);
     const target = targetOf(record);
+    const commandChanged = captureCommand(known, record, parent !== undefined);
     const intentNodeChanged = !parent && statedIntent !== "" && known.taskIntent !== statedIntent;
     const milestoneNodeChanged = !parent && statedMilestone !== undefined && known.milestone !== statedMilestone;
     if (goal === known.goal && target === known.target && !intentChanged && !milestonesChanged &&
-      !intentNodeChanged && !milestoneNodeChanged) return undefined;
+      !intentNodeChanged && !milestoneNodeChanged && !commandChanged) return undefined;
     known.goal = goal;
     known.target = target;
     if (!parent && statedIntent) known.taskIntent = statedIntent;
@@ -336,11 +358,13 @@ export function attachCalls(
       // The live session already registered this step from its own tool events, so the
       // snapshot only fills in what the event stream could not keep: never a second row.
       if (existing.summary === undefined) existing.summary = call.summary;
+      restoreCommandPreview(existing, call);
       if (existing.preview === undefined) restorePreview(group, existing, call);
       attachCalls(state, group, call.children, existing);
       continue;
     }
     const node = makeNode(state, call.id, call.name, call.args, call.started, parent);
+    restoreCommandPreview(node, call);
     node.restored = true;
     if (call.kind === "thinking") {
       node.kind = "thinking";
@@ -365,12 +389,19 @@ export function attachCalls(
 /** Restore a bounded preview for a call whose output only survives as snapshot text. */
 function restorePreview(group: TreeGroup, node: TreeNode, call: ReplayCall): void {
   const lines = call.preview ?? [];
+  const nestedBash = node.parent !== undefined && node.name === "bash";
+  const hasTail = nestedBash && call.outputTail === true;
+  if (hasTail) {
+    node.outputTail = true;
+    node.outputOmitted = call.outputOmitted ?? 0;
+  }
   if (group.budget <= 0 || lines.length === 0) return;
-  const shown = lines.slice(0, PREVIEW_LINES);
+  const shown = hasTail ? lines.slice(-BASH_PREVIEW_LINES) : lines.slice(0, PREVIEW_LINES);
   group.budget -= shown.reduce((total, line) => total + line.length + 1, 0);
-  node.previewDiff = call.previewDiff === true;
+  node.previewDiff = hasTail ? false : call.previewDiff === true;
   node.preview = shown;
-  node.previewTruncated = call.previewTruncated === true || lines.length > PREVIEW_LINES;
+  if (hasTail) node.previewTruncated = false;
+  else node.previewTruncated = call.previewTruncated === true || lines.length > PREVIEW_LINES;
 }
 
 /**
@@ -534,6 +565,16 @@ function capture(group: TreeGroup, node: TreeNode, result: unknown): void {
   const content = (result as { content?: Array<{ type?: string; text?: string }> } | undefined)?.content;
   const text = diff ?? content?.find(part => part?.type === "text")?.text;
   const raw = clean(text);
+  if (node.parent !== undefined && node.name === "bash") {
+    const tail = linePreview(raw, "tail", BASH_PREVIEW_LINES, Math.min(PREVIEW_CHARS * PREVIEW_LINES, group.budget));
+    node.previewDiff = false;
+    node.preview = tail.lines;
+    node.outputTail = true;
+    node.outputOmitted = tail.omitted;
+    node.previewTruncated = false;
+    group.budget -= tail.lines.join(NEWLINE).length;
+    return;
+  }
   if (!raw) return;
   const slice = raw.slice(0, Math.min(PREVIEW_CHARS * PREVIEW_LINES, group.budget));
   group.budget -= slice.length;

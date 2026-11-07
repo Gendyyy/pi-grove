@@ -171,7 +171,7 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
   }
 });
 test("the card is one rounded frame whose top border carries the task intent", () => {
-  const tree = new ToolTree({ ...settings, iconMode: "unicode", icons: true });
+  const tree = new ToolTree({ ...settings, iconMode: "nerd", icons: true });
   tree.start({
     toolCallId: "a",
     toolName: "read",
