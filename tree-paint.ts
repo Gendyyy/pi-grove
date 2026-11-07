@@ -14,6 +14,7 @@ import {
   milestoneTarget,
   PREVIEW_LINES,
   TASK_MILESTONE_MAX,
+  countDirectErrors,
   countErrors,
   countToolCalls,
   phaseShare,
@@ -223,11 +224,12 @@ export function spinnerGlyph(glyphs: Glyphs, now: number): string {
   return frames[Math.floor(now / SPIN_MS) % frames.length] ?? glyphs.dot;
 }
 
-/** True when no call failed: a reasoning row is not work, so one still in flight never blocks a finished plan. */
+/**
+ * True when no call of this level failed: a reasoning row is not work, so one still in flight never
+ * blocks a finished plan, and a nested step answers through its own call row, not through the phase.
+ */
 function allSucceeded(nodes: TreeNode[]): boolean {
-  return nodes.every(
-    node => (node.kind === "thinking" || node.status === "success") && allSucceeded(node.children),
-  );
+  return nodes.every(node => node.kind === "thinking" || node.status === "success");
 }
 
 /**
@@ -443,8 +445,9 @@ function phasePlanLines(
   const closed = closedPhases(group);
   const byCall = phaseCallIds(group);
   // A phase can finish badly: its box and the link it closed warn instead of claiming success.
+  // Only the phase's own calls count: a nested step failing is that call's business, not the plan's.
   const failed = new Set(
-    group.rows.filter(node => byCall.has(node.id) && countErrors([node]) > 0).map(node => byCall.get(node.id)!),
+    group.rows.filter(node => byCall.has(node.id) && countDirectErrors([node]) > 0).map(node => byCall.get(node.id)!),
   );
   const widths = plan.map(phase => visibleWidth(phase.label) + PLAN_PAD * 2 + 2);
   let over = widths.reduce((sum, box) => sum + box, 0) + (widths.length - 1) * PLAN_LINK - (width - 2);
@@ -678,7 +681,7 @@ export function paintGroup(
     // so a phase cannot turn green and back while the pointer still sits on it.
     const closed = closedPhases(group);
     const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
-    const failed = countErrors(tools.filter(node => displayPhaseByCall.get(node.id) === phase.id)) > 0;
+    const failed = countDirectErrors(tools.filter(node => displayPhaseByCall.get(node.id) === phase.id)) > 0;
     const role: Foreground = failed ? "warning" : index < closed ? "success" : index === activeIndex ? "accent" : "dim";
     phaseRoles.set(index, role);
     return role;
@@ -694,7 +697,7 @@ export function paintGroup(
     const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
     if (story) {
       const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
-      const failures = countErrors(phaseRows);
+      const failures = countDirectErrors(phaseRows);
       const done = index < closed;
       const role = phaseRole(index);
       // The phase in flight turns the same spinner as its calls and keeps turning until the plan moves
@@ -728,7 +731,7 @@ export function paintGroup(
     const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
     // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
     const calls = phaseRows.length;
-    const phaseErrors = countErrors(phaseRows);
+    const phaseErrors = countDirectErrors(phaseRows);
     const elapsed = phaseElapsedById.get(phase.id) ?? 0;
     const phaseTarget = milestoneTarget(phase.id);
     // A live phase turns instead of holding a still diamond, from the moment it opens until it closes,

@@ -116,3 +116,13 @@ test("a card without a plan reports no percentage at all", () => {
   assert.equal(derivedProgress(plain), undefined);
   assert.equal(planFinished(plain), false);
 });
+
+test("a failure nested inside a call belongs to that call, not to the plan", () => {
+  const live = {
+    ...card("d", ran("a"), ran("b"), { ...ran("c"), children: [call("step", "error")] }, ran("d")),
+    settled: true,
+  };
+  assert.equal(finishedPhases(live), 4);
+  assert.equal(planFinished(live), true, "a nested step failing never holds the plan back");
+  assert.equal(derivedProgress(live), 100, "the bar fills on the calls the plan owns");
+});

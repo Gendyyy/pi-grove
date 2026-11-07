@@ -94,7 +94,9 @@ While a call is live, the needle's own cell breathes between the accent and mute
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
 The Story layout groups work into numbered, colored phase cards. Each phase header shows its
-status, direct call count, elapsed time when space permits, and failure count. The newest
+status, direct call count, elapsed time when space permits, and how many of its own calls failed.
+A phase answers only to its own calls: a nested step that fails keeps its marker and the card's
+failure count, but never turns the phase orange or gives it a `!`. The newest
 call rows always stay visible: the last `groupWindow` call-level entries, where a run of related
 calls counts as one entry, so a phase that just finished keeps its tail on screen. Older calls
 fold away entirely: a closed phase shows one header carrying its call count, never a second row
@@ -110,7 +112,7 @@ uses the compact timeline instead of the Story phase cards; `groupPhases` never 
 │ ────────────────────────────────────────────────────────── │
 │ │ ✓ 01 Inspect · 1 call · 1s ▸                             │
 │ │   ▸ Read settings                                        │
-│ │ ! 02 Verify · 1 call · 1 failed ▸                        │
+│ │ ✓ 02 Verify · 1 call · 1s ▸                              │
 │ │   ▸ Check registry                                       │
 ╰────────────────────────────────────────────────────────────╯
 ```
@@ -169,7 +171,8 @@ still shows a glyph when `icons` is off.
 The card owns its background instead of borrowing one row's result: it stays pending while any
 call runs, stays neutral when calls succeed or only some of them fail, and turns red only when
 every call in the card failed. A partial failure is still visible through the parent's warning
-marker and the error count, so the block never shouts about work that partly succeeded.
+marker and the error count, so the block never shouts about work that partly succeeded, and the
+phase holding that call keeps its own status until one of its direct calls fails.
 
 ## Glyphs
 

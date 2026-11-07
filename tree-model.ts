@@ -465,6 +465,14 @@ export function countErrors(nodes: TreeNode[]): number {
   );
 }
 
+/** Count failed rows at this level only: a nested step's failure belongs to its call, not to the phase. */
+export function countDirectErrors(nodes: TreeNode[]): number {
+  return nodes.reduce(
+    (total, node) => (node.kind === "thinking" || node.status !== "error" ? total : total + 1),
+    0,
+  );
+}
+
 /** Background tone a card wears, read from the card itself rather than one borrowed row. */
 export type CardTone = "pending" | "success" | "error";
 

@@ -22,14 +22,16 @@ function storyCard() {
   return { tree, card };
 }
 
-test("story phases retain failures and open one level at a time", () => {
+test("story phases ignore a nested failure and open one level at a time", () => {
   const { tree, card } = storyCard();
   const render = (width = 96) => card.render(width);
   const lines = render();
   assert.ok(lines[0]!.includes("Check updates"), "the card states the task intent in its border");
   assert.ok(lines.some(line => line.includes("x 01 Inspect")));
-  const phase = lines.findIndex(line => line.includes("02 Verify") && line.includes("1 failed"));
+  const phase = lines.findIndex(line => line.includes("02 Verify"));
   assert.ok(phase >= 0);
+  assert.ok(!lines[phase]!.includes("failed"), "a nested step's failure never marks its phase");
+  assert.ok(lines.some(line => line.includes("1 failed")), "the card rollup still counts the nested failure");
   assert.ok(!lines.some(line => line.includes("Request registry")));
   assert.equal((tree as unknown as { targetAt(index: number): string | undefined }).targetAt(phase), milestoneTarget("verify"));
   card.handleMouse?.({ type: "click", button: "left", x: 0, y: phase, screenX: 0, screenY: 0, shift: false, alt: false, ctrl: false, width: 96, height: 40 });
@@ -41,7 +43,7 @@ test("story phases retain failures and open one level at a time", () => {
   assert.ok(render().some(line => line.includes("Request registry")));
   const narrow = render(35);
   assert.ok(narrow.every(line => visibleWidth(line) <= 35));
-  assert.ok(narrow.some(line => line.includes("1 failed")));
+  assert.ok(!(narrow.find(line => line.includes("02 Verify")) ?? "").includes("failed"));
 });
 
 test("story phase headers count the whole phase and fit common widths", () => {
@@ -62,18 +64,19 @@ test("story phase headers count the whole phase and fit common widths", () => {
   assert.equal(settled.filter(line => line.includes("Inspect lengthy configuration item 0")).length, 0, "a folded call never resurfaces as a summary row");
 });
 
-test("expand-all reveals nested steps and Story colors distinguish phase outcomes", () => {
+test("expand-all reveals nested steps while a phase follows its own calls", () => {
   const { tree } = storyCard();
   const roleTheme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const row = { toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: roleTheme, expanded: true, invalidate: () => {} };
   const lines = tree.render(row).render(400);
   assert.ok(lines.some(line => line.includes("[success]x 01")));
-  const turning = lines.find(line => line.includes("[warning]") && line.includes(" 02")) ?? "";
-  assert.doesNotMatch(turning, /\[warning\]! 02/, "the last phase is still open while the turn runs");
-  // Only the final response closes the last phase, and the failure it holds then stays a failure.
+  assert.doesNotMatch(lines.find(line => line.includes(" 02")) ?? "", /\[warning\]/, "a nested failure never turns its phase orange");
+  // Only the final response closes the last phase, and its own calls then decide the mark.
   tree.settle();
-  const verifyRow = tree.render(row).render(400).find(line => line.includes("[warning]") && line.includes(" 02")) ?? "";
-  assert.match(verifyRow, /\[warning\]! 02/, "a failed phase whose calls returned holds the failure, not a spinner");
+  const settled = tree.render(row).render(400);
+  const verifyRow = settled.find(line => line.includes(" 02")) ?? "";
+  assert.match(verifyRow, /\[success\]x 02/, "a phase whose own calls returned closes with a check");
+  assert.doesNotMatch(verifyRow, /failed/, "the nested failure stays off the phase");
   assert.ok(lines.some(line => line.includes("Request registry")));
 });
 
@@ -86,7 +89,8 @@ test("expanded Story rows replace summaries and keep the phase rail through nest
   const call = lines.find(line => line.includes("codemode") && line.includes("Check registry")) ?? "";
   const child = lines.find(line => line.includes("bash") && line.includes("Request registry")) ?? "";
   assert.match(phase, /\[dim\]\| /, "the rail keeps one colour whatever the phase outcome");
-  assert.match(phase, /\[warning\]1 failed/, "the phase rollup carries the failure");
+  assert.ok(!phase.includes("failed"), "a nested failure stays off the phase rollup");
+  assert.match(call, /\[error\]\*/, "the failing nested step still marks its own call row");
   assert.match(call, /\[dim\]\| /, "the phase rail must not change to the call outcome color");
   assert.match(child, /\[dim\]\| /);
   assert.match(child, /\[error\]\*/, "the failing call keeps its error marker");
