@@ -38,6 +38,7 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `mode` | default / reasoning / result | reasoning | what a row leads with |
 | `icons` | on / off | on | add glyphs beside tool words |
 | `iconMode` | auto / nerd / ascii | auto | whether the font can draw them |
+| `card` | classic / instrument / ledger / spine / margin | classic | how the card arranges its headline, phases and rows |
 | `group` | prompt / turn / message / off | prompt | where one card ends |
 | `groupWindow` | 1-32 | 5 | how many recent unphased calls stay visible |
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
@@ -96,7 +97,8 @@ instead of blinking on and off, so motion means work in flight and a still bar m
 The Story layout groups work into numbered, colored phase cards. Each phase header shows its
 status, direct call count, elapsed time when space permits, and how many of its own calls failed.
 A phase answers only to its own calls: a nested step that fails keeps its marker and the card's
-failure count, but never turns the phase orange or gives it a `!`. The newest
+failure count, but never turns the phase orange or gives it a `!` — not even when Pi reports the
+whole script as failed because that step's error escaped it. The newest
 call rows always stay visible: the last `groupWindow` call-level entries, where a run of related
 calls counts as one entry, so a phase that just finished keeps its tail on screen. Older calls
 fold away entirely: a closed phase shows one header carrying its call count, never a second row
@@ -119,6 +121,43 @@ uses the compact timeline instead of the Story phase cards; `groupPhases` never 
 
 The task title stays fixed across the task; call rows show their own per-call intent. Grove
 adds no separate Goal or Now sections.
+
+## Card layouts
+
+`card` picks how a card composes the same data. Every layout keeps the same disclosure and the
+same click targets: the card reveals its rows, a phase reveals its calls, a call reveals its
+steps. The setting applies live. Set it with `/grove card instrument`, or open the panel with
+`/grove` and cycle the `card` row.
+
+`classic` is the card above and the default: a boxed frame with the task in the top border, the
+meter and rollup under it, phase rules, then branch rows.
+
+`instrument` is a borderless panel. The title leads and the plan's share sits against the right
+edge, followed by a meta row of duration shape, counts, tool mix and clock, then a numbered strip
+of phase cells and the meter bar. Calls sit on fixed rails with a per-row scale bar.
+
+`ledger` is a borderless table. The title and its numbers share a header line over a hairline
+rule, each phase is a rule with a dotted leader and its state, and each call is a table row
+ending in a right-aligned time column.
+
+`spine` is one continuous rail. Phase nodes sit on the rail, calls hang off it with a
+time-proportional bar, and a closing mark ends the rail with the same rollup the headline opened.
+
+`margin` keeps a hairline box. The title rides the border; a 16-column margin holds the phase
+numeral and name, and calls read as body text with the time as an italic footnote on the right.
+
+| Layout | Full | Compact | Below |
+| --- | --- | --- | --- |
+| `instrument` | 64 and up | 40–63: no strip, no scale bar, no sparkline | under 40: classic |
+| `ledger` | 56 and up | 24–55: no dotted leader, no summary column, no share under 40 | under 24: classic |
+| `spine` | 56 and up | 24–55: no timebar, the rail stays | under 24: classic |
+| `margin` | 72 and up | 24–71: the margin narrows to 6 columns, no tool column under 72 | under 24: classic |
+
+`groupSparkline` and `groupPercent` apply to the classic layout only, because each layout owns
+how it shows shape and share; the settings panel marks those two rows `· classic layout only`
+while another layout is active. `groupGutter` and `groupPhases` still act everywhere: the gutter
+decides whether a plan reaches any layout at all, and the phases toggle decides what a click on
+the phase form does.
 
 ## Layers
 
@@ -225,6 +264,7 @@ option above. Enter cycles a value or opens a submenu, typing filters, Escape cl
 ```
 /grove                      open the settings panel
 /grove status               report every option and what is active
+/grove card instrument      change the card layout
 /grove group turn           change card boundaries (reload required)
 /grove group window 6       numbers are clamped to their range
 /grove group nested off      hide inline nested names/counts
@@ -237,7 +277,7 @@ option above. Enter cycles a value or opens a submenu, typing filters, Escape cl
 /grove on | off | toggle
 ```
 
-Tool icons, built-in tool names, icon set, visible-call window, failure visibility, nested counts, progress,
+Tool icons, built-in tool names, icon set, card layout, visible-call window, failure visibility, nested counts, progress,
 percentage, phase cards, duration bars, and the thinking label apply immediately. Enabled state, row-label mode,
 grouping, and reasoning placement require Grove to reload because they change startup-time
 tool composition or event behavior. The settings panel labels each option with its policy.
