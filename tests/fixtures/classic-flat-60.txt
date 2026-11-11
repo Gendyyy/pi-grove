@@ -1,0 +1,6 @@
+ +- GROVE ----------------------------------------------+
+ | +=* · 3 calls · bash x1 · grep x1 · read x1          |
+ | +- * read · Read the paint e[0m…[0m · 1 line · ##--- · <1s |
+ | +- * grep · Fi[0m…[0m · 0 matches in 0 files · #---- · <1s |
+ | +- * bash · Run the type check [0m…[0m · done · ##### · 2s |
+ +------------------------------------------------------+

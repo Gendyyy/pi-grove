@@ -16,6 +16,7 @@ const settings: TreeSettings = {
   revealErrors: false,
   icons: false,
   iconMode: "ascii",
+  card: "classic",
   window: 10,
   groupNestedTools: true,
   groupProgress: false,

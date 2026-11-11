@@ -1,0 +1,6 @@
+ +- Wire the meter click ---------------------------------------------------+
+ | :▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ o · 1 failed · 2 calls · +- · bash x1 · codemo[0m…[0m |
+ | \ 01 Build                                                  2 calls · 1s |
+ |   +- * codemode · Wire the phase tic[0m…[0m · edit x1 · read x1 · 1 error · 1s |
+ |   +- \ bash · Confirm the package under the new fold (n[0m…[0m · running · <1s |
+ +--------------------------------------------------------------------------+

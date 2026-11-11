@@ -1,0 +1,7 @@
+ +- Wire the meter click -------------------------------+
+ | :▰▰▰▰▰▰▰▰▰▰▰:▱▱▱▱▱▱▱▱▱▱▱ O · 2 calls · =+ · bash x1[0m…[0m |
+ | x 01 Inspect                            1 call · <1s |
+ |   +- * read · Read the hit map (tree[0m…[0m · 1 line · <1s |
+ | / 02 Verify                              1 call · 1s |
+ |   +- * bash · Run the suite (npm test) · done   · 1s |
+ +------------------------------------------------------+

@@ -1,0 +1,6 @@
+ +- GROVE --------------------------------------------------------------------------------------+
+ | +=* · 3 calls · bash x1 · grep x1 · read x1                                                  |
+ | +- * read · Read the paint entry (tree-paint.ts) · 1 line                   · ###----- · <1s |
+ | +- * grep · Find every paint caller (paintGroup) · 0 matches in 0 files     · ##------ · <1s |
+ | +- * bash · Run the type check (npm run check) · done                        · ######## · 2s |
+ +----------------------------------------------------------------------------------------------+

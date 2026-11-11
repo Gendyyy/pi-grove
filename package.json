@@ -35,6 +35,7 @@
     "docs/pi-1.1.md",
     "docs/pi-fff.md",
     "imagegen/**/*.ts",
+    "layouts/**/*.ts",
     "pi-fff/**/*.ts",
     "vendor/**/*.ts"
   ],

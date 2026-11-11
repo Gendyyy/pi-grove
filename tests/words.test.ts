@@ -24,6 +24,7 @@ function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> =
     revealErrors: true,
     icons: true,
     iconMode,
+    card: "classic",
     window: 4,
     groupNestedTools: true,
     groupProgress: true,

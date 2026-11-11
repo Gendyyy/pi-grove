@@ -10,6 +10,12 @@ import { metric, paintSummary, themeText, toolColor, type Foreground, type Grove
 /** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
 export type GroupMode = "prompt" | "turn" | "message" | "off";
 
+/** How one card composes its headline, phases and rows. */
+export type CardLayoutId = "classic" | "instrument" | "ledger" | "spine" | "margin";
+
+/** The card layouts the settings panel offers, classic first so it stays the default. */
+export const CARD_LAYOUTS: readonly CardLayoutId[] = ["classic", "instrument", "ledger", "spine", "margin"];
+
 /** pi mounts two rows per call: the streaming call row and the finished result row. */
 export type PaintPhase = "call" | "result";
 
@@ -23,6 +29,8 @@ export interface TreeSettings {
   revealErrors: boolean;
   icons: boolean;
   iconMode: IconMode;
+  /** Which card layout paints this tree. */
+  card: CardLayoutId;
   /** How many recent calls the collapsed card keeps visible. */
   window: number;
   /** Show nested tool names and counts in compact codemode rows. */
@@ -465,12 +473,17 @@ export function countErrors(nodes: TreeNode[]): number {
   );
 }
 
-/** Count failed rows at this level only: a nested step's failure belongs to its call, not to the phase. */
+/**
+ * True when a row's failure is its own. A codemode call that broke because a nested step threw
+ * answers through that step's row instead, so the phase above it keeps its own status.
+ */
+export function failedOnOwn(node: TreeNode): boolean {
+  return node.kind !== "thinking" && node.status === "error" && !node.children.some(child => child.status === "error");
+}
+
+/** Count the failed rows of this level whose failure is their own, not a nested step's. */
 export function countDirectErrors(nodes: TreeNode[]): number {
-  return nodes.reduce(
-    (total, node) => (node.kind === "thinking" || node.status !== "error" ? total : total + 1),
-    0,
-  );
+  return nodes.reduce((total, node) => (failedOnOwn(node) ? total + 1 : total), 0);
 }
 
 /** Background tone a card wears, read from the card itself rather than one borrowed row. */

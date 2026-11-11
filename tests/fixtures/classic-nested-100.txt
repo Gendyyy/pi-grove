@@ -1,0 +1,6 @@
+ +- Wire the meter click -----------------------------------------------------------------------+
+ | :▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ o · 1 failed · 2 calls · +- · bash x1 · codemode x1 · edit x1 · re[0m…[0m |
+ | \ 01 Build                                                                      2 calls · 1s |
+ |   +- * codemode · Wire the phase ticks in one paint · edit x1 · read x1 · 1 error       · 1s |
+ |   +- \ bash · Confirm the package under the new fold (npm run test:pack) · running     · <1s |
+ +----------------------------------------------------------------------------------------------+

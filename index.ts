@@ -118,6 +118,7 @@ export function createGroveExtension(
       switch (key) {
         case "icons": toolUi?.updateSettings({ icons: settings.icons }); return;
         case "iconMode": toolUi?.updateSettings({ iconMode: resolveIconMode(settings.iconMode) }); return;
+        case "card": toolUi?.updateSettings({ card: settings.card }); return;
         case "groupWindow": toolUi?.updateSettings({ groupWindow: settings.groupWindow }); return;
         case "groupRevealErrors": toolUi?.updateSettings({ groupRevealErrors: settings.groupRevealErrors }); return;
         case "groupNestedTools": toolUi?.updateSettings({ groupNestedTools: settings.groupNestedTools }); return;
@@ -310,6 +311,7 @@ export function createGroveExtension(
       mode: settings.mode,
       icons: settings.icons,
       iconMode: resolveIconMode(settings.iconMode),
+      card: settings.card,
       group: settings.group,
       groupRevealErrors: settings.groupRevealErrors,
       groupWindow: settings.groupWindow,

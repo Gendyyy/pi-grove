@@ -5,7 +5,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme } from "../theme.js";
 import { GROUP_TARGET, ToolTree, milestoneTarget, type TreeSettings } from "../tool-tree.js";
 
-const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
+const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", card: "classic", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
 
 /** Build a card with completed and failed phases and one nested tool call. */
 function storyCard() {
@@ -191,4 +191,22 @@ test("the card is one rounded frame whose top border carries the task intent", (
   assert.ok(lines.every(line => visibleWidth(line) <= 60), "every row stays inside the frame width");
   // No rail survives: the sides are the frame, so a row never reads as narration outside it.
   assert.ok(lines.slice(1, -1).every(line => line.startsWith("│ ") && line.trimEnd().endsWith("│")), "the body sits inside the frame");
+});
+
+test("a script that broke on a nested step leaves its phase neutral", () => {
+  const tree = new ToolTree(settings);
+  tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "Attempt checks", taskIntent: "Verify changes", taskMilestones: "verify=Verify", taskMilestone: "verify" } });
+  tree.start({ toolCallId: "child", parentToolCallId: "a", toolName: "bash", args: { reasoning: "Run tests" } });
+  tree.end({ toolCallId: "child", toolName: "bash", result: { content: [] }, isError: true });
+  // Pi fails the whole call when the script lets that rejection escape.
+  tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: true });
+  tree.start({ toolCallId: "b", toolName: "codemode", args: { reasoning: "Finish checks", taskIntent: "Verify changes", taskMilestones: "verify=Verify", taskMilestone: "verify" } });
+  tree.end({ toolCallId: "b", toolName: "codemode", result: { content: [] }, isError: false });
+  tree.settle();
+  const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
+  const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
+  const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
+  assert.ok(phase.includes("[success]x 01"), "the phase closes clean instead of warning: " + phase);
+  assert.ok(!phase.includes("warning"), "the script's failure belongs to the failing step, not the phase");
+  assert.ok(!phase.includes("failed"), "a nested-caused script failure stays off the phase");
 });

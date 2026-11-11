@@ -4,6 +4,7 @@
  */
 import { defaultConfigPath, parseEnabled, readRawConfig, updateConfig } from "./config.js";
 import type { IconMode } from "./icons.js";
+import { CARD_LAYOUTS, type CardLayoutId } from "./tree-model.js";
 
 /** Glyph sets in the order the pickers offer them. */
 export const ICON_MODES: readonly IconMode[] = ["auto", "nerd", "ascii"];
@@ -24,6 +25,8 @@ export interface GroveSettings {
   mode: GroveMode;
   icons: boolean;
   iconMode: IconMode;
+  /** Which card layout paints each tree. */
+  card: CardLayoutId;
   group: GroveGroup;
   groupWindow: number;
   groupRevealErrors: boolean;
@@ -76,6 +79,7 @@ export const SETTINGS: readonly SettingSpec[] = [
   { key: "mode", kind: "enum", values: MODES, fallback: "reasoning", apply: "reload", label: "Row label", summary: "what a tool row leads with" },
   { key: "icons", kind: "boolean", fallback: true, apply: "live", label: "Tool icons", summary: "draw a glyph before each tool name" },
   { key: "iconMode", kind: "enum", values: ICON_MODES, fallback: "auto", apply: "live", label: "Icon set", summary: "which glyph set to use" },
+  { key: "card", kind: "enum", values: CARD_LAYOUTS, fallback: "classic", apply: "live", label: "Card layout", summary: "how the card arranges its headline, phases and rows" },
   { key: "group", kind: "enum", values: GROUPS, fallback: "prompt", apply: "reload", label: "Grouping", summary: "where one collapsed card ends" },
   {
     key: "groupWindow",
@@ -231,6 +235,7 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     mode: readChoice(settingSpec("mode"), raw.mode, MODES),
     icons: readFlag(settingSpec("icons"), raw.icons),
     iconMode: readChoice(settingSpec("iconMode"), raw.iconMode, ICON_MODES),
+    card: readChoice(settingSpec("card"), raw.card, CARD_LAYOUTS),
     group: readChoice(settingSpec("group"), raw.group, GROUPS),
     groupWindow: readNumber(settingSpec("groupWindow"), raw.groupWindow),
     groupRevealErrors: readFlag(settingSpec("groupRevealErrors"), raw.groupRevealErrors),
@@ -267,6 +272,7 @@ export interface CommandSpec {
 export const COMMANDS: readonly CommandSpec[] = [
   { words: ["mode"], keys: ["mode"] },
   { words: ["icons"], keys: ["icons", "iconMode"] },
+  { words: ["card"], keys: ["card"] },
   { words: ["group", "window"], keys: ["groupWindow"] },
   { words: ["group", "errors"], keys: ["groupRevealErrors"] },
   { words: ["group", "nested"], keys: ["groupNestedTools"] },
@@ -460,12 +466,16 @@ export interface PanelRow {
   choices?: readonly string[];
 }
 
+/** Options only the classic layout paints; the other layouts own their share and shape. */
+const CLASSIC_ONLY_KEYS: readonly SettingKey[] = ["groupSparkline", "groupPercent"];
+
 /** What the panel shows for one option, including how its value reads back. */
 function panelRow(settings: GroveSettings, spec: SettingSpec): PanelRow {
+  const classicOnly = settings.card !== "classic" && CLASSIC_ONLY_KEYS.includes(spec.key) ? " · classic layout only" : "";
   const row: PanelRow = {
     key: spec.key,
     label: spec.label,
-    description: spec.summary + (spec.apply === "live" ? " · applies immediately" : " · requires Grove reload"),
+    description: spec.summary + (spec.apply === "live" ? " · applies immediately" : " · requires Grove reload") + classicOnly,
     currentValue: panelValue(spec.key, currentValue(settings, spec.key)),
   };
   if (spec.kind === "boolean") row.choices = ["on", "off"];

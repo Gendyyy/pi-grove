@@ -8,6 +8,7 @@ import { join } from "node:path";
 import test, { afterEach } from "node:test";
 import { SettingsList } from "@earendil-works/pi-tui";
 import { readRawConfig } from "../config.js";
+import { CARD_LAYOUTS } from "../tree-model.js";
 import {
   applyCommand,
   completions,
@@ -52,7 +53,7 @@ test("settings classify startup composition separately from live presentation", 
   const reload = SETTINGS.filter(spec => spec.apply === "reload").map(spec => spec.key);
   const live = SETTINGS.filter(spec => spec.apply === "live").map(spec => spec.key);
   assert.deepEqual(reload, ["enabled", "mode", "group", "thinking"]);
-  assert.deepEqual(live, ["icons", "iconMode", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupToolNames", "groupProgress", "groupPercent", "groupPhases", "groupSparkline", "groupGutter", "thinkingLabel"]);
+  assert.deepEqual(live, ["icons", "iconMode", "card", "groupWindow", "groupRevealErrors", "groupNestedTools", "groupToolNames", "groupProgress", "groupPercent", "groupPhases", "groupSparkline", "groupGutter", "thinkingLabel"]);
   const rows = panelRows(readSettings("/nonexistent/grove.json"));
   assert.match(rows.find(row => row.key === "groupProgress")?.description ?? "", /applies immediately/);
   assert.match(rows.find(row => row.key === "group")?.description ?? "", /requires Grove reload/);
@@ -118,6 +119,39 @@ test("stored junk never reaches the renderer", async () => {
   assert.equal(settings.groupSparkline, true);
   assert.equal(settings.thinking, "off");
   assert.equal(settings.thinkingLabel?.length, 60);
+});
+
+test("the card layout defaults to classic, reads every value back, and rejects junk", async () => {
+  assert.equal(readSettings(await scratch({})).card, "classic");
+  for (const layout of CARD_LAYOUTS) {
+    assert.equal(readSettings(await scratch({ card: layout })).card, layout);
+  }
+  assert.equal(readSettings(await scratch({ card: "fancy" })).card, "classic");
+});
+
+test("non-classic layouts mark the two classic-only panel rows", () => {
+  const classicOnly = ["groupSparkline", "groupPercent"];
+  const marked = panelRows({ ...readSettings("/nonexistent/grove.json"), card: "ledger" });
+  for (const key of classicOnly) {
+    assert.match(marked.find(row => row.key === key)?.description ?? "", /· classic layout only/, key);
+  }
+  for (const key of ["groupProgress", "groupPhases", "groupGutter"]) {
+    assert.doesNotMatch(marked.find(row => row.key === key)?.description ?? "", /classic layout only/, key);
+  }
+  const classic = panelRows(readSettings("/nonexistent/grove.json"));
+  for (const key of classicOnly) {
+    assert.doesNotMatch(classic.find(row => row.key === key)?.description ?? "", /classic layout only/, key);
+  }
+  assert.deepEqual(classic.find(row => row.key === "card")?.choices, CARD_LAYOUTS);
+});
+
+test("the card command resolves every layout and appears in usage and completions", () => {
+  const ledger = run("card ledger");
+  assert.equal(ledger.ok && ledger.key, "card");
+  assert.equal(ledger.ok && ledger.value, "ledger");
+  assert.equal(run("card fancy").ok, false);
+  assert.ok(completions().includes("card ledger"));
+  assert.match(usageText(), /card classic \| instrument \| ledger \| spine \| margin/);
 });
 
 test("PI_GROVE wins over the file and is reported as the source", async () => {

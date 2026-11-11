@@ -1,0 +1,15 @@
+ +- Wire the meter click ---------------------------------------------------+
+ | :▰▰▰▰▰▰▰:▰▰▰▰▰▰▰:▱▱▱▱▱▱▱ O 67% · 1 failed · 6 calls · +=+=#+ · bash x2 [0m…[0m |
+ |   +---------+   +-------+   +--------+                                   |
+ |   | Inspect |---| Build |---| Verify |                                   |
+ |   +---------+   +-------+   +--------+                                   |
+ | … 1 earlier call · ctrl+o                                                |
+ | x 01 Inspect                                                2 calls · 1s |
+ |   +- * grep · Find the call sites · 0 matches in 0 files           · <1s |
+ | x 02 Build                                                  2 calls · 1s |
+ |   +- * edit · Meter line owns the plan · applied                    · 1s |
+ |   +- * edit · Keep the click one gesture · applied                 · <1s |
+ | - 03 Verify                                      1 failed · 2 calls · 6s |
+ |   +- * bash · Run the suite · error                                 · 4s |
+ |   +- * bash · Confirm the package · done                            · 1s |
+ +--------------------------------------------------------------------------+
