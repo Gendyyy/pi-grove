@@ -58,6 +58,8 @@ export interface ToolUiController {
 }
 // The card wears one background for its whole life: the rows report the work, the box never changes colour.
 const CARD_BACKGROUND = "toolPendingBg" as const;
+/** Upper bound on repaint hooks kept for rows drawn before the transcript was restored. */
+const MAX_STALE_ROWS = 4096;
 
 const CODEMODE_GUIDANCE = "Every codemode script opens with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
@@ -106,7 +108,11 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
   // once restore() has the groups, otherwise every old turn stays a plain card.
   const staleRows = new Map<string, () => void>();
   const remember = (id: string, invalidate: () => void): void => {
-    if (!staleRows.has(id)) staleRows.set(id, invalidate);
+    // Only a grouped card is worth re-asking: with grouping off the row stays a plain block
+    // for the session, so keeping its hook would just grow. The bound covers rows the tree
+    // never claims again (older groups trimmed out of the card window).
+    if (options.group === "off" || staleRows.has(id) || staleRows.size >= MAX_STALE_ROWS) return;
+    staleRows.set(id, invalidate);
   };
   /** Re-render the rows that were drawn before the transcript was restored. */
   const repaintStale = (): void => {
@@ -168,6 +174,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
     stopTimer();
     listeners.clear();
     startedAt.clear();
+    staleRows.clear();
     nested.clear();
   };
 
