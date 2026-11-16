@@ -41,7 +41,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { resolveIconMode } from "./icons.js";
 import { showSettingsPanel } from "./panel.js";
-import { registerToolUi, type ToolUiController } from "./tool-ui.js";
+import { registerToolUi, type ToolUiController, type ToolUiLiveSettings } from "./tool-ui.js";
 import { registerTitleStatus } from "./title-status.js";
 import { defaultConfigPath } from "./config.js";
 import {
@@ -58,6 +58,7 @@ import {
   statusLines,
   usageText,
   withSetting,
+  type GroveSettings,
   type SettingKey,
   type SettingValue,
 } from "./settings.js";
@@ -90,6 +91,24 @@ export interface GroveExtensionDependencies {
   ) => PiFffIntegrationController;
 }
 
+/** The presentation settings a running renderer adopts without a reload. */
+function liveSettings(settings: GroveSettings): ToolUiLiveSettings {
+  return {
+    icons: settings.icons,
+    iconMode: resolveIconMode(settings.iconMode),
+    card: settings.card,
+    groupRevealErrors: settings.groupRevealErrors,
+    groupWindow: settings.groupWindow,
+    groupNestedTools: settings.groupNestedTools,
+    groupToolNames: settings.groupToolNames,
+    groupProgress: settings.groupProgress,
+    groupPercent: settings.groupPercent,
+    groupPhases: settings.groupPhases,
+    groupSparkline: settings.groupSparkline,
+    groupGutter: settings.groupGutter,
+  };
+}
+
 export function createGroveExtension(
   dependencies: GroveExtensionDependencies = {}
 ) {
@@ -115,25 +134,13 @@ export function createGroveExtension(
     const applyLiveSetting = (ctx: ExtensionCommandContext, key: SettingKey, value: SettingValue): void => {
       if (settingSpec(key).apply !== "live") return;
       Object.assign(settings, withSetting(settings, key, value));
-      switch (key) {
-        case "icons": toolUi?.updateSettings({ icons: settings.icons }); return;
-        case "iconMode": toolUi?.updateSettings({ iconMode: resolveIconMode(settings.iconMode) }); return;
-        case "card": toolUi?.updateSettings({ card: settings.card }); return;
-        case "groupWindow": toolUi?.updateSettings({ groupWindow: settings.groupWindow }); return;
-        case "groupRevealErrors": toolUi?.updateSettings({ groupRevealErrors: settings.groupRevealErrors }); return;
-        case "groupNestedTools": toolUi?.updateSettings({ groupNestedTools: settings.groupNestedTools }); return;
-        case "groupToolNames": toolUi?.updateSettings({ groupToolNames: settings.groupToolNames }); return;
-        case "groupProgress": toolUi?.updateSettings({ groupProgress: settings.groupProgress }); return;
-        case "groupPercent": toolUi?.updateSettings({ groupPercent: settings.groupPercent }); return;
-        case "groupPhases": toolUi?.updateSettings({ groupPhases: settings.groupPhases }); return;
-        case "groupSparkline": toolUi?.updateSettings({ groupSparkline: settings.groupSparkline }); return;
-        case "groupGutter": toolUi?.updateSettings({ groupGutter: settings.groupGutter }); return;
-        case "thinkingLabel":
-          currentThinkingLabel = settings.thinkingLabel;
-          if (settings.enabled) applyThinkingLabel(ctx.ui as unknown as ThinkingLabelUi);
-          return;
-        default: return;
+      if (key === "thinkingLabel") {
+        currentThinkingLabel = settings.thinkingLabel;
+        if (settings.enabled) applyThinkingLabel(ctx.ui as unknown as ThinkingLabelUi);
+        return;
       }
+      // One builder for the whole live surface: a new live setting is one line here, not a switch case.
+      toolUi?.updateSettings(liveSettings(settings));
     };
     const integration =
       dependencies.createIntegration?.(pi, cwd) ??
