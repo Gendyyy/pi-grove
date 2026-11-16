@@ -18,13 +18,14 @@ function storyCard() {
     }
     tree.end({ toolCallId: id, toolName: "codemode", result: { content: [] }, isError: false });
   }
-  const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
-  return { tree, card };
+  const row = { toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} };
+  return { tree, card: tree.render(row), row };
 }
 
 test("story phases ignore a nested failure and open one level at a time", () => {
-  const { tree, card } = storyCard();
-  const render = (width = 96) => card.render(width);
+  const { tree, card, row } = storyCard();
+  // pi rebuilds the row component whenever the card changes, so repaint through the tree.
+  const render = (width = 96) => tree.render(row).render(width);
   const lines = render();
   assert.ok(lines[0]!.includes("Check updates"), "the card states the task intent in its border");
   assert.ok(lines.some(line => line.includes("x 01 Inspect")));

@@ -104,6 +104,16 @@ export function summaryLine(
 export class WidthAwareLines {
   private cache?: { width: number; lines: string[] };
 
+  /** Side padding and content width for a row: padding is clamped to keep one content cell. */
+  static rowWidth(width: number, outputPad: number): { pad: number; contentWidth: number } {
+    const max = Math.max(0, width);
+    const pad = Math.min(
+      Math.max(0, Math.floor(outputPad)),
+      Math.max(0, Math.floor((max - 1) / 2)),
+    );
+    return { pad, contentWidth: max - 2 * pad };
+  }
+
   constructor(
     private source: string[] | ((width: number) => string[]),
     private background?: (text: string) => string,
@@ -127,9 +137,8 @@ export class WidthAwareLines {
     const max = Math.max(0, width);
     if (max === 0) return [];
     // Reserve both sides while retaining at least one content cell on narrow screens.
-    const pad = Math.min(Math.max(0, Math.floor(this.outputPad)), Math.floor((max - 1) / 2));
+    const { pad, contentWidth } = WidthAwareLines.rowWidth(max, this.outputPad);
     const inset = " ".repeat(pad);
-    const contentWidth = max - 2 * pad;
     const lines =
       typeof this.source === "function" ? this.source(contentWidth) : this.source;
     const rendered = lines.map((line) => {

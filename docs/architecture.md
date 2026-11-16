@@ -35,7 +35,8 @@ sequenceDiagram
     participant G as paintGroup
     participant L as CardLayout
     P->>B: render(width)
-    B->>T: paint(group, width - pad * 2, theme, expanded)
+    B->>B: cached lines for this width?
+    B->>T: paint(group, content width, theme, expanded)
     T->>G: paintGroup(state, group, width, theme, expanded, targets)
     G->>G: derive tools, visible, plan, phases, clock
     G->>L: cardLayout(settings.card)
@@ -51,6 +52,8 @@ sequenceDiagram
 ```
 
 The render is stateless. The only mutable thing is `ToolTree.targets`: every layout clears it at the start of `paint` and writes it as it emits lines, so a stale map cannot outlive the lines it describes. A click repaints first — the click carries the current width, which may differ from the width of the last paint — then reads the target for that line.
+
+`TreeBlock` caches its painted lines per width, and `render` and `handleMouse` both paint at the same content width (`WidthAwareLines.rowWidth`), so the hit map always matches the painted lines. The cache is safe because pi replaces the row component on any change (`updateDisplay` re-invokes the renderer, and every grove mutation goes through the row's `invalidate`): a mounted card is never mutated behind its cache.
 
 ## The CardContext contract
 

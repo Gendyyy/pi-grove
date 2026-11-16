@@ -1058,6 +1058,28 @@ test("a streaming row stops repainting once its text settles", async () => {
   assert.equal(repaints, 1, "a settled row stops asking for repaints");
 });
 
+test("a click hits the row painted under it at any width", () => {
+  // Regression: the card was painted two columns narrower than the click repainted it, which
+  // straddles the 24-column frame threshold and shifts every clickable line by one.
+  for (const width of [24, 25, 26, 27, 40]) {
+    const tree = new ToolTree(settings());
+    for (const id of ["a", "b"]) {
+      tree.start({ toolCallId: id, toolName: "bash", args: { reasoning: "step " + id, command: "run " + id } });
+      tree.end({ toolCallId: id, toolName: "bash", result: { content: [{ type: "text", text: "output " + id }] }, isError: false });
+    }
+    const card = tree.render(row("a"));
+    const height = card.render(width).length;
+    const painted = Array.from({ length: height }, (_, index) => tree.targetAt(index));
+    const y = painted.lastIndexOf("b");
+    assert.ok(y > 0, `the second call owns a line at ${width} columns`);
+    card.handleMouse?.({ ...click(y), width } as TuiMouseEvent);
+    assert.equal(tree.targetAt(y), "b", `the click at ${width} columns toggles the call on that line`);
+    const after = stripAnsi(tree.render(row("a")).render(width).join("\n"));
+    assert.match(after, /output b/, `the call under the click opens at ${width} columns`);
+    assert.doesNotMatch(after, /output a/, `the call above the click stays closed at ${width} columns`);
+  }
+});
+
 test("clicking a codemode row reveals its nested steps", () => {
   const tree = new ToolTree(settings());
   tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card\nreturn 1;" } });

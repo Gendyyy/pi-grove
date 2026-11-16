@@ -296,7 +296,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
           executionStarted: context.executionStarted,
           elapsedMs: start === undefined ? 0 : Math.max(0, Date.now() - start),
         });
-      }, text => theme.bg("toolPendingBg", text), false, context.outputPad);
+      }, text => theme.bg("toolPendingBg", text), true, context.outputPad);
     },
     renderResult(result, renderOptions, theme, context) {
       if (renderOptions.isPartial) return new Container();

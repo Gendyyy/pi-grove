@@ -36,13 +36,14 @@ export class TreeBlock implements Component {
 
   /** Paint the group, applying the host row background and inset padding. */
   render(width: number): string[] {
-    const pad = this.row.outputPad ?? 1;
     if (!this.painter || this.painterWidth !== width) {
+      // cacheSource: pi re-invokes render() on every frame for every mounted row, and any real
+      // change rebuilds this component, so a painted card never goes stale.
       this.painter = new WidthAwareLines(
-        innerWidth => this.tree.paint(this.group, innerWidth - pad * 2, this.theme, this.row.expanded),
+        innerWidth => this.tree.paint(this.group, innerWidth, this.theme, this.row.expanded),
         this.row.background,
-        false,
-        pad,
+        true,
+        this.row.outputPad ?? 1,
       );
       this.painterWidth = width;
     }
@@ -59,8 +60,14 @@ export class TreeBlock implements Component {
     // A double click is still one gesture: toggling on its second click would undo the level
     // the first click revealed, which reads as a row that refuses to open.
     if ((event.clickCount ?? 1) > 1) return { handled: true };
-    // Repaint from the click's own width so the hit map always matches these lines.
-    this.tree.paint(this.group, event.width - (this.row.outputPad ?? 1) * 2, this.theme, this.row.expanded);
+    // Repaint from the click's own width so the hit map always matches these lines, at the
+    // same width render() paints at.
+    this.tree.paint(
+      this.group,
+      WidthAwareLines.rowWidth(event.width, this.row.outputPad ?? 1).contentWidth,
+      this.theme,
+      this.row.expanded,
+    );
     const target = this.tree.targetAt(event.y);
     if (target === undefined) return undefined;
     this.tree.toggle(this.group, target);
