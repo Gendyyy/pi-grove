@@ -4,7 +4,8 @@
  */
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fitToolLine, formatElapsed, summaryLine } from "../block-render.js";
-import { themeText, type Foreground } from "../theme.js";
+import { filesSummary, filesTouched, shortPath } from "../card-files.js";
+import { themeText, toolColor, type Foreground } from "../theme.js";
 import {
   DOT,
   ELLIPSIS,
@@ -345,6 +346,25 @@ export const classicLayout: CardLayout = {
       nextPhaseIndex += 1;
     }
     if (lines.length === 0 || width < 24) return lines;
+
+    // The one fixed answer to "what did this turn touch": it sits under the rows so a long
+    // card cannot bury it, and clicking it reveals the per-file list.
+    const files = filesTouched(group);
+    if (files.length > 0) {
+      targets.set(lines.length, GROUP_TARGET);
+      lines.push(themeText(theme, "dim", glyphs.tick + " ") + themeText(theme, "muted", filesSummary(files, inner - 2)));
+      if (ctx.reveal) {
+        for (const file of files) {
+          lines.push(
+            "  " + themeText(theme, "dim", glyphs.tick) + " " +
+            themeText(theme, "muted", shortPath(file.path, Math.max(8, inner - 14))) + " " +
+            themeText(theme, toolColor(file.tool), file.tool) +
+            (file.calls > 1 ? " ×" + file.calls : ""),
+          );
+          targets.set(lines.length - 1, GROUP_TARGET);
+        }
+      }
+    }
 
     if (!framed) {
       const rail = themeText(theme, "dim", glyphs.rail) + " ";

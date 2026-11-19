@@ -17,13 +17,14 @@ flowchart LR
     LY --> ROW["card-row.ts<br/>RowModel, rowExtras"]
     LY --> PROG["card-progress.ts<br/>durationSpark, sideDurationRail"]
     LY --> PLAN["card-plan.ts<br/>phase data, phaseMeterText,<br/>titleBorder"]
+    LY --> FILES["card-files.ts<br/>filesTouched, filesSummary"]
     MODEL["tree-model.ts<br/>TreeNode, TreeGroup, glyphs"] --- ROW
     MODEL --- PLAN
     SET["settings.ts<br/>GroveSettings, panel"] --- TP
     THEME["theme.ts<br/>GroveTheme"] --- LY
 ```
 
-`tree-model.ts` is the data side: node and group shapes, the glyph sets, `CardLayoutId`, `CARD_LAYOUTS`, and `TreeSettings`. `settings.ts` parses the config file and owns the panel and the `/grove` command surface. `theme.ts` maps colour roles to escape codes. The three `card-*.ts` helpers are shared drawing primitives, not layouts: `card-row.ts` turns rows into `RowModel`s and extras, `card-progress.ts` draws sparks, side rails and shimmer, and `card-plan.ts` derives phase data and draws the meter text and the titled border.
+`tree-model.ts` is the data side: node and group shapes, the glyph sets, `CardLayoutId`, `CARD_LAYOUTS`, and `TreeSettings`. `settings.ts` parses the config file and owns the panel and the `/grove` command surface. `theme.ts` maps colour roles to escape codes. The four `card-*.ts` helpers are shared drawing primitives, not layouts: `card-row.ts` turns rows into `RowModel`s and extras, `card-progress.ts` draws sparks, side rails and shimmer, `card-plan.ts` derives phase data and draws the meter text and the titled border, and `card-files.ts` collects the write and edit paths that the classic footer reports.
 
 ## One paint
 
@@ -41,6 +42,7 @@ sequenceDiagram
     G->>G: derive tools, visible, plan, phases, clock
     G->>L: cardLayout(settings.card)
     G->>L: paint(ctx)
+    L->>L: classic footer from group.rows
     L-->>G: lines, targets filled
     G-->>T: string[]
     T-->>B: lines
@@ -110,7 +112,7 @@ The constants that define those edges: `FULL_WIDTH = 64` in `layouts/instrument.
 | `spine` | `GROUP_TARGET`, set explicitly | never | milestone target | call id |
 | `margin` | `GROUP_TARGET` after the shift | never | milestone target | call id |
 
-The hidden-window line registers `GROUP_TARGET` in every layout, so clicking it reveals the group.
+The hidden-window line registers `GROUP_TARGET` in every layout, so clicking it reveals the group. In classic the file footer registers `GROUP_TARGET` on its own line too, so one click serves both the group and the per-file list. That footer reads `group.rows`, not `ctx.visible`, so it counts files whose rows the window hides and cannot be buried by a long card.
 
 Two layouts print a top border and therefore paint content first, then shift: classic and margin move every registered line down by one, clear the map, set line 0 to `GROUP_TARGET`, and re-add the shifted entries. Borderless layouts register as they paint, and spine sets line 0 itself because its first line is the headline. The shift is the reason a layout must never assume the map survives a paint: `paintGroup` receives the same map every time and the layout rewrites it from scratch.
 

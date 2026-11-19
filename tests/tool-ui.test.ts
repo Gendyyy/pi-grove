@@ -184,8 +184,12 @@ const uiOptions = {
   thinking: "inline" as const,
 };
 
-/** Render the card for a run of calls and report which host background roles it asked for. */
-function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
+/** Drive real host events through the registered renderers and paint the card for the first call. */
+function paintTurn(
+  calls: ReadonlyArray<{ toolName: string; args: Record<string, unknown>; error?: boolean }>,
+  options: typeof uiOptions = uiOptions,
+  width = 96,
+): { lines: string[]; roles: string[] } {
   const handlers = new Map<string, (event: unknown, context?: unknown) => unknown>();
   let resolve: ((name: string, next: () => unknown) => unknown) | undefined;
   const pi = {
@@ -197,16 +201,15 @@ function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
       resolve = fn;
     },
   } as unknown as ExtensionAPI;
-  registerToolUi(pi, uiOptions);
-  outcomes.forEach((outcome, index) => {
+  registerToolUi(pi, options);
+  calls.forEach((call, index) => {
     const id = "call-" + index;
-    const args = { command: "run step " + index };
-    handlers.get("tool_execution_start")?.({ toolCallId: id, toolName: "bash", args });
+    handlers.get("tool_execution_start")?.({ toolCallId: id, toolName: call.toolName, args: call.args });
     handlers.get("tool_execution_end")?.({
       toolCallId: id,
-      toolName: "bash",
+      toolName: call.toolName,
       result: { content: [{ type: "text", text: "step " + index }] },
-      isError: outcome === "error",
+      isError: call.error === true,
       durationMs: 120,
     });
   });
@@ -218,23 +221,31 @@ function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
       return text;
     },
   };
-  const renderers = resolve?.("bash", () => ({})) as ToolRenderers | undefined;
+  const renderers = resolve?.(calls[0].toolName, () => ({})) as ToolRenderers | undefined;
   const card = renderers?.renderResult!(
     { content: [{ type: "text", text: "step 0" }], details: undefined },
     { isPartial: false, expanded: false },
     theme as never,
     {
       toolCallId: "call-0",
-      args: { command: "run step 0" },
-      isError: outcomes[0] === "error",
+      args: calls[0].args,
+      isError: calls[0].error === true,
       durationMs: 120,
       outputPad: 1,
       expanded: false,
       invalidate: () => {},
     } as never,
   );
-  const painted = (card as { render(width: number): string[] }).render(96);
-  assert.ok(painted.length > 0, "the first row paints the card");
+  const lines = (card as { render(width: number): string[] }).render(width);
+  assert.ok(lines.length > 0, "the first row paints the card");
+  return { lines, roles };
+}
+
+/** Render the card for a run of calls and report which host background roles it asked for. */
+function cardBackgrounds(outcomes: ReadonlyArray<"ok" | "error">): string[] {
+  const { roles } = paintTurn(
+    outcomes.map((outcome, index) => ({ toolName: "bash", args: { command: "run step " + index }, error: outcome === "error" })),
+  );
   return [...new Set(roles)];
 }
 
@@ -242,4 +253,23 @@ test("the card background never reacts to the work inside it", () => {
   assert.deepEqual(cardBackgrounds(["error", "ok"]), ["toolPendingBg"]);
   assert.deepEqual(cardBackgrounds(["ok", "error"]), ["toolPendingBg"]);
   assert.deepEqual(cardBackgrounds(["error", "error"]), ["toolPendingBg"]);
+});
+
+test("a turn that touches files ends with the ledger line", () => {
+  const options = { ...uiOptions, tools: new Set<string>(["edit", "write", "bash"]) };
+  const { lines } = paintTurn(
+    [
+      { toolName: "edit", args: { taskIntent: "Patch a file", path: "src/layouts/classic.ts" } },
+      { toolName: "write", args: { taskIntent: "Patch a file", path: "src/card-files.ts" } },
+      { toolName: "edit", args: { taskIntent: "Patch a file", path: "src/layouts/classic.ts" } },
+      { toolName: "bash", args: { command: "npm test" } },
+    ],
+    options,
+    100,
+  );
+  const ledger = lines.find((line) => line.includes(" 2 files")) ?? "";
+  assert.match(ledger, /\| : 2 files · /, "one line counts both files once each");
+  assert.match(ledger, /classic\.ts/);
+  assert.match(ledger, /card-files\.ts/);
+  assert.doesNotMatch(ledger, /npm/, "a shell command is not a touched file");
 });

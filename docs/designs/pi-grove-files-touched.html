@@ -1,0 +1,406 @@
+<!-- pi-grove — files touched: four placements for the file ledger a grove card could carry, same task and same four calls in every variant. Axis: placement and information architecture of the files-touched signal; palette, glyphs and row grammar stay pi's dark theme and the existing card grammar. 2026-11-19 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pi-grove — files touched, four placements</title>
+<style>
+  :root{
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+
+    /* pi dark theme roles, converted from okhsl */
+    --bg:#0e0f12;
+    --term:#15171b;
+    --raise:#22252b;
+    --text:#e3e3e6;
+    --muted:#a4a7af;
+    --dim:#8b8f98;
+    --line:#2b2e35;
+    --bord:#3c4049;
+    --spine:#4a4f5a;
+
+    --accent:#c98fd6;      /* accent / violet        */
+    --green:#6fd0a8;       /* success                */
+    --red:#e0895f;         /* error                  */
+    --yellow:#bdcc6a;      /* syntaxFunction, write/edit */
+    --blue:#8b9de0;        /* syntaxKeyword, bash    */
+    --cyan:#7fc0dd;        /* syntaxVariable, read/grep */
+  }
+
+  /* ---------- page chrome ---------- */
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.5 var(--mono);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  .page{max-width:1120px;margin:0 auto;padding:clamp(22px,4vw,54px) clamp(16px,4vw,40px) 72px}
+  .kicker{color:var(--accent);font:600 12px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;margin:0 0 14px}
+  h1{margin:0 0 14px;font:600 clamp(26px,4.4vw,42px)/1.06 var(--mono);letter-spacing:-.02em}
+  .lede{max-width:64ch;margin:0;color:var(--muted);font-size:14.5px}
+  .axis{display:flex;flex-wrap:wrap;gap:0 34px;margin:26px 0 0;padding:12px 0 0;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
+  .axis span{display:flex;gap:8px}
+  .axis b{color:var(--muted);font-weight:600}
+
+  /* ---------- interaction ---------- */
+  .tabs{display:flex;flex-wrap:wrap;gap:2px;margin:30px 0 0;border-bottom:1px solid var(--line)}
+  .tabs button{appearance:none;background:none;border:0;border-bottom:1.5px solid transparent;padding:8px 10px 9px;margin-bottom:-1px;cursor:pointer;font:500 12.5px/1 var(--mono);color:var(--dim);letter-spacing:.01em;transition:color .12s ease,border-color .12s ease}
+  .tabs button:hover{color:var(--text)}
+  .tabs button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+  .tabs button:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+  .frame{display:none}
+  .frame.on{display:block}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+  /* ---------- card grammar (shared by all four) ---------- */
+  .vhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 16px;margin:34px 0 10px}
+  .vhead h2{margin:0;font:600 20px/1.2 var(--mono);letter-spacing:-.01em;color:var(--text)}
+  .vhead .tag{color:var(--dim);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+  .vhead p{margin:8px 0 0;flex:1 1 100%;max-width:70ch;color:var(--muted);font-size:12.5px;line-height:1.6}
+  .hint{margin:0 0 12px;color:var(--dim);font-size:12px}
+  .hint b{color:var(--muted);font-weight:600}
+
+  .termwrap{overflow-x:auto;padding:2px}
+  .term{width:100ch;min-width:100ch;background:var(--term);border:1px solid var(--line);border-radius:8px;padding:16px 16px 18px}
+
+  .card{position:relative;margin-top:10px;border:1px solid var(--bord);border-radius:6px;padding:12px 12px 10px}
+  .card-title{position:absolute;top:-9px;left:14px;padding:0 8px;background:var(--term);color:var(--text);font-weight:600;font-size:12.5px}
+  .cardnote{position:absolute;top:-9px;right:14px;padding:0 8px;background:var(--term);color:var(--dim);font-size:12px}
+
+  .meter{display:flex;flex-wrap:nowrap;gap:1.1ch;align-items:baseline;margin-bottom:6px;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden}
+  .bar i{color:var(--green);font-style:normal}
+  .bar s{color:var(--spine);text-decoration:none}
+  .pct{color:var(--green)}
+  .sep{color:var(--spine)}
+
+  .row{display:grid;grid-template-columns:var(--cols);gap:0 1.1ch;align-items:center;white-space:nowrap;color:var(--text);font-size:12.5px}
+  .row > *{overflow:hidden;text-overflow:ellipsis}
+  .lead{color:var(--spine)}
+  .dot{color:var(--green);font-style:normal}
+  .tool{color:var(--dim)}
+  .t-edit,.t-write{color:var(--yellow)}
+  .t-bash{color:var(--blue)}
+  .t-read,.t-grep{color:var(--cyan)}
+  .path{color:var(--muted)}
+  .goal{color:var(--text)}
+  .res{color:var(--muted)}
+  .dbar i{color:var(--green);font-style:normal}
+  .dbar s{color:var(--line);text-decoration:none}
+  .dur{color:var(--dim);text-align:right}
+  .delta{color:var(--muted)}
+  .delta i{color:var(--green);font-style:normal}
+  .delta b{color:var(--red);font-weight:400}
+
+  .phase-head{display:grid;grid-template-columns:3.6ch 4ch minmax(0,1fr) auto;gap:0 1.1ch;align-items:baseline;font-size:12.5px;white-space:nowrap;color:var(--muted)}
+  .phase-head .mark{color:var(--green);font-style:normal}
+  .phase-head .num{color:var(--dim)}
+  .phase-head .name{color:var(--text)}
+  .phase-head .stats{color:var(--dim)}
+  .phase-head .lead2{color:var(--line)}
+  .plan{display:flex;gap:2.6ch;align-items:center;margin:2px 0 6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .box{display:flex;gap:1ch;border:1px solid var(--line);border-radius:4px;padding:1px 1ch}
+  .box.done{border-color:var(--bord);color:var(--text)}
+  .box .fc{color:var(--muted)}
+  .box .fc.zero{color:var(--dim)}
+  .link{color:var(--spine)}
+
+  /* ---------- 1. footer ledger ---------- */
+  .ftr{display:grid;grid-template-columns:2.6ch minmax(0,1fr);gap:0 1.1ch;align-items:baseline;margin-top:9px;padding-top:7px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim);cursor:pointer}
+  .ftr:hover{color:var(--muted)}
+  .ftr .lead{color:var(--accent)}
+  .ftr .sum{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ftr .sum em{color:var(--muted);font-style:normal}
+  .full{display:none;margin-top:5px}
+  .card.open .full{display:block}
+  .fline{display:grid;grid-template-columns:2.6ch 24ch 9ch 7ch;gap:0 1.1ch;align-items:baseline;font-size:12.5px;color:var(--muted)}
+  .fline .lead{color:var(--spine)}
+  .fline .fw{color:var(--dim)}
+  @media (hover:hover){.fline:hover{background:rgba(255,255,255,.035)}}
+
+  /* ---------- 2. path column ---------- */
+  .rollup-files{color:var(--muted)}
+  .rollup-files u{color:var(--accent);text-decoration:none}
+
+  /* ---------- 3. phase ledger ---------- */
+  .phfiles{color:var(--muted)}
+  .phfiles i{color:var(--yellow);font-style:normal}
+  .phfiles .more{color:var(--dim)}
+
+  /* ---------- 4. commit stamp ---------- */
+  .stamp{margin-top:10px;padding-top:8px;border-top:1px solid var(--bord)}
+  .stamp-head{display:grid;grid-template-columns:2.6ch minmax(0,1fr) auto;gap:0 1.1ch;align-items:baseline;font-size:12.5px;color:var(--muted)}
+  .stamp-head .chk{color:var(--green)}
+  .stamp-head .tot{color:var(--dim)}
+  .stamp-list{display:flex;flex-wrap:wrap;gap:0 1.6ch;margin-top:4px;padding-left:3.7ch;font-size:12.5px;color:var(--muted)}
+  .stamp-list span{display:flex;gap:1ch}
+  .stamp-list .nm{color:var(--text)}
+  .quiet{color:var(--dim);font-size:12px;margin:10px 0 0}
+
+  /* ---------- states ---------- */
+  .states{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:18px}
+  .mini{border:1px solid var(--line);border-radius:6px;padding:9px 11px;background:var(--term)}
+  .mlab{display:block;margin-bottom:6px;color:var(--dim);font:600 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+  .mline{color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mline .lead{color:var(--accent)}
+  .mline.em{color:var(--dim)}
+  .mline u{color:var(--accent);text-decoration:none}
+
+  /* ---------- notes ---------- */
+  .note{display:grid;gap:18px 24px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin:20px 0 0;padding:16px 0 0;border-top:1px solid var(--line)}
+  .note p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.6}
+  .note span{display:block;margin-bottom:5px;color:var(--dim);font:600 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+  .note .cost span{color:var(--red)}
+  .note .win span{color:var(--green)}
+
+  /* ---------- shared contract ---------- */
+  .contract{margin:56px 0 0;padding:26px 0 0;border-top:1px solid var(--line)}
+  .contract h2{margin:0 0 12px;font:600 16px/1.3 var(--mono)}
+  .contract p{max-width:78ch;margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.65}
+  .contract code{color:var(--text);background:var(--raise);border-radius:3px;padding:1px 5px;font-size:12px}
+  .swatches{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:18px}
+  .sw{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+  .sw b{display:block;width:10px;height:10px;border-radius:50%}
+
+  /* ---------- media ---------- */
+  @media (max-width:640px){
+    .termwrap{mask-image:linear-gradient(to right,#000 calc(100% - 34px),transparent)}
+    .note{gap:14px}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <p class="kicker">pi-grove · files touched</p>
+    <h1>One card, four places to put the ledger</h1>
+    <p class="lede">A card already says what the model did and how far along it is. It never says which files changed on disk. Four readings of the same card — same task, same four calls, same two files edited and one written — differing only in where the file signal lives and when it appears.</p>
+    <div class="axis">
+      <span><b>Axis</b> placement &amp; IA of the file signal</span>
+      <span><b>Fixed</b> pi dark roles, card grammar, glyphs</span>
+      <span><b>Deciding</b> cheap to read vs. impossible to miss</span>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Files-touched placements">
+    <button role="tab" aria-pressed="true"  data-t="ftr">Footer ledger</button>
+    <button role="tab" aria-pressed="false" data-t="col">Path column</button>
+    <button role="tab" aria-pressed="false" data-t="phs">Phase ledger</button>
+    <button role="tab" aria-pressed="false" data-t="stp">Commit stamp</button>
+  </nav>
+
+  <!-- ================= 1. footer ledger ================= -->
+  <section class="frame on" id="ftr" role="tabpanel" aria-label="Footer ledger">
+    <div class="vhead">
+      <h2>Footer ledger</h2><span class="tag">one line, always on</span>
+      <p>The card gains a single dim line above its bottom border: a count, then the deduped paths, newest last. Derived on every repaint, so it grows while the card is still working. Clicking it opens a per-file ledger with line deltas.</p>
+    </div>
+    <p class="hint">Click the <b>↳</b> line — it expands into the full ledger in place.</p>
+    <div class="termwrap"><div class="term">
+      <div class="card" data-act="card" role="button" tabindex="0" aria-expanded="false" style="--cols:3.6ch 7ch minmax(0,1fr) 9ch 8ch 5ch">
+        <span class="card-title">Refactor card layouts</span>
+        <div class="meter">
+          <span class="bar"><i>▰▰▰▰▰▰▰</i><s>▱▱▱</s></span>
+          <span class="pct">67%</span><span class="sep">·</span>
+          <span>4 calls</span><span class="sep">·</span>
+          <span class="t-edit">edit ×2</span><span class="sep">·</span>
+          <span class="t-write">write ×1</span><span class="sep">·</span>
+          <span class="t-bash">bash ×1</span><span class="sep">·</span>
+          <span>5s</span>
+        </div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Meter line owns the plan</span><span class="res">applied</span><span class="dbar"><i>━━━</i><s>───</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Keep the click one gesture</span><span class="res">applied</span><span class="dbar"><i>━━━━</i><s>──</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-write">write</span><span class="goal">Give the card a file ledger</span><span class="res">6 lines</span><span class="dbar"><i>━━━━━</i><s>─</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">└─ <i class="dot">●</i></span><span class="tool t-bash">bash</span><span class="goal">Run the layout suite</span><span class="res">done</span><span class="dbar"><i>━━━━━━</i></span><span class="dur">2s</span></div>
+        <div class="ftr"><span class="lead">↳</span><span class="sum"><em>3 files</em> · layouts/classic.ts · layouts/spine.ts · card-files.ts</span></div>
+        <div class="full">
+          <div class="fline"><span class="lead">├─</span><span class="path">layouts/classic.ts</span><span class="delta"><i>+18</i> <b>−4</b></span><span class="fw">edit</span></div>
+          <div class="fline"><span class="lead">├─</span><span class="path">layouts/spine.ts</span><span class="delta"><i>+14</i> <b>−2</b></span><span class="fw">edit</span></div>
+          <div class="fline"><span class="lead">└─</span><span class="path">card-files.ts</span><span class="delta"><i>+10</i></span><span class="fw">write</span></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="states">
+      <div class="mini"><span class="mlab">12 files touched</span><div class="mline"><span class="lead">↳</span> <u>12 files</u> · layouts/classic.ts · layouts/spine.ts · card-files.ts · +9 more</div></div>
+      <div class="mini"><span class="mlab">no files touched</span><div class="mline em">the line is absent, not empty — a read-only card spends no row on it</div></div>
+    </div>
+    <div class="note">
+      <p class="win"><span>Wins</span>Cheapest thing that answers the question. Nothing to learn, nothing to click, and the card keeps its shape.</p>
+      <p class="cost"><span>Costs</span>One more chrome row on every card that touches files, and the paths are dim — the least visible answer of the four.</p>
+      <p><span>At 60 cols</span>Count plus the first path, then <code>+2 more</code>. The expanded ledger is the only place the full list survives.</p>
+    </div>
+  </section>
+
+  <!-- ================= 2. path column ================= -->
+  <section class="frame" id="col" role="tabpanel" aria-label="Path column">
+    <div class="vhead">
+      <h2>Path column</h2><span class="tag">dense, per row</span>
+      <p>The path stops being a summary and becomes a column: every write and edit row carries its own file and its own line delta, right where the change happened. The rollup gains a file count and the card gains no footer. Paths shorten from the left, so the basename always survives.</p>
+    </div>
+    <p class="hint">No summary anywhere — the answer is the rows. <b>3 files</b> rides the rollup line.</p>
+    <div class="termwrap"><div class="term">
+      <div class="card" style="--cols:3.6ch 7ch 20ch minmax(0,1fr) 8ch 9ch 8ch 5ch">
+        <span class="card-title">Refactor card layouts</span>
+        <div class="meter">
+          <span class="bar"><i>▰▰▰▰▰▰▰</i><s>▱▱▱</s></span>
+          <span class="pct">67%</span><span class="sep">·</span>
+          <span>4 calls</span><span class="sep">·</span>
+          <span class="rollup-files"><u>3 files</u></span><span class="sep">·</span>
+          <span class="t-edit">edit ×2</span><span class="sep">·</span>
+          <span class="t-write">write ×1</span><span class="sep">·</span>
+          <span class="t-bash">bash ×1</span><span class="sep">·</span>
+          <span>5s</span>
+        </div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="path">…/layouts/classic.ts</span><span class="goal">Meter line owns the plan</span><span class="delta"><i>+18</i> <b>−4</b></span><span class="res">applied</span><span class="dbar"><i>━━━</i><s>───</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="path">…/layouts/spine.ts</span><span class="goal">Keep the click one gesture</span><span class="delta"><i>+14</i> <b>−2</b></span><span class="res">applied</span><span class="dbar"><i>━━━━</i><s>──</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-write">write</span><span class="path">card-files.ts</span><span class="goal">Give the card a file ledger</span><span class="delta"><i>+10</i></span><span class="res">6 lines</span><span class="dbar"><i>━━━━━</i><s>─</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">└─ <i class="dot">●</i></span><span class="tool t-bash">bash</span><span class="path">npm test</span><span class="goal">Run the layout suite</span><span class="delta"></span><span class="res">done</span><span class="dbar"><i>━━━━━━</i></span><span class="dur">2s</span></div>
+      </div>
+    </div></div>
+    <div class="states">
+      <div class="mini"><span class="mlab">12 files touched</span><div class="mline">no collapse: the column just gets long, and the card scrolls with it</div></div>
+      <div class="mini"><span class="mlab">no files touched</span><div class="mline em">the column never appears — read rows keep their old width</div></div>
+    </div>
+    <div class="note">
+      <p class="win"><span>Wins</span>Impossible to miss, and it answers the better question — which change went to which file. No disclosure needed.</p>
+      <p class="cost"><span>Costs</span>Eats ~20 columns from every row, including the read-only ones, and there is no card-level answer: a twelve-file card has no line that says twelve.</p>
+      <p><span>At 60 cols</span>First to be dropped. The column collapses to basenames, then to nothing, and the card is back to today's shape.</p>
+    </div>
+  </section>
+
+  <!-- ================= 3. phase ledger ================= -->
+  <section class="frame" id="phs" role="tabpanel" aria-label="Phase ledger">
+    <div class="vhead">
+      <h2>Phase ledger</h2><span class="tag">distributed into the plan</span>
+      <p>Files attach to the phase that changed them instead of to the card. A phase header carries its own files and deltas, so the plan itself becomes the ledger, and each phase states plainly that it changed nothing when it didn't.</p>
+    </div>
+    <p class="hint">Read it as a story: each phase says what it wrote, then shows the work that wrote it.</p>
+    <div class="termwrap"><div class="term">
+      <div class="card" style="--cols:3.6ch 7ch minmax(0,1fr) 9ch 8ch 5ch">
+        <span class="card-title">Refactor card layouts</span>
+        <div class="meter">
+          <span class="bar"><i>▰▰▰▰▰▰▰</i><s>▱▱▱</s></span>
+          <span class="pct">67%</span><span class="sep">·</span>
+          <span>4 calls</span><span class="sep">·</span>
+          <span class="rollup-files"><u>3 files</u></span><span class="sep">·</span>
+          <span>5s</span>
+        </div>
+        <div class="plan">
+          <span class="box done">Explore <span class="fc">1f</span></span><span class="link">──▸</span>
+          <span class="box done">Draft <span class="fc">2f</span></span><span class="link">──▸</span>
+          <span class="box">Submit <span class="fc zero">0f</span></span>
+        </div>
+        <div class="phase-head"><span class="mark">✓</span><span class="num">01</span><span class="name">Explore</span><span class="stats">1 call · 1s</span></div>
+        <div class="phase-head"><span class="lead2">│</span><span class="lead2">└─</span><span class="phfiles">layouts/classic.ts <i>+18 −4</i></span><span class="stats"></span></div>
+        <div class="row"><span class="lead">│&nbsp;&nbsp;├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Meter line owns the plan</span><span class="res">applied</span><span class="dbar"><i>━━━</i><s>───</s></span><span class="dur">1s</span></div>
+        <div class="phase-head"><span class="mark">✓</span><span class="num">02</span><span class="name">Draft</span><span class="stats">2 calls · 2s</span></div>
+        <div class="phase-head"><span class="lead2">│</span><span class="lead2">└─</span><span class="phfiles">layouts/spine.ts <i>+14 −2</i> · card-files.ts <i>+10</i></span><span class="stats"></span></div>
+        <div class="row"><span class="lead">│&nbsp;&nbsp;├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Keep the click one gesture</span><span class="res">applied</span><span class="dbar"><i>━━━━</i><s>──</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">│&nbsp;&nbsp;└─ <i class="dot">●</i></span><span class="tool t-write">write</span><span class="goal">Give the card a file ledger</span><span class="res">written</span><span class="dbar"><i>━━━━━</i><s>─</s></span><span class="dur">1s</span></div>
+        <div class="phase-head"><span class="mark" style="color:var(--accent)">○</span><span class="num">03</span><span class="name">Submit</span><span class="stats">1 call · 2s</span></div>
+        <div class="phase-head"><span class="lead2">│</span><span class="lead2">└─</span><span class="phfiles more">no changes</span><span class="stats"></span></div>
+        <div class="row"><span class="lead">│&nbsp;&nbsp;└─ <i class="dot">●</i></span><span class="tool t-bash">bash</span><span class="goal">Run the layout suite</span><span class="res">done</span><span class="dbar"><i>━━━━━━</i></span><span class="dur">2s</span></div>
+      </div>
+    </div></div>
+    <div class="states">
+      <div class="mini"><span class="mlab">12 files touched</span><div class="mline">no card-level list — twelve files read as twelve small lists, spread across the phases</div></div>
+      <div class="mini"><span class="mlab">no files touched</span><div class="mline em">every phase says <u>no changes</u>; honest, and it disappears entirely when unused</div></div>
+    </div>
+    <div class="note">
+      <p class="win"><span>Wins</span>The only variant that answers "which phase did this", and it uses the plan the card already draws. Nothing is added to the card's silhouette.</p>
+      <p class="cost"><span>Costs</span>Files become a per-phase detail, so there is no list to copy. A line under every phase header costs more rows than the footer it replaces.</p>
+      <p><span>At 60 cols</span>One filename per phase and a count, then <code>+2</code>. Phase boxes drop their file counts first.</p>
+    </div>
+  </section>
+
+  <!-- ================= 4. commit stamp ================= -->
+  <section class="frame" id="stp" role="tabpanel" aria-label="Commit stamp">
+    <div class="vhead">
+      <h2>Commit stamp</h2><span class="tag">silent until settled</span>
+      <p>While the card runs, nothing new appears. When the turn closes it, the card grows a closing block: a rule, a check, the totals, and the file list with deltas. Closer to a commit log than a status line, and it costs nothing mid-flight.</p>
+    </div>
+    <p class="hint">Two states, same card: <b>still running</b> above, <b>settled</b> below.</p>
+    <div class="termwrap"><div class="term">
+      <div class="card" style="--cols:3.6ch 7ch minmax(0,1fr) 9ch 8ch 5ch">
+        <span class="card-title">Refactor card layouts</span>
+        <div class="meter"><span class="bar"><i>▰▰▰▰▰▰▰</i><s>▱▱▱</s></span><span class="pct">67%</span><span class="sep">·</span><span>4 calls</span><span class="sep">·</span><span>5s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Meter line owns the plan</span><span class="res">applied</span><span class="dbar"><i>━━━</i><s>───</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Keep the click one gesture</span><span class="res">applied</span><span class="dbar"><i>━━━━</i><s>──</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-write">write</span><span class="goal">Give the card a file ledger</span><span class="res">6 lines</span><span class="dbar"><i>━━━━━</i><s>─</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">└─ <i class="dot">●</i></span><span class="tool t-bash">bash</span><span class="goal">Run the layout suite</span><span class="res">done</span><span class="dbar"><i>━━━━━━</i></span><span class="dur">2s</span></div>
+        <p class="quiet">no stamp while the card is still working — the ledger arrives with the close.</p>
+      </div>
+      <div class="card" style="--cols:3.6ch 7ch minmax(0,1fr) 9ch 8ch 5ch">
+        <span class="card-title">Refactor card layouts</span>
+        <span class="cardnote">settled</span>
+        <div class="meter"><span class="bar"><i>▰▰▰▰▰▰▰▰▰▰</i></span><span class="pct">100%</span><span class="sep">·</span><span>4 calls</span><span class="sep">·</span><span>5s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Meter line owns the plan</span><span class="res">applied</span><span class="dbar"><i>━━━</i><s>───</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-edit">edit</span><span class="goal">Keep the click one gesture</span><span class="res">applied</span><span class="dbar"><i>━━━━</i><s>──</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">├─ <i class="dot">●</i></span><span class="tool t-write">write</span><span class="goal">Give the card a file ledger</span><span class="res">6 lines</span><span class="dbar"><i>━━━━━</i><s>─</s></span><span class="dur">1s</span></div>
+        <div class="row"><span class="lead">└─ <i class="dot">●</i></span><span class="tool t-bash">bash</span><span class="goal">Run the layout suite</span><span class="res">done</span><span class="dbar"><i>━━━━━━</i></span><span class="dur">2s</span></div>
+        <div class="stamp">
+          <div class="stamp-head"><span class="chk">✓</span><span>3 files touched</span><span class="tot">+42 <span style="color:var(--red)">−6</span> · 5s</span></div>
+          <div class="stamp-list">
+            <span><span class="nm">layouts/classic.ts</span><span class="delta"><i>+18</i> <b>−4</b></span></span>
+            <span><span class="nm">layouts/spine.ts</span><span class="delta"><i>+14</i> <b>−2</b></span></span>
+            <span><span class="nm">card-files.ts</span><span class="delta"><i>+10</i></span></span>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <div class="states">
+      <div class="mini"><span class="mlab">12 files touched</span><div class="mline"><span style="color:var(--green)">✓</span> 12 files touched · +186 −41 · two lines of names, then <u>+6 more</u></div></div>
+      <div class="mini"><span class="mlab">no files touched</span><div class="mline em">no stamp at all — a card that changed nothing closes exactly as it does today</div></div>
+    </div>
+    <div class="note">
+      <p class="win"><span>Wins</span>Keeps the working card as quiet as it is now, then delivers the sharpest answer of the four: totals, deltas, a settled 100% card.</p>
+      <p class="cost"><span>Costs</span>You cannot watch the set grow, and a card that never settles never reports anything. It also needs a "settled" notion the layout can trust.</p>
+      <p><span>At 60 cols</span>Head plus three names, then <code>+K more</code>. Totals ride the same line as the count.</p>
+    </div>
+  </section>
+
+  <!-- ================= contract ================= -->
+  <section class="contract">
+    <h2>What all four keep</h2>
+    <p><b>Same data, no new capture.</b> Every write and edit row already stores its path in <code>TreeNode.target</code>, set for nested calls too. All four read the same deduped list; none of them needs a new event, a new snapshot field, or a replay change.</p>
+    <p><b>Same rules.</b> Only <code>write</code> and <code>edit</code> count — files merely read are not touched. Paths are shortened from the left so the basename always survives, deduped per file, capped at three names with <code>+K more</code>, and the existing bottom-border click keeps its job: it still expands the card.</p>
+    <p><b>Same reading.</b> Whatever the placement, one line answers "what did this turn change", and the deltas come from the diff the tool already produced.</p>
+    <div class="swatches">
+      <span class="sw"><b style="background:#6fd0a8"></b>success · applied, deltas added</span>
+      <span class="sw"><b style="background:#e0895f"></b>error · removals, failures</span>
+      <span class="sw"><b style="background:#bdcc6a"></b>syntaxFunction · write &amp; edit</span>
+      <span class="sw"><b style="background:#8b9de0"></b>syntaxKeyword · bash</span>
+      <span class="sw"><b style="background:#7fc0dd"></b>syntaxVariable · read &amp; grep</span>
+      <span class="sw"><b style="background:#c98fd6"></b>accent · the ledger gesture</span>
+      <span class="sw"><b style="background:#a4a7af"></b>muted · paths and totals</span>
+      <span class="sw"><b style="background:#8b8f98"></b>dim · counts and clock</span>
+    </div>
+  </section>
+</div>
+
+<script>
+  // Tabs
+  const buttons = Array.from(document.querySelectorAll('.tabs button'));
+  const frames = Array.from(document.querySelectorAll('.frame'));
+  buttons.forEach(b => b.addEventListener('click', () => {
+    buttons.forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    frames.forEach(f => f.classList.toggle('on', f.id === b.dataset.t));
+  }));
+
+  // Disclosure: the ledger line opens in place. One path for pointer and keyboard.
+  function toggle(el) {
+    const box = el.closest('[data-act="card"]');
+    if (!box) return;
+    el.setAttribute('aria-expanded', String(box.classList.toggle('open')));
+  }
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-act="card"]');
+    if (el) toggle(el);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target.closest('[data-act="card"]');
+    if (!el) return;
+    e.preventDefault();
+    toggle(el);
+  });
+</script>
+</body>
+</html>

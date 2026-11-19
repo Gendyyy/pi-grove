@@ -2,4 +2,5 @@
  │ ▅▆ · 2 calls · bash ×1 · write ×1                      │
  │ ├─ ● write · Write the layout[0m…[0m · written · ━━━━── · 1s │
  │ └─ ● bash · Run the layout suite[0m…[0m · done · ━━━━━━ · 2s │
+ │ ┆ 1 file · card-layout.ts                              │
  ╰────────────────────────────────────────────────────────╯

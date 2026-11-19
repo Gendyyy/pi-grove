@@ -16,6 +16,7 @@ import type { TreeRow } from "../tree-block.js";
 import type { IconMode } from "../icons.js";
 import {
   CARD_LAYOUTS,
+  GROUP_TARGET,
   treeGlyphs,
   type CardLayoutId,
   type TreeGroup,
@@ -218,4 +219,57 @@ test("renderCard paints a live tree through the configured layout within its wid
   const lines = renderCard("classic", 80, tree);
   assert.ok(lines.length > 0);
   expectWithinWidth(lines, 80);
+});
+
+test("classic names the files an edit touched under the rows", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "a", toolName: "edit", args: { taskIntent: "Add the footer", path: "src/layouts/classic.ts" } });
+  tree.end({ toolCallId: "a", toolName: "edit", result: { content: [] }, isError: false });
+  const lines = renderCard("classic", 80, tree);
+  const tick = treeGlyphs(settings().iconMode).tick;
+  assert.ok(
+    lines.some(line => line.includes(`${tick} 1 file`) && line.includes("src/layouts/classic.ts")),
+    lines.join("\n"),
+  );
+  expectWithinWidth(lines, 80);
+});
+
+test("classic paints no footer for a read-only card", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Read the card seam", path: "card-layout.ts" } });
+  tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
+  const lines = renderCard("classic", 80, tree);
+  const tick = treeGlyphs(settings().iconMode).tick;
+  assert.ok(!lines.some(line => line.includes(`${tick} 1 file`) || line.includes(`${tick} files`)), lines.join("\n"));
+});
+
+test("the ledger counts files whose rows the window hides", () => {
+  const tree = new ToolTree(settings({ window: 3 }));
+  for (let index = 0; index < 7; index += 1) {
+    const id = `e${index}`;
+    tree.start({ toolCallId: id, toolName: "edit", args: { taskIntent: "Patch a file", path: `src/file-${index}.ts` } });
+    tree.end({ toolCallId: id, toolName: "edit", result: { content: [] }, isError: false });
+  }
+  const lines = renderCard("classic", 100, tree, { leader: "e0" });
+  const tick = treeGlyphs(settings().iconMode).tick;
+  assert.ok(lines.some(line => line.includes(`${tick} 7 files`)), lines.join("\n"));
+  // The window hides the row, the ledger still names the file: one line answers the whole card.
+  assert.ok(lines.some(line => line.includes("4 earlier calls")), lines.join("\n"));
+  assert.ok(!lines.some(line => line.includes("edit · src/file-0.ts")), lines.join("\n"));
+  assert.ok(lines.some(line => line.includes(`${tick} 7 files`) && line.includes("src/file-0.ts")), lines.join("\n"));
+  expectWithinWidth(lines, 100);
+});
+
+test("classic reveals the per-file list under the card's own target", () => {
+  const tree = new ToolTree(settings());
+  tree.start({ toolCallId: "a", toolName: "edit", args: { taskIntent: "Add the footer", path: "src/layouts/classic.ts" } });
+  tree.end({ toolCallId: "a", toolName: "edit", result: { content: [] }, isError: false });
+  const lines = renderCard("classic", 80, tree);
+  const tick = treeGlyphs(settings().iconMode).tick;
+  const ledger = lines.findIndex(line => line.includes(`${tick} 1 file`));
+  assert.ok(ledger > 0, lines.join("\n"));
+  assert.equal(tree.targetAt(ledger), GROUP_TARGET);
+  const revealed = renderCard("classic", 80, tree, { expanded: true });
+  assert.ok(revealed.some(line => line.includes(`${tick} src/layouts/classic.ts edit`)), revealed.join("\n"));
+  expectWithinWidth(revealed, 80);
 });
