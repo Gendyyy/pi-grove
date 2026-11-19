@@ -20,7 +20,7 @@ export function withReasoning(parameters: SourceToolDefinition["parameters"]): S
 	const reasoning = {
 		type: "string",
 		description:
-			"Short phrase (≤12 English words) stating the GOAL behind this call — the why-in-context, not the what. Do NOT restate the file, path, or command (those are already shown next to it); instead give the intent or what you expect to find/confirm. Present-tense, no period. E.g. \"confirm executionStarted is boolean\", \"fix the map leak from review\", \"retry match after previous miss\". Write the reasoning in English.",
+			"Short phrase (6 English words at most) stating the GOAL behind this call — the why-in-context, not the what. Do NOT restate the file, path, or command (those are already shown next to it); instead give the intent or what you expect to find/confirm. Present-tense, no period. E.g. \"confirm executionStarted is boolean\", \"fix the map leak from review\", \"retry match after previous miss\". Write the reasoning in English.",
 	};
 	const properties = { reasoning, ...(parameters?.properties ?? {}) };
 	const required = Array.from(new Set(["reasoning", ...(parameters?.required ?? [])]));
@@ -33,7 +33,7 @@ export function withTaskIntent(parameters: SourceToolDefinition["parameters"]): 
 		type: "string",
 		maxLength: 120,
 		description:
-			"Concise high-level objective (≤10 English words) for this atomic task cluster. Keep it unchanged across calls advancing the same task; change it only when starting a distinct task. Describe the task, not a tool, action, output, phase, or per-call reasoning. This becomes Grove’s border title.",
+			"Concise high-level objective (6 English words at most) for this atomic task cluster. Keep it unchanged across calls advancing the same task; change it only when starting a distinct task. Describe the task, not a tool, action, output, phase, or per-call reasoning. This becomes Grove’s border title.",
 	};
 	const properties = { taskIntent, ...(parameters?.properties ?? {}) };
 	const required = Array.from(new Set(["taskIntent", ...(parameters?.required ?? [])]));

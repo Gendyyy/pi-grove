@@ -3,6 +3,8 @@
  * card can narrate them instead of pi drawing its own rows between calls.
  */
 
+import { phrase } from "./tree-model.js";
+
 /** One reasoning run: what the model thought before its next action. */
 export interface ThinkingRun {
   /** Stable id, unique per assistant message, so streaming updates hit the same row. */
@@ -13,8 +15,6 @@ export interface ThinkingRun {
 
 /** Cap on stored reasoning, so one long think cannot bloat the tree. */
 const MAX_TEXT = 8000;
-/** Headline length for a reasoning row. */
-const MAX_GOAL = 140;
 
 /** Collect the consecutive thinking parts of one assistant message into runs. */
 export function thinkingRuns(message: unknown, key: string): ThinkingRun[] {
@@ -44,7 +44,7 @@ export function thinkingGoal(text: string): string {
   if (!flat) return "reasoning";
   const stop = flat.search(/\.\s/);
   const head = stop > 24 ? flat.slice(0, stop) : flat;
-  return head.length > MAX_GOAL ? head.slice(0, MAX_GOAL - 1) + "\u2026" : head;
+  return phrase(head);
 }
 
 /** How much the model thought, phrased as a count the card can paint. */

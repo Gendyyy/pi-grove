@@ -278,6 +278,19 @@ export function brief(value: unknown, limit = 240): string {
   return text.length > limit ? text.slice(0, limit - 1) + ELLIPSIS : text;
 }
 
+/** How many words a description aims for: a row is a glance, not a sentence. Guidance, not a gate. */
+export const PHRASE_WORDS = 6;
+
+/**
+ * Shorten text that has no boundary to police: a reasoning headline, a phase box, a plan pointer.
+ * The last allowed word stays whole, so the cut never lands mid-word.
+ */
+export function phrase(value: unknown, limit = PHRASE_WORDS): string {
+  const text = clean(value).replace(/\s+/g, " ").trim();
+  const words = text.split(" ").filter(Boolean);
+  return words.length > limit ? words.slice(0, limit).join(" ") : text;
+}
+
 /** Recover the stated goal: the injected reasoning param, else a codemode goal comment. */
 export function goalOf(args: Record<string, unknown> | undefined): string {
   const direct = args?.reasoning;
@@ -338,7 +351,7 @@ export function taskMilestonesOf(args: Record<string, unknown> | undefined): Tas
     const separator = entry.indexOf("=");
     if (separator < 0) return undefined;
     const id = entry.slice(0, separator).trim();
-    const label = brief(entry.slice(separator + 1), 24);
+    const label = brief(phrase(entry.slice(separator + 1)), 24);
     if (!TASK_MILESTONE_ID.test(id) || ids.has(id) || !label) return undefined;
     ids.add(id);
     milestones.push({ id, label });
