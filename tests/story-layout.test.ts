@@ -211,3 +211,33 @@ test("a script that broke on a nested step leaves its phase neutral", () => {
   assert.ok(!phase.includes("warning"), "the script's failure belongs to the failing step, not the phase");
   assert.ok(!phase.includes("failed"), "a nested-caused script failure stays off the phase");
 });
+
+test("a nested step cut short never wears its phase's warning mark", () => {
+  const tree = new ToolTree(settings);
+  tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "Attempt checks", taskIntent: "Verify changes", taskMilestones: "verify=Verify", taskMilestone: "verify" } });
+  // The step never reports a result, so closing the call leaves it incomplete.
+  tree.start({ toolCallId: "child", parentToolCallId: "a", toolName: "bash", args: { reasoning: "Run tests" } });
+  tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: true });
+  tree.start({ toolCallId: "b", toolName: "codemode", args: { reasoning: "Finish checks", taskIntent: "Verify changes", taskMilestones: "verify=Verify", taskMilestone: "verify" } });
+  tree.end({ toolCallId: "b", toolName: "codemode", result: { content: [] }, isError: false });
+  tree.settle();
+  const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
+  const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
+  const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
+  assert.ok(phase.includes("[success]x 01"), "an unfinished step stays off the phase: " + phase);
+  assert.ok(!phase.includes("warning"), "warning colour never reaches a phase whose step was cut short");
+  assert.ok(!phase.includes("failed"), "the interrupted step is not counted against the phase");
+});
+
+test("a failure after its nested steps all succeeded is still the phase's own", () => {
+  const tree = new ToolTree(settings);
+  tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "Attempt checks", taskIntent: "Verify changes", taskMilestones: "verify=Verify", taskMilestone: "verify" } });
+  tree.start({ toolCallId: "child", parentToolCallId: "a", toolName: "bash", args: { reasoning: "Run tests" } });
+  tree.end({ toolCallId: "child", toolName: "bash", result: { content: [] }, isError: false });
+  tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: true });
+  tree.settle();
+  const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
+  const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
+  const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
+  assert.ok(phase.includes("[warning]! 01"), "a script that broke on its own keeps the warning mark: " + phase);
+});

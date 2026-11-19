@@ -475,10 +475,13 @@ export function countErrors(nodes: TreeNode[]): number {
 
 /**
  * True when a row's failure is its own. A codemode call that broke because a nested step threw
- * answers through that step's row instead, so the phase above it keeps its own status.
+ * answers through that step's row instead, so the phase above it keeps its own status. A step cut
+ * short counts too: a cancelled or unfinished row is still the reason the script stopped.
  */
 export function failedOnOwn(node: TreeNode): boolean {
-  return node.kind !== "thinking" && node.status === "error" && !node.children.some(child => child.status === "error");
+  // shortcut: a snapshot that dropped every child row (MAX_CALLS cap) still reads as an own failure
+  return node.kind !== "thinking" && node.status === "error" &&
+    node.children.every(child => child.status === "success");
 }
 
 /** Count the failed rows of this level whose failure is their own, not a nested step's. */
