@@ -185,12 +185,11 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
     else delete prompt.sections.grove_tool_ui;
   });
   pi.on("tool_call", (event) => {
+    // SAFETY: every tool-call event carries its parameters as a plain object; the per-tool input
+    // types only narrow that shape, and the gate below reads its keys defensively.
+    const input = event.input as unknown as Record<string, unknown>;
     const reason = codemodeGroupMetadataViolation(
-      {
-        toolName: event.toolName,
-        input: event.input as unknown as Record<string, unknown>,
-        parentToolCallId: event.parentToolCallId,
-      },
+      { toolName: event.toolName, input, parentToolCallId: event.parentToolCallId },
       options.group,
     );
     return reason ? { block: true, reason } : undefined;

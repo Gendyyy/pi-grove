@@ -4,9 +4,9 @@
  * No state and no rendering: paint reads it, tool-tree.ts mutates it.
  */
 import { stripVTControlCharacters } from "node:util";
-import { formatElapsed, summaryLine, summarizeToolResult } from "./block-render.js";
+import { formatElapsed } from "./block-render.js";
 import { markFor, resolveIconMode, toolIcon, type IconMode } from "./icons.js";
-import { metric, paintSummary, themeText, toolColor, type Foreground, type GroveTheme } from "./theme.js";
+import { metric, paintSummary, themeText, toolColor, type GroveTheme } from "./theme.js";
 /** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
 export type GroupMode = "prompt" | "turn" | "message" | "off";
 

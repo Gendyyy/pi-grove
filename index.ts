@@ -136,6 +136,8 @@ export function createGroveExtension(
       Object.assign(settings, withSetting(settings, key, value));
       if (key === "thinkingLabel") {
         currentThinkingLabel = settings.thinkingLabel;
+        // SAFETY: pi hands every command the same live UI object its event hooks receive; the
+        // hidden-thinking-label setter is optional on the host, which applyThinkingLabel probes.
         if (settings.enabled) applyThinkingLabel(ctx.ui as unknown as ThinkingLabelUi);
         return;
       }

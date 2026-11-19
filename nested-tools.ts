@@ -1,5 +1,4 @@
 import { BASH_PREVIEW_LINES, clean, ELLIPSIS, linePreview, treeGlyphs } from "./tree-model.js";
-import { stripVTControlCharacters } from "node:util";
 import { Container, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { colorizeDiff, formatElapsed, summarizeToolResult, summaryLine, WidthAwareLines } from "./block-render.js";
 import { markFor, type IconMode } from "./icons.js";
