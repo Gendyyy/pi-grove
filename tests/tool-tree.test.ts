@@ -615,6 +615,41 @@ test("the shared call timer stops when no tool row is running", () => {
   }
 });
 
+test("the shared call timer keeps turning while a phase waits for its next call", () => {
+  const realSetInterval = globalThis.setInterval;
+  const realClearInterval = globalThis.clearInterval;
+  let tick: (() => void) | undefined;
+  let clears = 0;
+  globalThis.setInterval = ((callback: (...args: unknown[]) => void) => {
+    tick = callback;
+    return { unref() {} } as unknown as ReturnType<typeof setInterval>;
+  }) as typeof setInterval;
+  globalThis.clearInterval = (() => { clears += 1; }) as typeof clearInterval;
+  try {
+    const tree = new ToolTree(settings({ mode: "prompt" }));
+    tree.start({
+      toolCallId: "a",
+      toolName: "bash",
+      args: { taskMilestones: "explore=Explore; fix=Fix", taskMilestone: "explore" },
+    });
+    tree.end({
+      toolCallId: "a",
+      toolName: "bash",
+      result: { content: [] },
+      isError: false,
+      durationMs: 100,
+    }, undefined);
+    assert.ok(tick);
+    tick!();
+    assert.equal(clears, 0, "the phase in flight keeps the frame timer alive between two calls");
+    tree.settle();
+    assert.equal(clears, 1, "settlement still stops the timer");
+  } finally {
+    globalThis.setInterval = realSetInterval;
+    globalThis.clearInterval = realClearInterval;
+  }
+});
+
 test("shimmer formatting only sees the description that fits the row", () => {
   const fitted: string[] = [];
   const line = summaryLine(

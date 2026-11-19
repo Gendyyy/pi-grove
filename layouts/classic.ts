@@ -28,8 +28,8 @@ import {
 import {
   closedPhases,
   derivedProgress,
+  phaseInFlight,
   phaseMeterText,
-  planFinished,
   titleBorder,
 } from "../card-plan.js";
 import type { CardContext, CardLayout } from "../card-layout.js";
@@ -127,7 +127,7 @@ export const classicLayout: CardLayout = {
         // The phase in flight turns the same spinner as its calls and keeps turning until the plan moves
         // past it or the card closes: a gap between two calls is still that phase working, so its own
         // calls returning never stops the spinner. A failed call changes colour, never motion.
-        const live = index === activeIndex && group.settled !== true && !planFinished(group);
+        const live = index === activeIndex && phaseInFlight(group);
         const settled = failures ? glyphs.warning : done ? glyphs.check : glyphs.hollow;
         const mark = live ? spinnerGlyph(glyphs, now) : failures || done || index !== activeIndex ? settled : glyphs.dot;
         const target = milestoneTarget(phase.id);
@@ -160,7 +160,7 @@ export const classicLayout: CardLayout = {
       const phaseTarget = milestoneTarget(phase.id);
       // A live phase turns instead of holding a still diamond, from the moment it opens until it closes,
       // even after a call inside it failed: the error cell reports that, the marker reports motion.
-      const live = index === activeIndex && group.settled !== true;
+      const live = index === activeIndex && phaseInFlight(group);
       const prefix = themeText(theme, role, (live ? spinnerGlyph(glyphs, now) : glyphs.diamond) + " " + phase.label, true);
       const detailParts = [
         calls > 0 ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls")) : "",

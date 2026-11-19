@@ -5,6 +5,7 @@
  */
 import { Container, type Component } from "@earendil-works/pi-tui";
 import type { ToolExecutionEndEvent, ToolExecutionStartEvent } from "@earendil-works/pi-coding-agent";
+import { phaseInFlight } from "./card-plan.js";
 import type { ReplaySegment } from "./replay.js";
 import { plainTheme, type GroveTheme } from "./theme.js";
 import { TreeBlock, type TreeRow } from "./tree-block.js";
@@ -226,12 +227,15 @@ export class ToolTree {
     this.redraw();
   }
 
-  /** Keep running call markers and elapsed times current while a call is active. */
+  /**
+   * Keep running call markers, the phase in flight and elapsed times current while the card is open:
+   * a phase keeps turning between two calls, so the frame timer outlives the last returning call.
+   */
   private watch(): void {
     if (this.timer !== undefined) return;
     this.timer = setInterval(() => {
       const group = this.state.activeKey === undefined ? undefined : this.state.groups.get(this.state.activeKey);
-      if (!group || !hasRunning(group.rows)) {
+      if (!group || !(hasRunning(group.rows) || phaseInFlight(group))) {
         this.stopWatch();
         return;
       }

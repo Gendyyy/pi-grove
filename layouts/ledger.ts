@@ -17,7 +17,7 @@ import {
   type Glyphs,
 } from "../tree-model.js";
 import { rowModels, spinnerGlyph, type RowModel } from "../card-row.js";
-import { closedPhases, derivedProgress, planFinished } from "../card-plan.js";
+import { closedPhases, derivedProgress, phaseInFlight } from "../card-plan.js";
 import { classicLayout } from "./classic.js";
 import type { CardContext, CardLayout } from "../card-layout.js";
 
@@ -125,7 +125,6 @@ export const ledgerLayout: CardLayout = {
 
     const closed = closedPhases(group);
     const activeIndex = plan.findIndex(phase => phase.id === group.activeMilestoneId);
-    const finished = planFinished(group);
 
     /** Paint one declared phase as a ledger rule: its number, name, leader and state. */
     const emitPhase = (index: number): void => {
@@ -134,7 +133,7 @@ export const ledgerLayout: CardLayout = {
       const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
       const failures = countDirectErrors(phaseRows);
       const done = index < closed;
-      const live = index === activeIndex && group.settled !== true && !finished;
+      const live = index === activeIndex && phaseInFlight(group);
       const mark = live
         ? spinnerGlyph(glyphs, now)
         : failures > 0 ? glyphs.warning : done ? glyphs.check : index !== activeIndex ? glyphs.hollow : glyphs.dot;

@@ -76,6 +76,16 @@ export function planFinished(group: TreeGroup): boolean {
 }
 
 /**
+ * True while the card holds a phase in flight: the pointer sits on a phase and the card is still open.
+ * Every layout animates that phase from the moment it opens, and a gap between two calls is still that
+ * phase working — so the shell's frame timer reads this same rule instead of counting running calls.
+ */
+export function phaseInFlight(group: TreeGroup): boolean {
+  if (group.settled === true) return false;
+  return (group.milestones ?? []).some(phase => phase.id === group.activeMilestoneId);
+}
+
+/**
  * Phases the card paints as over: the ones the plan pointer has moved past, and the whole plan
  * once the card ends. A phase is over when the work moved on, not when its last call returned —
  * a gap between two calls is still that phase working, so it can never flash green and back.

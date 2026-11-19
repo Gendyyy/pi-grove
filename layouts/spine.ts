@@ -18,7 +18,7 @@ import {
 } from "../tree-model.js";
 import { elapsedFor, rowModels, spinnerGlyph, type RowModel } from "../card-row.js";
 import { shimmerText } from "../card-progress.js";
-import { closedPhases, derivedProgress, planFinished } from "../card-plan.js";
+import { closedPhases, derivedProgress, phaseInFlight } from "../card-plan.js";
 import { classicLayout } from "./classic.js";
 import type { CardContext, CardLayout } from "../card-layout.js";
 
@@ -134,7 +134,7 @@ export const spineLayout: CardLayout = {
       const done = index < closed;
       // A phase in flight turns the same spinner as its calls; a gap between two calls is
       // still that phase working, so its own calls returning never stops the mark.
-      const live = index === activeIndex && group.settled !== true && !planFinished(group);
+      const live = index === activeIndex && phaseInFlight(group);
       const role: Foreground = failures ? "warning" : done ? "success" : index === activeIndex ? "accent" : "dim";
       const settled = failures ? glyphs.warning : done ? glyphs.check : glyphs.hollow;
       const mark = live ? spinnerGlyph(glyphs, now) : failures || done || index !== activeIndex ? settled : glyphs.dot;

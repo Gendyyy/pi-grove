@@ -20,7 +20,7 @@ import {
 } from "../tree-model.js";
 import { elapsedFor, rowExtras, rowModels, spinnerGlyph, type RowModel } from "../card-row.js";
 import { durationSpark } from "../card-progress.js";
-import { closedPhases, derivedProgress, phaseMeterText, planFinished } from "../card-plan.js";
+import { closedPhases, derivedProgress, phaseInFlight, phaseMeterText } from "../card-plan.js";
 import type { CardContext, CardLayout } from "../card-layout.js";
 import { classicLayout } from "./classic.js";
 
@@ -104,7 +104,7 @@ function phaseStrip(ctx: CardContext): string | undefined {
     const failures = countDirectErrors(rows);
     const done = index < closed;
     // A live phase turns the same spinner as its calls until the plan moves past it or the card closes.
-    const live = index === active && group.settled !== true && !planFinished(group);
+    const live = index === active && phaseInFlight(group);
     const role: Foreground = failures ? "warning" : done ? "success" : index === active ? "accent" : "dim";
     const mark = live ? spinnerGlyph(glyphs, now) : failures ? glyphs.warning : done ? glyphs.check : glyphs.hollow;
     const head =
