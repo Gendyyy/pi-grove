@@ -8,7 +8,6 @@ import { themeText, type Foreground, type GroveTheme } from "./theme.js";
 import {
   ELLIPSIS,
   TASK_MILESTONE_MAX,
-  countDirectErrors,
   failedOnOwn,
   phaseShare,
   type Glyphs,
@@ -22,8 +21,10 @@ import { progressCellText, progressGlyph, progressRamp, pulseText } from "./card
  * in flight never blocks a finished plan, and a nested step answers through its own call row, not through
  * the phase.
  */
-function allSucceeded(nodes: TreeNode[]): boolean {
-  return nodes.every(node => node.kind === "thinking" || node.status === "success" || !failedOnOwn(node));
+function allSucceeded(group: TreeGroup): boolean {
+  const declared = new Set((group.milestones ?? []).map(phase => phase.id));
+  return group.rows.every(node =>
+    node.kind === "thinking" || node.status === "success" || !failedOnOwn(node) || !declared.has(node.milestone ?? ""));
 }
 
 /**
@@ -72,7 +73,7 @@ export function finishedPhases(group: TreeGroup): number {
 export function planFinished(group: TreeGroup): boolean {
   const plan = group.milestones;
   if (!plan || plan.length === 0) return false;
-  return group.settled === true && allSucceeded(group.rows) && finishedPhases(group) === plan.length;
+  return group.settled === true && allSucceeded(group) && finishedPhases(group) === plan.length;
 }
 
 /**
@@ -252,7 +253,7 @@ function phasePlanLines(
   // Only a call that failed on its own counts: a script that broke on a nested step answers through
   // that step's row.
   const failed = new Set(
-    group.rows.filter(node => byCall.has(node.id) && countDirectErrors([node]) > 0).map(node => byCall.get(node.id)!),
+    group.rows.filter(node => plan.some(phase => phase.id === node.milestone) && failedOnOwn(node)).map(node => node.milestone!),
   );
   const widths = plan.map(phase => visibleWidth(phase.label) + PLAN_PAD * 2 + 2);
   let over = widths.reduce((sum, box) => sum + box, 0) + (widths.length - 1) * PLAN_LINK - (width - 2);

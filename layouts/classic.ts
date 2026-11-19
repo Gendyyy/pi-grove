@@ -12,7 +12,7 @@ import {
   GROUP_TARGET,
   PHASES_TARGET,
   PREVIEW_LINES,
-  countDirectErrors,
+  countDeclaredErrors,
   countErrors,
   counted,
   errorCell,
@@ -106,7 +106,7 @@ export const classicLayout: CardLayout = {
       // so a phase cannot turn green and back while the pointer still sits on it.
       const closed = closedPhases(group);
       const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
-      const failed = countDirectErrors(tools.filter(node => displayPhaseByCall.get(node.id) === phase.id)) > 0;
+      const failed = countDeclaredErrors(tools, phase.id) > 0;
       const role: Foreground = failed ? "warning" : index < closed ? "success" : index === activeIndex ? "accent" : "dim";
       phaseRoles.set(index, role);
       return role;
@@ -122,7 +122,7 @@ export const classicLayout: CardLayout = {
       const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
       if (story) {
         const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
-        const failures = countDirectErrors(phaseRows);
+        const failures = countDeclaredErrors(phaseRows, phase.id);
         const done = index < closed;
         const role = phaseRole(index);
         // The phase in flight turns the same spinner as its calls and keeps turning until the plan moves
@@ -156,7 +156,7 @@ export const classicLayout: CardLayout = {
       const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
       // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
       const calls = phaseRows.length;
-      const phaseErrors = countDirectErrors(phaseRows);
+      const phaseErrors = countDeclaredErrors(phaseRows, phase.id);
       const elapsed = phaseElapsedById.get(phase.id) ?? 0;
       const phaseTarget = milestoneTarget(phase.id);
       // A live phase turns instead of holding a still diamond, from the moment it opens until it closes,

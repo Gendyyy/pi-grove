@@ -11,7 +11,7 @@ import {
   GROUP_TARGET,
   PHASES_TARGET,
   PREVIEW_LINES,
-  countDirectErrors,
+  countDeclaredErrors,
   countErrors,
   counted,
   errorCell,
@@ -101,7 +101,7 @@ function phaseStrip(ctx: CardContext): string | undefined {
   const active = plan.findIndex(phase => phase.id === group.activeMilestoneId);
   const cells = plan.map((phase, index) => {
     const rows = group.rows.filter(node => node.kind !== "thinking" && phaseByCall.get(node.id) === phase.id);
-    const failures = countDirectErrors(rows);
+    const failures = countDeclaredErrors(rows, phase.id);
     const done = index < closed;
     // A live phase turns the same spinner as its calls until the plan moves past it or the card closes.
     const live = index === active && phaseInFlight(group);

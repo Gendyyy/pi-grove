@@ -241,3 +241,22 @@ test("a failure after its nested steps all succeeded is still the phase's own", 
   const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
   assert.ok(phase.includes("[warning]! 01"), "a script that broke on its own keeps the warning mark: " + phase);
 });
+
+test("a blocked call never paints a phase it did not declare", () => {
+  const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
+  const render = (milestone?: string) => {
+    const tree = new ToolTree(settings);
+    tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "Blocked script", taskIntent: "Map the fix", taskMilestones: "explore=Explore; verify=Verify", ...(milestone === undefined ? {} : { taskMilestone: milestone }) } });
+    // Grove's own guard rejected the call before it ran, so it named no phase of its own.
+    tree.end({ toolCallId: "a", toolName: "codemode", result: { content: [] }, isError: true });
+    tree.settle();
+    const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
+    return card.render(96).find(line => line.includes("01") && line.includes("Explore")) ?? "";
+  };
+  for (const milestone of [undefined, "investigate"]) {
+    const phase = render(milestone);
+    assert.ok(!phase.includes("warning"), "a blocked call stays off phase 01: " + phase);
+    assert.ok(!phase.includes("failed"), "phase 01 never blames a call that did not declare it");
+  }
+  assert.ok(render("explore").includes("[warning]! 01"), "a failure that declared its phase still warns");
+});

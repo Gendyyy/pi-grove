@@ -10,7 +10,7 @@ import {
   ELLIPSIS,
   GROUP_TARGET,
   PREVIEW_LINES,
-  countDirectErrors,
+  countDeclaredErrors,
   countErrors,
   counted,
   milestoneTarget,
@@ -130,7 +130,7 @@ export const spineLayout: CardLayout = {
       const closed = closedPhases(group);
       const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
       const rows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
-      const failures = countDirectErrors(rows);
+      const failures = countDeclaredErrors(rows, phase.id);
       const done = index < closed;
       // A phase in flight turns the same spinner as its calls; a gap between two calls is
       // still that phase working, so its own calls returning never stops the mark.

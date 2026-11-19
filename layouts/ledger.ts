@@ -10,7 +10,7 @@ import {
   ELLIPSIS,
   GROUP_TARGET,
   PREVIEW_LINES,
-  countDirectErrors,
+  countDeclaredErrors,
   countErrors,
   counted,
   milestoneTarget,
@@ -131,7 +131,7 @@ export const ledgerLayout: CardLayout = {
       const phase = plan[index];
       if (!phase) return;
       const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
-      const failures = countDirectErrors(phaseRows);
+      const failures = countDeclaredErrors(phaseRows, phase.id);
       const done = index < closed;
       const live = index === activeIndex && phaseInFlight(group);
       const mark = live

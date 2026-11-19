@@ -10,7 +10,7 @@ import {
   ELLIPSIS,
   GROUP_TARGET,
   PREVIEW_LINES,
-  countDirectErrors,
+  countDeclaredErrors,
   countErrors,
   counted,
   milestoneTarget,
@@ -93,7 +93,7 @@ export const marginLayout: CardLayout = {
     const phaseRole = (index: number): Foreground => {
       const phase = plan[index];
       if (!phase) return "dim";
-      const failed = countDirectErrors(tools.filter(node => ctx.displayPhaseByCall.get(node.id) === phase.id)) > 0;
+      const failed = countDeclaredErrors(tools, phase.id) > 0;
       return failed ? "warning" : index < closed ? "success" : index === activeIndex ? "accent" : "dim";
     };
 
@@ -102,7 +102,7 @@ export const marginLayout: CardLayout = {
       const phase = plan[index];
       if (!phase) return;
       const phaseRows = tools.filter(node => ctx.displayPhaseByCall.get(node.id) === phase.id);
-      const failures = countDirectErrors(phaseRows);
+      const failures = countDeclaredErrors(phaseRows, phase.id);
       const numeral = themeText(theme, phaseRole(index), String(index + 1).padStart(2, "0"));
       const name = gutter >= GUTTER_WIDE ? " " + themeText(theme, "muted", phase.label.toUpperCase()) : "";
       // A narrow margin has no room for the name, so the body carries it instead of dropping it.
