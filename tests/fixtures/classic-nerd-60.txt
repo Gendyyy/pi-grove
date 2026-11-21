@@ -1,6 +1,4 @@
- ╭─ GROVE ────────────────────────────────────────────────╮
- │ ▅▆                                                     │
- │ ├─ ● write · Write the layout[0m…[0m · written · ━━━━── · 1s │
- │ └─ ● bash · Run the layout suite[0m…[0m · done · ━━━━━━ · 2s │
- │ ┆ 1 file · card-layout.ts                              │
- ╰────────────────────────────────────────────────────────╯
+ ─ GROVE ───────────────────────────────────────────── ▅▆ ─
+ ├─ ● write · Write the layout reg[0m…[0m · written · ━━━━── · 1s
+ └─ ● bash · Run the layout suite (np[0m…[0m · done · ━━━━━━ · 2s
+ ┆ 1 file · card-layout.ts

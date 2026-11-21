@@ -28,6 +28,7 @@ const defaults: TreeSettings = {
   groupPhases: false,
   groupSparkline: true,
   groupGutter: true,
+groupBox: false,
 };
 
 type Tick = (ms: number) => void;
@@ -143,7 +144,25 @@ const nerd: Fixture = {
   },
 };
 
-const FIXTURES_BY_NAME: Record<string, Fixture> = { flat, plan, phases, nested, nerd };
+
+/** The opt-in box, so the framed path stays locked now that it is no longer the default. */
+const boxed: Fixture = {
+  settings: { ...defaults, groupBox: true },
+  widths: [80, 60],
+  render: (width, tick) => {
+    const tree = new ToolTree({ ...defaults, groupBox: true });
+    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "Read the boxed frame", path: "tree-paint.ts" } });
+    tick(700);
+    tree.end({ toolCallId: "a", toolName: "read", result: { content: [{ type: "text", text: "1023 lines" }] }, isError: false });
+    tick(60);
+    tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "Run the frame suite", command: "npm test" } });
+    tick(900);
+    tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false });
+    return paint(tree, "a", width);
+  },
+};
+
+const FIXTURES_BY_NAME: Record<string, Fixture> = { flat, plan, phases, nested, nerd, boxed };
 
 test("classic card matches its golden fixtures", () => {
   const real = Date.now;

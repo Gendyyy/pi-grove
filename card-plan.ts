@@ -312,6 +312,21 @@ function phasePlanLines(
   return [top, middle, bottom].map(row => fitToolLine("  " + row.join(""), width));
 }
 
+/**
+ * The card's top rule: the intent and the strip set into one line, with no sides. Without the box
+ * this is the card's only chrome, so every row below sits flush and nothing is padded for an edge.
+ */
+export function topRule(title: string, strip: string, theme: GroveTheme, glyphs: Glyphs, width: number): string {
+  const edge = (text: string) => themeText(theme, "dim", text);
+  const label = truncateToWidth(title, Math.max(4, width - 12), ELLIPSIS);
+  const lead = edge(glyphs.h + " ") + themeText(theme, "accent", label) + " ";
+  const fill = (): string => edge(glyphs.h.repeat(Math.max(0, width - visibleWidth(lead))));
+  // The strip only rides the rule when it fits with a stroke either side; otherwise the rule wins.
+  const gap = width - visibleWidth(lead) - visibleWidth(strip) - 3;
+  if (!strip || gap < 3) return lead + fill();
+  return lead + edge(glyphs.h.repeat(gap)) + " " + strip + " " + edge(glyphs.h);
+}
+
 /** The card's top border, with the task intent set into it as a plain label. */
 export function titleBorder(title: string, theme: GroveTheme, glyphs: Glyphs, width: number): string {
   const leadIn = themeText(theme, "dim", glyphs.box.tl + glyphs.h);

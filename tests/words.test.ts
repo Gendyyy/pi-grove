@@ -31,6 +31,7 @@ function settings(iconMode: "nerd" | "ascii", overrides: Partial<TreeSettings> =
     groupPhases: true,
     groupSparkline: true,
     groupGutter: true,
+groupBox: false,
     groupToolNames: true,
     ...overrides,
   };

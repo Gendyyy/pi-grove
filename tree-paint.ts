@@ -34,9 +34,9 @@ export function paintGroup(
   targets.clear();
   const lines: string[] = [];
   if (group.rows.length === 0) return lines;
-  // A framed card spends two cells per side; under that width the frame cannot hold a row, so the
-  // card falls back to the rail and keeps the cells instead.
-  const framed = width >= 24;
+  // The box is opt-in, and it needs two cells per side: under that width it cannot hold a row, so
+  // a boxed card stays open and keeps the cells instead.
+  const framed = state.settings.groupBox && width >= 24;
   const inner = framed ? Math.max(8, width - 4) : width;
   const glyphs = treeGlyphs(state.settings.iconMode);
   const reveal = piExpanded || group.openAll;

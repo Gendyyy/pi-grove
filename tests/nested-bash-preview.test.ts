@@ -23,6 +23,7 @@ const settings: TreeSettings = {
   groupPhases: true,
   groupSparkline: false,
   groupGutter: false,
+groupBox: false,
   groupToolNames: true,
 };
 

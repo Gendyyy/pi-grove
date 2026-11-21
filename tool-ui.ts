@@ -29,6 +29,7 @@ interface ToolUiOptions {
   groupPhases: boolean;
   groupSparkline: boolean;
   groupGutter: boolean;
+  groupBox: boolean;
   /** Where reasoning appears: a row of the card, pi own rows, or nowhere. */
   thinking: GroveThinking;
 }
@@ -46,6 +47,7 @@ export type ToolUiLiveSettings = Pick<
   | "groupPhases"
   | "groupSparkline"
   | "groupGutter"
+  | "groupBox"
 >;
 
 /** Runtime handle used by /grove to update the active presentation. */
@@ -135,6 +137,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       groupPhases: options.groupPhases,
       groupSparkline: options.groupSparkline,
       groupGutter: options.groupGutter,
+      groupBox: options.groupBox,
     },
     redraw,
   );
@@ -152,6 +155,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       ...(settings.groupPhases === undefined ? {} : { groupPhases: settings.groupPhases }),
       ...(settings.groupSparkline === undefined ? {} : { groupSparkline: settings.groupSparkline }),
       ...(settings.groupGutter === undefined ? {} : { groupGutter: settings.groupGutter }),
+      ...(settings.groupBox === undefined ? {} : { groupBox: settings.groupBox }),
     };
     tree.updateSettings(treeSettings);
   };

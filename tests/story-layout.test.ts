@@ -5,7 +5,8 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme } from "../theme.js";
 import { GROUP_TARGET, ToolTree, milestoneTarget, type TreeSettings } from "../tool-tree.js";
 
-const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
+const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true,
+groupBox: false, groupToolNames: true };
 
 /** Build a card with completed and failed phases and one nested tool call. */
 function storyCard() {
@@ -81,7 +82,7 @@ test("expand-all reveals nested steps while a phase follows its own calls", () =
   assert.ok(lines.some(line => line.includes("Request registry")));
 });
 
-test("expanded Story rows replace summaries and keep the phase rail through nested tools", () => {
+test("expanded Story rows replace summaries and keep failure marks through nested tools", () => {
   const { tree } = storyCard();
   const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: true, invalidate: () => {} });
@@ -89,11 +90,8 @@ test("expanded Story rows replace summaries and keep the phase rail through nest
   const phase = lines.find(line => line.includes(" 02 ") && line.includes("Verify")) ?? "";
   const call = lines.find(line => line.includes("codemode") && line.includes("Check registry")) ?? "";
   const child = lines.find(line => line.includes("bash") && line.includes("Request registry")) ?? "";
-  assert.match(phase, /\[dim\]\| /, "the rail keeps one colour whatever the phase outcome");
   assert.ok(!phase.includes("failed"), "a nested failure stays off the phase rollup");
   assert.match(call, /\[error\]\*/, "the failing nested step still marks its own call row");
-  assert.match(call, /\[dim\]\| /, "the phase rail must not change to the call outcome color");
-  assert.match(child, /\[dim\]\| /);
   assert.match(child, /\[error\]\*/, "the failing call keeps its error marker");
   assert.equal(lines.filter(line => line.includes("Check registry")).length, 1, "the collapsed summary is replaced by its call");
   assert.ok(child.indexOf("Request registry") > call.indexOf("Check registry"), "nested tools are indented further");
@@ -125,7 +123,7 @@ test("expanded output is indented beneath its tool and stays within the card", (
 
 test("the task intent rides the border without hiding text or breaking targets", () => {
   const intent = "Inspect 東京 settings and verify the complete configuration without losing important details";
-  const tree = new ToolTree(settings);
+  const tree = new ToolTree({ ...settings, groupBox: true });
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "Inspect settings", taskIntent: intent, taskProgress: 30, taskMilestones: "inspect=Inspect; verify=Verify", taskMilestone: "inspect" } });
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: plainTheme, expanded: false, invalidate: () => {} });
   const targetAt = (tree as unknown as { targetAt(index: number): string | undefined }).targetAt.bind(tree);
@@ -176,7 +174,7 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
   }
 });
 test("the card is one rounded frame whose top border carries the task intent", () => {
-  const tree = new ToolTree({ ...settings, iconMode: "nerd", icons: true });
+  const tree = new ToolTree({ ...settings, iconMode: "nerd", icons: true, groupBox: true });
   tree.start({
     toolCallId: "a",
     toolName: "read",

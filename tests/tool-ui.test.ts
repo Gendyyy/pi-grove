@@ -113,6 +113,7 @@ test("registerToolUi injects stable-title guidance and blocks missing identity",
     groupPhases: true,
     groupSparkline: true,
     groupGutter: true,
+groupBox: false,
     groupToolNames: true,
     thinking: "inline",
   });
@@ -178,6 +179,7 @@ const uiOptions = {
   groupPhases: true,
   groupSparkline: true,
   groupGutter: true,
+groupBox: false,
   groupToolNames: true,
   thinking: "inline" as const,
 };
@@ -266,7 +268,7 @@ test("a turn that touches files ends with the ledger line", () => {
     100,
   );
   const ledger = lines.find((line) => line.includes(" 2 files")) ?? "";
-  assert.match(ledger, /\| : 2 files · /, "one line counts both files once each");
+  assert.match(ledger, /: 2 files · /, "one line counts both files once each");
   assert.match(ledger, /classic\.ts/);
   assert.match(ledger, /card-files\.ts/);
   assert.doesNotMatch(ledger, /npm/, "a shell command is not a touched file");

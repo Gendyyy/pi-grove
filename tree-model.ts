@@ -39,6 +39,8 @@ export interface TreeSettings {
   groupSparkline: boolean;
   /** Divide the rows wherever the plan moved on to another phase. */
   groupGutter: boolean;
+  /** Draw each card as a closed box; off means one top rule and flush rows. */
+  groupBox: boolean;
 }
 
 /** Lifecycle state of one tool call in the tree. */

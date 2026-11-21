@@ -38,6 +38,7 @@ function settings(): TreeSettings {
     groupPhases: true,
     groupSparkline: true,
     groupGutter: true,
+groupBox: false,
     groupToolNames: true,
   };
 }
@@ -55,9 +56,10 @@ function row(id: string): TreeRow {
 /** Rendered lines without host padding and escapes. */
 function lines(component: Component, width = 100): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
-  // The card is one bordered object now, so the body is what the assertions index.
-  if (painted.length < 3 || !/^[╭+┌][-─]/.test(painted[0]!)) return painted;
-  return painted.slice(1, -1).map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
+  // Chrome is not content: a box drops its border and floor, an unboxed card drops its top rule.
+  const boxed = painted.length >= 3 && /^[╭+┌][-─]/.test(painted[0]!);
+  const body = boxed ? painted.slice(1, -1) : painted.length >= 2 && /^[─-] /.test(painted[0]!) ? painted.slice(1) : painted;
+  return body.map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim());
 }
 
 test("consecutive thinking parts collapse into one run with ordered ids", () => {
@@ -81,7 +83,7 @@ test("a reasoning row never counts as a tool call", () => {
 
   const painted = lines(tree.render(row("c1")));
   // The title rides the card's border, so the body is one row per entry and no count above them.
-  assert.equal(painted.length, 2, "the narration and the call");
+  assert.equal(painted.length, 2, "the narration and the call, with the strip riding the top rule");
   assert.match(tree.render(row("c1")).render(100)[0]!, /GROVE/, "the card leads with its own name");
   // Reasoning is narration, never a call, and the card counts nothing.
   assert.doesNotMatch(painted.join(" "), /\d+ calls?/, "the card counts no calls");

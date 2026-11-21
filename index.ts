@@ -105,6 +105,7 @@ function liveSettings(settings: GroveSettings): ToolUiLiveSettings {
     groupPhases: settings.groupPhases,
     groupSparkline: settings.groupSparkline,
     groupGutter: settings.groupGutter,
+    groupBox: settings.groupBox,
   };
 }
 
@@ -329,6 +330,7 @@ export function createGroveExtension(
       groupPhases: settings.groupPhases,
       groupSparkline: settings.groupSparkline,
       groupGutter: settings.groupGutter,
+      groupBox: settings.groupBox,
       thinking: settings.thinking,
     });
 

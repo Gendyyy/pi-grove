@@ -6,11 +6,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { FakeHost, okay } from "./host.js";
 
-/** The card's lines without its border, so assertions index the body the way they always did. */
+/** The card's lines without its chrome, so assertions index the body the way they always did. */
 function body(frame: { lines: string[] }): string[] {
   const painted = frame.lines;
-  if (painted.length < 3 || !/^[╭+]-/.test(painted[0]!.trim())) return painted;
-  return painted.slice(1, -1);
+  if (painted.length >= 3 && /^[╭+]-/.test(painted[0]!.trim())) return painted.slice(1, -1);
+  if (painted.length >= 2 && /^[─-] /.test(painted[0]!.trim())) return painted.slice(1);
+  return painted;
 }
 
 /** One transcript entry carrying a message, the way pi stores it. */

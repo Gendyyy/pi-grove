@@ -69,6 +69,7 @@ export class FakeHost {
       // Off by default: a live chart takes a strip row, and a real clock makes that row flaky.
       groupSparkline: false,
       groupGutter: true,
+groupBox: false,
       groupToolNames: true,
       ...options.settings,
     };

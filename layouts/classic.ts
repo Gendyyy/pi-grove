@@ -30,6 +30,7 @@ import {
   phaseInFlight,
   phaseMeterText,
   titleBorder,
+  topRule,
 } from "../card-plan.js";
 import type { CardContext, CardLayout } from "../card-layout.js";
 
@@ -212,7 +213,8 @@ export const classicLayout: CardLayout = {
     // The card names itself first and measures second: one headline line, then the meter, then
     // the work. The share rides the meter beside its own bar, so the headline stays a name.
     // The task intent lives in the card's own top border, so the title never costs a content row.
-    const topBorder = framed ? titleBorder(group.intent || "GROVE", theme, glyphs, width) : "";
+    const title = group.intent || "GROVE";
+    const topBorder = framed ? titleBorder(title, theme, glyphs, width) : "";
     // One line, one gesture: the meter opens the plan it draws, the rail opens the rows.
     if (story) {
       const pieces: string[] = [];
@@ -240,7 +242,8 @@ export const classicLayout: CardLayout = {
         targets.set(lines.length - 1, PHASES_TARGET);
       }
     }
-    if (headerLine && !story) {
+    // Without the box the rule carries the strip, so the card spends one row on chrome, not three.
+    if (headerLine && !story && framed) {
       lines.push(headerLine);
       targets.set(lines.length - 1, GROUP_TARGET);
     }
@@ -330,7 +333,7 @@ export const classicLayout: CardLayout = {
       emitPhase(nextPhaseIndex);
       nextPhaseIndex += 1;
     }
-    if (lines.length === 0 || width < 24) return lines;
+    if (lines.length === 0) return lines;
 
     // The one fixed answer to "what did this turn touch": it sits under the rows so a long
     // card cannot bury it, and clicking it reveals the per-file list.
@@ -352,8 +355,13 @@ export const classicLayout: CardLayout = {
     }
 
     if (!framed) {
-      const rail = themeText(theme, "dim", glyphs.rail) + " ";
-      return lines.map(line => rail + fitToolLine(line, inner));
+      const body = lines.map(line => fitToolLine(line, inner));
+      // The rule is the card's clickable identity, exactly where the border used to be.
+      const shifted = [...targets].map(([line, target]) => [line + 1, target] as const);
+      targets.clear();
+      targets.set(0, GROUP_TARGET);
+      for (const [line, target] of shifted) targets.set(line, target);
+      return [topRule(title, story ? "" : headerLine, theme, glyphs, width), ...body];
     }
     // The card is its own box: the title rides the top border, the sides carry the frame, and the
     // chrome keeps one tone so the rows inside say how the work is going.

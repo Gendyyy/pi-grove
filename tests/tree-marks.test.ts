@@ -20,6 +20,7 @@ const settings: TreeSettings = {
   groupPhases: true,
   groupSparkline: true,
   groupGutter: true,
+groupBox: false,
   groupToolNames: true,
 };
 const inner = () => ({ render: () => ["inner"], invalidate: () => {} });
@@ -645,7 +646,8 @@ test("a stale phase declaration stays with the latest completed phase in the tim
 });
 
 test("phase gutter hides phase markers and leaves calls as branches", () => {
-  const tree = twoPhases({ ...settings, groupGutter: false, iconMode: "nerd" });
+  const tree = twoPhases({ ...settings, groupGutter: false,
+groupBox: false, iconMode: "nerd" });
   const lines = painted(tree, 60, plainTheme);
   assert.equal(lines.some(line => /◆ (?:Inspect|Build|Verify)/.test(line)), false, "the existing phase-gutter option still hides phase markers");
   assert.equal(lines.filter(isConnectorLine).length, 0, "hidden phases do not leave a detached spine");
@@ -692,6 +694,7 @@ test("the duration scale includes calls outside the collapsed window", () => {
       window: 1,
       groupProgress: false,
       groupGutter: false,
+groupBox: false,
       iconMode: "nerd",
     });
     tree.start({

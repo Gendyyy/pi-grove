@@ -24,7 +24,7 @@ flowchart LR
     THEME["theme.ts<br/>GroveTheme"] --- LY
 ```
 
-`tree-model.ts` is the data side: node and group shapes, the glyph sets, and `TreeSettings`. `settings.ts` parses the config file and owns the panel and the `/grove` command surface. `theme.ts` maps colour roles to escape codes. The four `card-*.ts` helpers are shared drawing primitives, not layouts: `card-row.ts` turns rows into `RowModel`s and extras, `card-progress.ts` draws sparks, side rails and the breathing mark, `card-plan.ts` derives phase data and draws the meter text and the titled border, and `card-files.ts` collects the write and edit paths that the classic footer reports.
+`tree-model.ts` is the data side: node and group shapes, the glyph sets, and `TreeSettings`. `settings.ts` parses the config file and owns the panel and the `/grove` command surface. `theme.ts` maps colour roles to escape codes. The four `card-*.ts` helpers are shared drawing primitives, not layouts: `card-row.ts` turns rows into `RowModel`s and extras, `card-progress.ts` draws sparks, side rails and the breathing mark, `card-plan.ts` derives phase data and draws the meter text, the titled border and the top rule a frameless card uses, and `card-files.ts` collects the write and edit paths that the classic footer reports.
 
 ## One paint
 
@@ -66,8 +66,8 @@ The render is stateless. The only mutable thing is `ToolTree.targets`: the card 
 | `state` | live settings and the set of expanded phase ids | `ToolTree` |
 | `group` | the card's group: rows, milestones, `openAll`, timings | `ToolTree` |
 | `width` | columns the card may use | `paintGroup` |
-| `inner` | width inside the frame: `width - 4` when framed, at least 8, else `width` | `paintGroup` |
-| `framed` | whether a box is allowed: `width >= 24` | `paintGroup` |
+| `inner` | width inside the chrome: `width - 4` when the box is on, at least 8, else `width` | `paintGroup` |
+| `framed` | whether the opt-in box is drawn: `settings.groupBox && width >= 24` | `paintGroup` |
 | `theme` | colour roles, default `plainTheme` | `ToolTree` |
 | `glyphs` | branch and mark characters for the icon mode | `paintGroup` |
 | `tools` | the group's rows with thinking rows removed | `paintGroup` |
@@ -92,7 +92,7 @@ The render is stateless. The only mutable thing is `ToolTree.targets`: the card 
 
 | Frame | Headline | Plan gesture | Row anatomy | Full / compact | Drops when narrow |
 | --- | --- | --- | --- | --- | --- |
-| box, title in the top border, from 24 columns | meter: share, done/total, elapsed, sparkline; then a strip: progress, sparkline, failures, clock | numbered rules whose mark breathes while the phase is in flight, calls, failures and a duration rail, joined by a one-cell pipe that expands the phase above | branch guide, mark, tool, goal after `·`, summary, rail, duration | no split; framed from 24 | below 24 the plain rail without the box; a phase rule gives up its right-hand numbers when fewer than 12 columns remain, and falls back to a summary line under 4 |
+| one top rule carrying the title and the strip; the opt-in box closes it from 24 columns | meter: share, done/total, elapsed, sparkline; then a strip: progress, sparkline, failures, clock | numbered rules whose mark breathes while the phase is in flight, calls, failures and a duration rail, joined by a one-cell pipe that expands the phase above | branch guide, mark, tool, goal after `·`, summary, rail, duration | no split; the box needs 24 columns | frameless at every width; a phase rule gives up its right-hand numbers when fewer than 12 columns remain, and falls back to a summary line under 4 |
 
 Motion is one clock. A live call's dot and the mark of the phase it belongs to breathe together on `PULSE_MS` (1600 ms), fading toward muted and back, so everything running in a card moves in step instead of each row spinning on its own. `PULSE_FREEZE_MS` (5 minutes) stops the breath on a call that has run too long to still be reported as motion, and a finished call holds a still mark in its own colour.
 
@@ -102,7 +102,7 @@ Motion is one clock. A live call's dot and the mark of the phase it belongs to b
 
 The hidden-window line registers `GROUP_TARGET`, so clicking it reveals the group. The file footer registers `GROUP_TARGET` on its own line too, so one click serves both the group and the per-file list. That footer reads `group.rows`, not `ctx.visible`, so it counts files whose rows the window hides and cannot be buried by a long card.
 
-The card prints a top border and therefore paints content first, then shifts: it moves every registered line down by one, clears the map, sets line 0 to `GROUP_TARGET`, and re-adds the shifted entries. The shift is the reason the card must never assume the map survives a paint: `paintGroup` receives the same map every time and the card rewrites it from scratch.
+Both shapes print one line of chrome, so the card paints content first and then shifts: it moves every registered line down by one, clears the map, sets line 0 to `GROUP_TARGET`, and re-adds the shifted entries. A frameless card returns its rule and body; a boxed one adds a floor. The shift is the reason the card must never assume the map survives a paint: `paintGroup` receives the same map every time and the card rewrites it from scratch.
 
 ## How settings reach the card
 

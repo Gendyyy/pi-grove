@@ -48,13 +48,14 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupPhases` | on / off | off | show the linked phase plan under the progress meter |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
 | `groupGutter` | on / off | on | show Story phase cards; off retains the compact call timeline |
+| `groupBox` | on / off | off | close each card in a box instead of leaving it on one top rule |
 | `thinking` | group / inline / off | off | where reasoning appears |
 | `thinkingLabel` | text | hidden | label pi prints for a hidden thinking run |
 
 
 ## Card shape
 
-One card per request: a model-authored task description in the border, then the rollup and tool rows.
+One card per request: a model-authored task description on its top rule, then the strip and tool rows. The card is frameless by default; `groupBox` closes it in a box.
 Keep task titles concise (ideally 45 characters or fewer); long titles continue onto extra lines.
 Cards with a phase plan use the story form; cards without one keep the compact timeline. The required `taskIntent` identifies the atomic task cluster and stays fixed
 across its calls; progress appears on the rollup, so milestone updates never rewrite the
@@ -107,15 +108,12 @@ without a visible phase. With `groupPhases` on, the meter opens the full plan; P
 uses the compact timeline instead of the Story phase cards; `groupPhases` never changes these cards.
 
 ```text
-╭─ Check updates ────────────────────────────────────────────╮
-│ GROVE / TASK  ● Verify 2/2                                 │
-│ ▰▰▰▰▰▰▱▱▱▱ · 1m 02s                                       │
-│ ────────────────────────────────────────────────────────── │
-│ │ ✓ 01 Inspect · 1 call · 1s ▸                             │
-│ │   ▸ Read settings                                        │
-│ │ ✓ 02 Verify · 1 call · 1s ▸                              │
-│ │   ▸ Check registry                                       │
-╰────────────────────────────────────────────────────────────╯
+ - Check updates ----------------------------------------------
+ :▰▰▰▰▰▰▰▰▰▰▰:▱▱▱▱▱▱▱▱▱▱▱ O · ++ · 1m 01s
+ * 01 Inspect                                      1 call · <1s
+   +- * read · Read settings (grove.json) · 1 line        · <1s
+ * 02 Verify                                        1 call · 1s
+   +- * bash · Check registry (npm view pi-grove) · done   · 1s
 ```
 
 The task title stays fixed across the task; call rows show their own per-call intent. Grove
@@ -128,8 +126,7 @@ position. From the outside in:
 
 | Layer | What it is | Click target |
 | --- | --- | --- |
-| Card frame | The border, including the task title and its wrapped continuation lines | Reveals every row |
-| Status line | GROVE / TASK plus the optional percentage and current phase, or the complete marker | Reveals every row |
+| Top rule | The card line: task title, then the strip; the opt-in box turns it into a full border | Reveals every row |
 | Rollup | One metrics line: meter or progress, failed count, duration sparkline, elapsed | Toggles plan when phase cards are on, else reveals rows |
 | Progress meter | The filled bar and its phase ticks | Toggles plan when phase cards are on, else reveals rows |
 | Plan line | The expanded phase names joined by arrows, with the share each finished phase closed | Expands the plan |
@@ -145,7 +142,7 @@ turns a click into one of the targets above.
 
 ## Rollup
 
-The line under the frame shows how much work is in view and **where the time went**.
+The strip beside the title shows how much work is in view and **where the time went**.
 Nerd Font mode adds a percent icon beside the progress meter and a bar-chart cue beside the
 duration bars. Each call gets one height-coded cell, oldest first, on a fixed log scale from
 50ms to 10s, so a cell means the same thing on every card: 150ms is a low cell whether or not
@@ -234,6 +231,7 @@ option above. Enter cycles a value or opens a submenu, typing filters, Escape cl
 /grove group percent on      show the numeric share (off by default)
 /grove group phases on       show linked phase boxes (off by default)
 /grove group sparkline off   hide duration bars from the rollup
+/grove group box on           close each card in a box again
 /grove thinking label Plan  free text, quoted output, empty hides the label
 /grove on | off | toggle
 ```

@@ -116,6 +116,7 @@ function settings(): TreeSettings {
     groupPhases: true,
     groupSparkline: true,
     groupGutter: true,
+groupBox: false,
     groupToolNames: true,
   };
 }

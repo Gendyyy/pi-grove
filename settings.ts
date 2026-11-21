@@ -36,6 +36,8 @@ export interface GroveSettings {
   groupPhases: boolean;
   groupSparkline: boolean;
   groupGutter: boolean;
+  /** Close each card in a box; off leaves one top rule and flush rows. */
+  groupBox: boolean;
   thinking: GroveThinking;
   /** Absent leaves pi's own hidden-thinking label alone; empty hides those lines. */
   thinkingLabel: string | undefined;
@@ -152,6 +154,14 @@ export const SETTINGS: readonly SettingSpec[] = [
     label: "Phase gutter",
     summary: "show phase markers in the timeline; tool calls stay linked either way",
   },
+  {
+    key: "groupBox",
+    kind: "boolean",
+    apply: "live",
+    fallback: false,
+    label: "Card box",
+    summary: "close each card in a box instead of one top rule",
+  },
   { key: "thinking", kind: "enum", values: THINKINGS, fallback: "off", apply: "reload", label: "Reasoning", summary: "where reasoning appears" },
   {
     key: "thinkingLabel",
@@ -241,6 +251,7 @@ export function readSettings(configPath = defaultConfigPath()): GroveSettings {
     groupPhases: readFlag(settingSpec("groupPhases"), raw.groupPhases),
     groupSparkline: readFlag(settingSpec("groupSparkline"), raw.groupSparkline),
     groupGutter: readFlag(settingSpec("groupGutter"), raw.groupGutter),
+    groupBox: readFlag(settingSpec("groupBox"), raw.groupBox),
     thinking: readChoice(settingSpec("thinking"), raw.thinking, THINKINGS),
     thinkingLabel: (() => {
       const value = coerce(settingSpec("thinkingLabel"), raw.thinkingLabel);
@@ -276,6 +287,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { words: ["group", "phases"], keys: ["groupPhases"] },
   { words: ["group", "sparkline"], keys: ["groupSparkline"] },
   { words: ["group", "gutter"], keys: ["groupGutter"] },
+  { words: ["group", "box"], keys: ["groupBox"] },
   { words: ["group"], keys: ["group"] },
   { words: ["thinking", "label"], keys: ["thinkingLabel"] },
   { words: ["thinking"], keys: ["thinking"] },

@@ -25,6 +25,7 @@ function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
     // Off by default: a live chart takes a strip row, and a real clock makes that row flaky.
     groupSparkline: false,
     groupGutter: true,
+groupBox: false,
     groupToolNames: true,
     ...overrides,
   };
@@ -122,14 +123,18 @@ function at(component: Component, pattern: RegExp, width = 80): number {
     .findIndex(line => pattern.test(line));
 }
 
+/** The card top chrome, which carries the title and the strip. */
+function rule(component: Component, width = 80): string {
+  return component.render(width)[0]?.replace(/\x1b\[[0-9;]*m/g, "").trim() ?? "";
+}
+
 /** Rendered lines with the host padding trimmed, starting at the body below the border. */
 function lines(component: Component, width = 80): string[] {
   const painted = component.render(width).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trim());
-  // The card is one framed object now: the title rides the top border, so the body is what
-  // index-based assertions count.
-  const body = painted.length >= 2 && /^[╭+┌][-─]/.test(painted[0]!)
-    ? painted.slice(1, -1)
-    : painted;
+  // Chrome is not content: a boxed card drops its top border and its floor, an unboxed one drops
+  // the top rule, so index-based assertions count the same rows either way.
+  const boxed = painted.length >= 2 && /^[╭+┌][-─]/.test(painted[0]!);
+  const body = boxed ? painted.slice(1, -1) : painted.length >= 2 && /^[─-] /.test(painted[0]!) ? painted.slice(1) : painted;
   return body
     .map(line => line.replace(/^[▌│|] ?/, "").replace(/ ?[▌│|]$/, "").trim())
     .filter(line => line.length > 0 && line !== "|" && line !== "│");
@@ -417,7 +422,8 @@ test("progress percentage and phase cards are independent opt-ins", () => {
   const phases = "a=Alpha; b=Beta; c=Gamma";
   /** Build a card with one closed phase and one live phase, so the meter has a share to show. */
   const card = (overrides: Partial<TreeSettings>) => {
-    const tree = new ToolTree(settings({ mode: "prompt", groupGutter: false, ...overrides }));
+    const tree = new ToolTree(settings({ mode: "prompt", groupGutter: false,
+groupBox: false, ...overrides }));
     for (const [id, milestone] of [["a", "a"], ["b", "b"]] as const) {
       tree.start({ toolCallId: id, toolName: "read", args: { taskIntent: "Toggle progress details", taskMilestones: phases, taskMilestone: milestone } });
       if (id === "a") tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
@@ -445,7 +451,8 @@ test("progress percentage and phase cards are independent opt-ins", () => {
 
 test("live updates toggle the percentage and phase cards", () => {
   let redraws = 0;
-  const tree = new ToolTree(settings({ mode: "prompt", groupGutter: false, groupPercent: false, groupPhases: false }), () => { redraws += 1; });
+  const tree = new ToolTree(settings({ mode: "prompt", groupGutter: false,
+groupBox: false, groupPercent: false, groupPhases: false }), () => { redraws += 1; });
   const phases = "a=Alpha; b=Beta; c=Gamma";
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Update progress detail", taskMilestones: phases, taskMilestone: "a" } });
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
@@ -471,7 +478,8 @@ test("live updates toggle the percentage and phase cards", () => {
 
 test("phase cards do not affect the Story gutter", () => {
   const phases = "a=Alpha; b=Beta; c=Gamma";
-  const tree = new ToolTree(settings({ mode: "prompt", groupGutter: true, groupPercent: false, groupPhases: false }));
+  const tree = new ToolTree(settings({ mode: "prompt", groupGutter: true,
+groupBox: false, groupPercent: false, groupPhases: false }));
   tree.start({ toolCallId: "a", toolName: "read", args: { taskIntent: "Keep the story gutter", taskMilestones: phases, taskMilestone: "a" } });
   tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
   tree.start({ toolCallId: "b", toolName: "read", args: { taskIntent: "Keep the story gutter", taskMilestones: phases, taskMilestone: "b" } });
@@ -663,9 +671,16 @@ test("a single call still paints inside the card", () => {
   const painted = lines(tree.render(row("a")));
   // The frame never disappears, and nothing above the row restates it: no counts, no status label.
   assert.equal(painted.length, 1);
-  assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
+  assert.doesNotMatch(painted.join(" "), /\b(?:DONE|WORKING|FAILED)\b/);
   assert.match(painted[0]!, /check the manifest/);
   assert.match(painted[0]!, /running/);
+});
+
+test("a frameless card keeps its rule at a narrow width", () => {
+  const tree = new ToolTree(settings({ groupSparkline: false }));
+  tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest", taskIntent: "Audit the manifest" } });
+  // The width floor belonged to the box: a frameless card draws its rule down to the last column.
+  assert.match(rule(tree.render(row("a")), 22), /Audit t/);
 });
 
 test("the border title stays on the task description despite legacy phase annotations", () => {
@@ -731,8 +746,8 @@ test("a recovered failure remains a count without a group status label", () => {
   tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false, durationMs: 500 });
   // The card paints on its leader row, which is the first call of the group.
   const painted = lines(tree.render(row("a")));
-  assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
-  assert.match(painted[0]!, /1 error/);
+  assert.doesNotMatch(painted.join(" "), /\b(?:DONE|WORKING|FAILED)\b/);
+  assert.match(rule(tree.render(row("a"))), /1 error/, "the failure count rides the top rule");
 });
 
 test("a final failure is counted without a group status label", () => {
@@ -741,7 +756,7 @@ test("a final failure is counted without a group status label", () => {
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 400 });
   const painted = lines(tree.render(row("a")));
   assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
-  assert.match(painted[0]!, /1 error/);
+  assert.match(rule(tree.render(row("a"))), /1 error/, "the failure count rides the top rule");
 });
 
 test("the rollup ends in height bars for call durations", () => {
@@ -759,12 +774,10 @@ test("the rollup ends in height bars for call durations", () => {
     tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
     now += 900;
     tree.end({ toolCallId: "c", toolName: "read", result: { content: [] }, isError: false });
-    const head = lines(tree.render(row("a")))[0]!;
-    const spark = head.split(" · ")[0]?.trim();
+    const head = rule(tree.render(row("a")));
+    const spark = head.match(/[:@+]{3}/)?.[0] ?? "";
     assert.equal(spark, ":@+", `no ASCII duration bars in: ${head}`);
-    assert.equal(spark!.length, 3);
-    assert.doesNotMatch(spark!, /[\/\\]/);
-  } finally {
+          } finally {
     Date.now = realNow;
   }
 });
@@ -839,12 +852,10 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
     now += 2_000;
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false });
     tree.start({ toolCallId: "b", toolName: "read", args: { reasoning: "read the log" } });
-    const head = lines(tree.render(row("a")))[0]!;
-    const spark = head.split(" · ")[0]?.trim().slice(0, 2);
-    assert.equal(spark?.length, 2, `no running duration bar in: ${head}`);
-    assert.equal(spark?.[0], "*", "a 2s call sits above the middle of the absolute ramp");
-    assert.equal(spark?.[1], ".", "the running call keeps its own low-duration bar");
-    const colored = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
+    const head = rule(tree.render(row("a")));
+    const spark = head.match(/\*\./)?.[0] ?? "";
+    assert.equal(spark, "*.", `no running duration bar in: ${head}`);
+            const colored = tree.render(row("a", false, DURATION_THEME)).render(100).join("");
     assert.ok(colored.includes("\u001b[32m."), "the running bar color follows its short elapsed duration");
   } finally {
     Date.now = realNow;
@@ -864,8 +875,7 @@ test("duration bars compare across cards instead of normalising per card", () =>
       now += elapsed;
       tree.end({ toolCallId: id, toolName: "read", result: { content: [] }, isError: false });
     });
-    const head = lines(tree.render(row("c0")))[0] ?? "";
-    return [...head].filter(cell => "▁▂▃▄▅▆▇█".includes(cell)).join("");
+        return [...rule(tree.render(row("c0")))].filter(cell => "▁▂▃▄▅▆▇█".includes(cell)).join("");
   };
   try {
     // Same 1:2 shape, 40x apart in real time: an absolute ramp must not flatten them together.
@@ -893,9 +903,8 @@ test("Unicode duration sparkline uses height bars", () => {
     tree.end({ toolCallId: "b", toolName: "bash", result: { content: [] }, isError: false });
     tree.start({ toolCallId: "c", toolName: "read", args: { reasoning: "read the log" } });
     now += 1_500;
-    const head = lines(tree.render(row("a")))[0]!;
-    const plot = head.split(" · ")[0];
-    const spark = [...(plot ?? "")].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
+    const head = rule(tree.render(row("a")));
+        const spark = [...head].filter(cell => "▁▂▃▄▅▆▇█".includes(cell));
     assert.equal(spark.length, 3, `no Unicode duration bars in: ${head}`);
     assert.equal(spark[0], "▂", "the shortest call uses the lowest bar");
     assert.equal(spark[1], "█", "the slowest call uses the tallest bar");
@@ -1115,10 +1124,10 @@ test("hiding nested counts preserves expandable child rows and failure markers",
 
   const card = tree.render(row("c"));
   const collapsed = lines(card);
-  assert.equal(collapsed.length, 2, "the strip and the codemode row, with no nested row");
-  assert.doesNotMatch(collapsed.join(" "), /codemode x1/, "the strip counts no tools");
-  assert.match(collapsed[0]!, /1 error/, "the parent failure marker is unaffected");
-  assert.doesNotMatch(collapsed[1]!, /bash x1/, "nested counts are hidden from the codemode row");
+  assert.equal(collapsed.length, 1, "the codemode row, with no nested row");
+  assert.doesNotMatch(collapsed.join(" "), /codemode x1/, "the rule counts no tools");
+  assert.match(rule(card), /1 error/, "the parent failure marker is unaffected");
+  assert.doesNotMatch(collapsed[0]!, /bash x1/, "nested counts are hidden from the codemode row");
 
   card.handleMouse?.(click(at(card, /build the card/)));
   const expanded = lines(tree.render(row("c")));
