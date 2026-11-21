@@ -201,8 +201,8 @@ export const classicLayout: CardLayout = {
       }
     };
 
-    // The headline always leads the card: the border names the current task, the strip carries
-    // progress and time, and the rows below say how much work there is.
+    // The headline always leads the card: the border names the current task and its clock, the strip
+    // carries progress, and the rows below say how much work there is.
     // The plan meter leads the card: it carries the estimate, the current phase and the shape
     // of the remaining plan in one line, so the rollup never has to repeat the percentage.
     const running = tools.some(row => row.status === "running");
@@ -234,7 +234,11 @@ export const classicLayout: CardLayout = {
     // the work. The share rides the meter beside its own bar, so the headline stays a name.
     // The task intent lives in the card's own top border, so the title never costs a content row.
     const title = group.intent || "GROVE";
-    const topBorder = framed ? titleBorder(title, theme, glyphs, width) : "";
+    // How long this card has been alive belongs to its name, not to a row of its own. A settled card
+    // stops counting, so a repaint later never moves the number.
+    const ended = tools.reduce((end, row) => Math.max(end, row.started + (row.duration ?? 0)), group.started);
+    const clock = formatElapsed(running ? Math.max(0, now - group.started) : Math.max(0, ended - group.started));
+    const topBorder = framed ? titleBorder(title, theme, glyphs, width, clock) : "";
     // One line, one gesture: the meter opens the plan it draws, the rail opens the rows.
     if (story) {
       const pieces: string[] = [];
@@ -244,11 +248,12 @@ export const classicLayout: CardLayout = {
         const spark = durationSpark(tools, theme, glyphs);
         if (spark) pieces.push(spark);
       }
-      const elapsed = formatElapsed(Math.max(0, now - group.started));
-      pieces.push(themeText(theme, "dim", elapsed));
-      lines.push(fitToolLine(pieces.join(themeText(theme, "dim", DOT)), inner));
-      // Without phase cards the meter owns no plan gesture, so the strip falls back to the row gesture.
-      targets.set(lines.length - 1, settings.groupPhases ? PHASES_TARGET : GROUP_TARGET);
+      // The clock already rides the title, so an empty strip prints no row at all.
+      if (pieces.length > 0) {
+        lines.push(fitToolLine(pieces.join(themeText(theme, "dim", DOT)), inner));
+        // Without phase cards the meter owns no plan gesture, so the strip falls back to the row gesture.
+        targets.set(lines.length - 1, settings.groupPhases ? PHASES_TARGET : GROUP_TARGET);
+      }
       for (const line of meter?.plan ?? []) {
         lines.push(line);
         targets.set(lines.length - 1, PHASES_TARGET);
@@ -382,7 +387,7 @@ export const classicLayout: CardLayout = {
       targets.clear();
       targets.set(0, GROUP_TARGET);
       for (const [line, target] of shifted) targets.set(line, target);
-      return [topRule(title, story ? "" : headerLine, theme, glyphs, width), ...body];
+      return [topRule(title, story ? "" : headerLine, theme, glyphs, width, clock), ...body];
     }
     // The card is its own box: the title rides the top border, the sides carry the frame, and the
     // chrome keeps one tone so the rows inside say how the work is going.

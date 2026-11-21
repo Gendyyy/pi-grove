@@ -1,4 +1,4 @@
- - GROVE -------------------------------------------- +=* -
+ - GROVE · 4s --------------------------------------- +=* -
  +- * read · Read the paint entry [0m…[0m · 1 line · ##---- · <1s
  +- * grep · Find ev[0m…[0m · 0 matches in 0 files · ##---- · <1s
  +- * bash · Run the type check (npm [0m…[0m · done · ###### · 2s

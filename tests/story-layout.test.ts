@@ -186,7 +186,7 @@ test("the card is one rounded frame whose top border carries the task intent", (
   // The host insets every row by one cell, so the frame starts after that pad.
   const lines = card.render(60).map(line => line.replace(/\u001b\[[0-9;]*m/g, "").trimStart());
   // The title is not a row of its own: it is set into the stroke.
-  assert.match(lines[0]!, /^╭─ Frame the card ─+╮$/, "the border opens with the task intent");
+  assert.match(lines[0]!, /^╭─ Frame the card · \S+ ─+╮$/, "the border opens with the task intent and its clock");
   assert.match(lines.at(-1)!, /^╰─+╯$/, "the card closes on a rounded rule");
   assert.ok(lines.every(line => visibleWidth(line) <= 60), "every row stays inside the frame width");
   // No rail survives: the sides are the frame, so a row never reads as narration outside it.

@@ -1,4 +1,4 @@
- ─ GROVE ───────────────────────────────────────────────────────────────────────────────────── ▅▆ ─
+ ─ GROVE · 3s ──────────────────────────────────────────────────────────────────────────────── ▅▆ ─
  ├─ ● write · Write the layout registry (card-layout.ts) · written                  · ━━━━━─── · 1s
  └─ ● bash · Run the layout suite (npm test) · done                                 · ━━━━━━━━ · 2s
  ┆ 1 file · card-layout.ts

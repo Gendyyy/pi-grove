@@ -6,6 +6,7 @@ import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { fitToolLine } from "./block-render.js";
 import { themeText, type Foreground, type GroveTheme } from "./theme.js";
 import {
+  DOT,
   ELLIPSIS,
   TASK_MILESTONE_MAX,
   failedOnOwn,
@@ -311,10 +312,13 @@ function phasePlanLines(
  * The card's top rule: the intent and the strip set into one line, with no sides. Without the box
  * this is the card's only chrome, so every row below sits flush and nothing is padded for an edge.
  */
-export function topRule(title: string, strip: string, theme: GroveTheme, glyphs: Glyphs, width: number): string {
+export function topRule(title: string, strip: string, theme: GroveTheme, glyphs: Glyphs, width: number, clock = ""): string {
   const edge = (text: string) => themeText(theme, "dim", text);
-  const label = truncateToWidth(title, Math.max(4, width - 12), ELLIPSIS);
-  const lead = edge(glyphs.h + " ") + themeText(theme, "accent", label) + " ";
+  // The clock rides beside the name, so the title line answers what and how long in one read. It steps
+  // aside rather than take a word from the title: the name outranks the number.
+  const tail = clock && visibleWidth(title) + visibleWidth(clock) + 12 <= width ? themeText(theme, "dim", DOT + clock) : "";
+  const label = truncateToWidth(title, Math.max(4, width - 12 - visibleWidth(tail)), ELLIPSIS);
+  const lead = edge(glyphs.h + " ") + themeText(theme, "accent", label) + (tail ? tail + " " : " ");
   const fill = (): string => edge(glyphs.h.repeat(Math.max(0, width - visibleWidth(lead))));
   // The strip only rides the rule when it fits with a stroke either side; otherwise the rule wins.
   const gap = width - visibleWidth(lead) - visibleWidth(strip) - 3;
@@ -323,12 +327,13 @@ export function topRule(title: string, strip: string, theme: GroveTheme, glyphs:
 }
 
 /** The card's top border, with the task intent set into it as a plain label. */
-export function titleBorder(title: string, theme: GroveTheme, glyphs: Glyphs, width: number): string {
+export function titleBorder(title: string, theme: GroveTheme, glyphs: Glyphs, width: number, clock = ""): string {
   const leadIn = themeText(theme, "dim", glyphs.box.tl + glyphs.h);
   // The label keeps a cell of air either side, so it reads as set into the stroke, not glued on.
-  const room = Math.max(1, width - visibleWidth(leadIn) - 4);
+  const tail = clock && visibleWidth(title) + visibleWidth(clock) + 9 <= width ? themeText(theme, "dim", DOT + clock) : "";
+  const room = Math.max(1, width - visibleWidth(leadIn) - 4 - visibleWidth(tail));
   const label = truncateToWidth(title, room, ELLIPSIS);
-  const lead = leadIn + themeText(theme, "accent", " " + label + " ", true);
+  const lead = leadIn + themeText(theme, "accent", " " + label, true) + (tail ? tail + " " : " ");
   const rule = themeText(theme, "dim", glyphs.h.repeat(Math.max(0, width - visibleWidth(lead) - 1)));
   return lead + rule + themeText(theme, "dim", glyphs.box.tr);
 }

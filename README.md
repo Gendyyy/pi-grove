@@ -55,7 +55,7 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 
 ## Card shape
 
-One card per request: a model-authored task description on its top rule, then the strip and tool rows. The card is frameless by default; `groupBox` closes it in a box.
+One card per request: a model-authored task description and the card's clock on its top rule, then the strip and tool rows. The card is frameless by default; `groupBox` closes it in a box.
 Keep task titles concise (ideally 45 characters or fewer); long titles continue onto extra lines.
 Cards with a phase plan use the story form; cards without one keep the compact timeline. The required `taskIntent` identifies the atomic task cluster and stays fixed
 across its calls; progress appears on the rollup, so milestone updates never rewrite the
@@ -130,7 +130,7 @@ position. From the outside in:
 | Layer | What it is | Click target |
 | --- | --- | --- |
 | Top rule | The card line: task title, then the strip; the opt-in box turns it into a full border | Reveals every row |
-| Rollup | One metrics line: meter or progress, duration sparkline, elapsed; failures stay on their own row | Toggles plan when phase cards are on, else reveals rows |
+| Rollup | One metrics line: meter or progress, duration sparkline; failures stay on their own row | Toggles plan when phase cards are on, else reveals rows |
 | Progress meter | The filled bar and its phase ticks | Toggles plan when phase cards are on, else reveals rows |
 | Plan line | The expanded phase names joined by arrows, with the share each finished phase closed | Expands the plan |
 | Phase row | Numbered rail mark, whole phase name, call count, duration, caret | Opens that phase |
@@ -187,7 +187,8 @@ a codemode row names the steps it ran in words (`read ×2 · bash ×1`) so the m
 force `ascii` to keep every word.
 
 A live call breathes its marker on the same 1.6 s clock as the active phase marker, while the
-same tick keeps elapsed time honest. The border title stays static throughout the task. Each live call's description
+same tick keeps the clock beside the title honest. The title itself never changes: the clock rides after it, and it
+stops counting once the card settles. Each live call's description
 gets its own subtle highlight; words and layout stay fixed while running work is visible.
 
 | Glyph | Means |
