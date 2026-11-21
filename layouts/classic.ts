@@ -5,7 +5,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { fitToolLine, formatElapsed, summaryLine } from "../block-render.js";
 import { filesSummary, filesTouched, shortPath } from "../card-files.js";
-import { themeText, toolColor, type Foreground } from "../theme.js";
+import { themeText, toolColor, type Foreground, type GroveTheme } from "../theme.js";
 import {
   DOT,
   ELLIPSIS,
@@ -13,9 +13,8 @@ import {
   PHASES_TARGET,
   PREVIEW_LINES,
   countDeclaredErrors,
-  countErrors,
-  errorCell,
   milestoneTarget,
+  type Glyphs,
 } from "../tree-model.js";
 import { elapsedFor, rowExtras, rowModels, type RowModel } from "../card-row.js";
 import {
@@ -34,10 +33,49 @@ import {
 } from "../card-plan.js";
 import type { CardContext, CardLayout } from "../card-layout.js";
 
-/** Shortest rule worth drawing after a phase name; below this the row reads as noise. */
-const PHASE_RULE_MIN = 4;
-/** Narrowest phase label worth showing beside the right-aligned numbers. */
-const PHASE_LABEL_MIN = 12;
+
+/**
+ * One phase rule: the numbered mark, the whole phase title, then whatever numbers fit.
+ *
+ * The title keeps every word it was given. The metrics take only the cells the title leaves, and a
+ * title wider than the card wraps under its own first word instead of being shortened.
+ */
+function phaseRule(
+  head: string,
+  title: string,
+  cells: readonly string[],
+  role: Foreground,
+  inner: number,
+  theme: GroveTheme,
+): string[] {
+  const paint = (text: string) => themeText(theme, role, text, true);
+  const room = inner - visibleWidth(head) - 1;
+  const titleWidth = visibleWidth(title);
+  if (titleWidth <= room) {
+    // A cell joins only if the whole title still fits beside it, so no word is ever traded for a number.
+    const kept = [...cells];
+    const joined = () => kept.join(themeText(theme, "dim", DOT));
+    while (kept.length > 0 && titleWidth + 1 + visibleWidth(joined()) > room) kept.shift();
+    const rollup = joined();
+    const used = titleWidth + (rollup ? 1 + visibleWidth(rollup) : 0);
+    const gap = " ".repeat(Math.max(1, room - used));
+    return [head + " " + paint(title) + gap + rollup];
+  }
+  const segments: string[] = [];
+  let line = "";
+  for (const word of title.split(" ").filter(Boolean)) {
+    const next = line ? line + " " + word : word;
+    if (line && visibleWidth(next) > room) {
+      segments.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) segments.push(line);
+  const indent = " ".repeat(visibleWidth(head) + 1);
+  return segments.map((segment, index) => (index === 0 ? head + " " : indent) + paint(segment));
+}
+
+/** The shipped card: a boxed headline, a meter, phase rules and branch rows. */
 
 /** The shipped card: a boxed headline, a meter, phase rules and branch rows. */
 export const classicLayout: CardLayout = {
@@ -125,64 +163,49 @@ export const classicLayout: CardLayout = {
         const settled = failures ? glyphs.warning : done ? glyphs.dot : glyphs.hollow;
         const mark = failures || done || index !== activeIndex ? settled : glyphs.dot;
         const target = milestoneTarget(phase.id);
-        const number = String(index + 1).padStart(2, "0") + " ";
+        const number = String(index + 1).padStart(2, "0");
         // Only the dot breathes, in the running role: the number keeps the colour its siblings share.
-        const prefix = live
+        const head = live
           ? pulseText(glyphs.dot, theme, now, "warning") + themeText(theme, role, " " + number)
           : themeText(theme, role, mark + " " + number);
-        const dot = themeText(theme, "dim", DOT);
-        // The numbers own the right edge, so phases compare at a glance instead of being read.
-        let gutter = "";
+        // A failure shows in the mark and the role, so the rule spends no cell counting it.
         const cells = [
-          failures ? themeText(theme, "warning", `${failures} failed`) : "",
           themeText(theme, "dim", `${phaseRows.length} ${phaseRows.length === 1 ? "call" : "calls"}`),
           themeText(theme, "dim", formatElapsed(phaseElapsedById.get(phase.id) ?? 0)),
-        ].filter(Boolean);
-        for (const cell of cells) {
-          const next = gutter ? gutter + dot + cell : cell;
-          if (visibleWidth(prefix) + visibleWidth(next) + PHASE_LABEL_MIN <= inner) gutter = next;
+        ];
+        for (const line of phaseRule(head, phase.label, cells, "text", inner, theme)) {
+          lines.push(fitToolLine(line, inner));
+          targets.set(lines.length - 1, target);
         }
-        const tail = gutter;
-        const label = fitToolLine(themeText(theme, "text", phase.label, true), Math.max(1, inner - visibleWidth(prefix) - visibleWidth(tail) - 1));
-        const gap = " ".repeat(Math.max(1, inner - visibleWidth(prefix) - visibleWidth(label) - visibleWidth(tail)));
-        lines.push(fitToolLine(prefix + label + gap + tail, inner));
-        targets.set(lines.length - 1, target);
         return;
       }
       const role: Foreground = phaseRole(index);
       const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
       // Count the phase's direct timeline rows; nested totals stay governed by the codemode summary setting.
       const calls = phaseRows.length;
-      const phaseErrors = countDeclaredErrors(phaseRows, phase.id);
       const elapsed = phaseElapsedById.get(phase.id) ?? 0;
       const phaseTarget = milestoneTarget(phase.id);
-      // A live phase breathes instead of holding a still diamond, from the moment it opens until it closes,
-      // even after a call inside it failed: the error cell reports that, the marker reports motion.
+      // A live phase breathes instead of holding a still diamond from the moment it opens until it
+      // closes; a failure inside it shows in the colour, never in a counter.
       const live = index === activeIndex && phaseInFlight(group);
-      const prefix = live
-        ? pulseText(glyphs.diamond, theme, now, "warning") + themeText(theme, role, " " + phase.label, true)
-        : themeText(theme, role, glyphs.diamond + " " + phase.label, true);
-      const detailParts = [
-        calls > 0 ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls")) : "",
-        phaseErrors > 0 ? errorCell(phaseErrors, theme, settings.icons, settings.iconMode) : "",
-      ].filter(Boolean);
+      const head = live ? pulseText(glyphs.diamond, theme, now, "warning") : themeText(theme, role, glyphs.diamond);
       const separator = themeText(theme, "dim", DOT);
-      const detail = detailParts.join(separator);
       const rail = sideDurationRail(elapsed, durationScale, inner, theme, glyphs, role);
-      const tail = rail + themeText(theme, "dim", DOT + formatElapsed(elapsed));
-      const rollup = (detail ? separator + detail : "") + separator + tail;
-      // The rule takes exactly the space the rollup leaves, so the row fills the card and never wraps.
-      const room = inner - visibleWidth(prefix) - 1 - visibleWidth(rollup);
-      const line =
-        room >= PHASE_RULE_MIN
-          ? prefix + " " + themeText(theme, "dim", glyphs.h.repeat(room)) + rollup
-          : summaryLine(prefix, detail, separator, tail, inner);
-      appendPhaseMarker(line, phaseTarget, role);
+      const clock = themeText(theme, "dim", formatElapsed(elapsed));
+      const cells = [
+        calls > 0 ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls")) : "",
+        rail ? rail + separator + clock : clock,
+      ].filter(Boolean);
+      const rule = phaseRule(head, phase.label, cells, role, inner, theme);
+      appendPhaseMarker(rule[0]!, phaseTarget, role);
+      for (const line of rule.slice(1)) {
+        lines.push(fitToolLine(line, inner));
+        targets.set(lines.length - 1, phaseTarget);
+      }
     };
 
     // The headline always leads the card: the border names the current task, the strip carries
     // progress and time, and the rows below say how much work there is.
-    const errors = countErrors(tools);
     // The plan meter leads the card: it carries the estimate, the current phase and the shape
     // of the remaining plan in one line, so the rollup never has to repeat the percentage.
     const running = tools.some(row => row.status === "running");
@@ -206,7 +229,6 @@ export const classicLayout: CardLayout = {
           parts.push(chart + spark);
         }
       }
-      if (errors > 0) parts.push(errorCell(errors, theme, settings.icons, settings.iconMode));
       // An empty strip would print a blank line above the rows, so it prints nothing at all.
       headerLine = parts.length > 0 ? fitToolLine(parts.join(themeText(theme, "dim", DOT)), width) : "";
     }
@@ -220,7 +242,6 @@ export const classicLayout: CardLayout = {
       const pieces: string[] = [];
       if (meter) pieces.push(meter.line);
       else if (settings.groupProgress && shownProgress !== undefined) pieces.push(taskProgressText(shownProgress, theme, glyphs, settings.groupPercent));
-      if (errors) pieces.push(themeText(theme, "error", `${errors} failed`));
       if (settings.groupSparkline) {
         const spark = durationSpark(tools, theme, glyphs);
         if (spark) pieces.push(spark);

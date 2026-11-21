@@ -33,7 +33,7 @@ test("story phases ignore a nested failure and open one level at a time", () => 
   const phase = lines.findIndex(line => line.includes("02 Verify"));
   assert.ok(phase >= 0);
   assert.ok(!lines[phase]!.includes("failed"), "a nested step's failure never marks its phase");
-  assert.ok(lines.some(line => line.includes("1 failed")), "the card rollup still counts the nested failure");
+  assert.ok(lines.some(line => line.includes("error")), "the card names the nested failure on its row");
   assert.ok(!lines.some(line => line.includes("Request registry")));
   assert.equal((tree as unknown as { targetAt(index: number): string | undefined }).targetAt(phase), milestoneTarget("verify"));
   card.handleMouse?.({ type: "click", button: "left", x: 0, y: phase, screenX: 0, screenY: 0, shift: false, alt: false, ctrl: false, width: 96, height: 40 });
@@ -170,7 +170,7 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
     const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
     const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
     assert.ok(phase.includes("[warning]! 01"), "a closed phase with a failure wears the warning mark");
-    assert.match(phase, /\[warning\]1 failed/);
+    assert.doesNotMatch(phase, /failed/, "the phase rule spends no cell counting failures");
   }
 });
 test("the card is one rounded frame whose top border carries the task intent", () => {

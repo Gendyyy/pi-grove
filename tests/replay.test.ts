@@ -168,9 +168,9 @@ test("restored groups paint one card at their oldest row", () => {
   tree.restore(readTranscript(entries, "prompt"));
 
   const card = lines(tree.render(row("c1")));
-  // Failures stay in the strip; the rows below say which calls ran and how many.
-  const strip = card[0]!;
-  assert.match(strip, /1 error/);
+  // Failures stay on the row that failed; the strip counts nothing.
+  assert.match(card.join(" "), /\berror\b/);
+  assert.doesNotMatch(card[0]!, /error/);
   assert.doesNotMatch(card.join(" "), /\d+ calls?/, "the strip must not count the calls");
   // Siblings must stay blank, or pi would paint the same card once per row.
   assert.deepEqual(tree.render(row("c2")).render(80), []);

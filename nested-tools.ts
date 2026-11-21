@@ -316,7 +316,7 @@ export class NestedToolObserver {
   private callSummary(call: Call): string {
     switch (call.status) {
       case "running":
-        return `running · ${formatElapsed(call.duration ?? 0)}`;
+        return formatElapsed(call.duration ?? 0);
       case "incomplete":
       case "cancelled":
         return call.status;
@@ -339,12 +339,12 @@ export class NestedToolObserver {
     } else {
       duration = options.durationMs;
     }
-    const running = count("running");
+
     const errors = count("error");
     const cancelled = count("cancelled");
     const incomplete = count("incomplete");
     const total = metric(theme, calls.length, calls.length === 1 ? "call" : "calls");
-    const active = running ? [themeText(theme, "syntaxVariable", `${running} running`)] : [];
+    const active: string[] = [];
     const issues: string[] = [];
     // One glyph and a number in place of each outcome word, keeping its colour.
     const mark = (word: string) => (icons ? markFor(word, iconMode) : undefined);

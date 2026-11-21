@@ -404,7 +404,7 @@ test("the phase in flight breathes on the same clock as the calls below it", () 
     step(tree, "b", "verify", 80);
     const closed = phaseRow(lines(0));
     assert.equal(phaseRow(lines(BREATH_DEEP)), closed, "a closed phase stops moving");
-    assert.ok(closed.includes(treeGlyphs(settings.iconMode).check), "a phase the plan moved past holds a check");
+    assert.ok(closed.includes(treeGlyphs(settings.iconMode).dot), "a phase the plan moved past holds a filled dot");
     tree.settle();
     assert.equal(phaseRow(lines(0)), closed, "settling the card changes nothing once the plan is over");
   } finally {
@@ -583,8 +583,7 @@ test("a collapsed phase keeps the recent window and reports phase-level failures
   const rendered = () => card(tree, "a", plainTheme).render(WIDE).map(plain);
   const initial = rendered();
   const styled = card(tree, "a", theme).render(WIDE).map(plain);
-  const inspectHeader = styled.find(line => line.includes("Inspect") && line.includes("1 failed")) ?? "";
-  assert.match(inspectHeader, /\[warning\]1 failed/, "the collapsed phase reports its failure");
+  assert.match(styled.join(" "), /\[warning\]!/, "the collapsed phase marks its failure");
   assert.ok(!initial.some(line => line.includes("Read release notes")), "a folded call never resurfaces as a summary row");
   for (const width of [35, 60, 96, WIDE]) {
     const lines = card(tree, "a", plainTheme).render(width).map(plain);

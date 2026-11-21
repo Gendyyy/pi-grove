@@ -340,7 +340,8 @@ export function taskMilestonesOf(args: Record<string, unknown> | undefined): Tas
     const separator = entry.indexOf("=");
     if (separator < 0) return undefined;
     const id = entry.slice(0, separator).trim();
-    const label = brief(phrase(entry.slice(separator + 1)), 24);
+    // A phase title is read in full, never shortened to a glance; only an absurd plan is bounded.
+    const label = brief(entry.slice(separator + 1), 120);
     if (!TASK_MILESTONE_ID.test(id) || ids.has(id) || !label) return undefined;
     ids.add(id);
     milestones.push({ id, label });
@@ -543,8 +544,9 @@ export function rowTail(
   // A codemode row is summarized by its steps; a leaf row carries its own outcome.
   if (node.summary && node.children.length === 0)
     parts.push(paintSummary(node.name, node.summary, node.status, theme, icons, iconMode));
-  else if (node.children.length === 0)
-    parts.push(paintSummary(node.name, node.status === "running" ? "running" : node.status, node.status, theme, icons, iconMode));
+  // A live row answers through its breathing mark and clock, so it states no state word.
+  else if (node.children.length === 0 && node.status !== "running")
+    parts.push(paintSummary(node.name, node.status, node.status, theme, icons, iconMode));
   const separator = themeText(theme, "dim", DOT);
   return {
     summary: parts.join(separator),

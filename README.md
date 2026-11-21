@@ -95,9 +95,11 @@ While a call is live, the needle's own cell breathes between the accent and mute
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
 The story form groups work into numbered, colored phase rows. Each phase header shows its
-status, direct call count, elapsed time when space permits, and how many of its own calls failed.
-A phase answers only to its own calls: a nested step that fails keeps its marker and the card's
-failure count, but never turns the phase orange or gives it a `!` — not even when Pi reports the
+status mark, direct call count, and elapsed time when space permits. A failure shows in the mark
+and the role colour, never as a count of its own. A phase title keeps every word: the numbers
+fill only the cells the title leaves and are dropped before a word is, so the title alone wraps
+when it is wider than the card. A phase answers only to its own calls: a nested step that fails
+keeps its marker and the codemode row's failure, but never turns the phase orange or gives it a `!` — not even when Pi reports the
 whole script as failed because that step's error escaped it. The newest
 call rows always stay visible: the last `groupWindow` call-level entries, where a run of related
 calls counts as one entry, so a phase that just finished keeps its tail on screen. Older calls
@@ -127,10 +129,10 @@ position. From the outside in:
 | Layer | What it is | Click target |
 | --- | --- | --- |
 | Top rule | The card line: task title, then the strip; the opt-in box turns it into a full border | Reveals every row |
-| Rollup | One metrics line: meter or progress, failed count, duration sparkline, elapsed | Toggles plan when phase cards are on, else reveals rows |
+| Rollup | One metrics line: meter or progress, duration sparkline, elapsed; failures stay on their own row | Toggles plan when phase cards are on, else reveals rows |
 | Progress meter | The filled bar and its phase ticks | Toggles plan when phase cards are on, else reveals rows |
 | Plan line | The expanded phase names joined by arrows, with the share each finished phase closed | Expands the plan |
-| Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
+| Phase row | Numbered rail mark, whole phase name, call count, duration, caret | Opens that phase |
 | Call row | Tool label, its goal, nested counts, and duration | Opens that call |
 | Nested row | A tool the call ran, such as a bash step inside a codemode script | Opens that step |
 | Preview row | Bounded output under an expanded call, led by a pipe guide | Opens or closes the call |

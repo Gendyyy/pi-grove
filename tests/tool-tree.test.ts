@@ -186,7 +186,7 @@ test("milestone annotations accept only bounded, uniquely identified phase plans
     "verify",
   ]);
   const bounded = taskMilestonesOf({ taskMilestones: "inspect=This milestone label is too long;build=Build;verify=Verify" });
-  assert.equal(bounded?.[0]?.label.length, 24);
+  assert.equal(bounded?.[0]?.label, "This milestone label is too long", "a phase title keeps every word");
 });
 
 test("composed tools require taskIntent and strip retired metadata before execution", async () => {
@@ -673,7 +673,7 @@ test("a single call still paints inside the card", () => {
   assert.equal(painted.length, 1);
   assert.doesNotMatch(painted.join(" "), /\b(?:DONE|WORKING|FAILED)\b/);
   assert.match(painted[0]!, /check the manifest/);
-  assert.match(painted[0]!, /running/);
+  assert.doesNotMatch(painted[0]!, /\brunning\b/, "a live row states its goal, never its state");
 });
 
 test("a frameless card keeps its rule at a narrow width", () => {
@@ -747,7 +747,7 @@ test("a recovered failure remains a count without a group status label", () => {
   // The card paints on its leader row, which is the first call of the group.
   const painted = lines(tree.render(row("a")));
   assert.doesNotMatch(painted.join(" "), /\b(?:DONE|WORKING|FAILED)\b/);
-  assert.match(rule(tree.render(row("a"))), /1 error/, "the failure count rides the top rule");
+  assert.match(painted.join(" "), /\berror\b/, "the failure stays on the row it belongs to");
 });
 
 test("a final failure is counted without a group status label", () => {
@@ -756,7 +756,7 @@ test("a final failure is counted without a group status label", () => {
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 400 });
   const painted = lines(tree.render(row("a")));
   assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
-  assert.match(rule(tree.render(row("a"))), /1 error/, "the failure count rides the top rule");
+  assert.match(painted.join(" "), /\berror\b/, "the failure stays on the row it belongs to");
 });
 
 test("the rollup ends in height bars for call durations", () => {
@@ -1126,7 +1126,7 @@ test("hiding nested counts preserves expandable child rows and failure markers",
   const collapsed = lines(card);
   assert.equal(collapsed.length, 1, "the codemode row, with no nested row");
   assert.doesNotMatch(collapsed.join(" "), /codemode x1/, "the rule counts no tools");
-  assert.match(rule(card), /1 error/, "the parent failure marker is unaffected");
+  assert.match(collapsed[0]!, /1 error/, "the parent row still marks its nested failure");
   assert.doesNotMatch(collapsed[0]!, /bash x1/, "nested counts are hidden from the codemode row");
 
   card.handleMouse?.(click(at(card, /build the card/)));
