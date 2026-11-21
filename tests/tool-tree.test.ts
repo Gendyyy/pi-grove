@@ -447,6 +447,15 @@ groupBox: false, ...overrides }));
   assert.ok(phasesMeter, "phase boxes can be enabled without the percentage");
   assert.doesNotMatch(phasesMeter!, /\d+%/, "phase boxes alone cannot add the percentage");
   assert.ok(planLine(phasesOnly), "phase boxes can be enabled alone");
+
+  // The bar is its own switch: with the meter off the boxes still paint, and no bar joins them.
+  const boxesOnly = lines(card({ groupProgress: false, groupPhases: true }).render(row("a")));
+  assert.ok(planLine(boxesOnly), "phase boxes survive the meter being off");
+  assert.equal(boxesOnly.find(line => /[▰▱]{4,}/.test(line)), undefined, "the bar stays off its own switch");
+
+  const neither = lines(card({ groupProgress: false, groupPhases: false }).render(row("a")));
+  assert.equal(planLine(neither), undefined, "both off paints no plan");
+  assert.equal(neither.find(line => /[▰▱]{4,}/.test(line)), undefined, "both off paints no bar");
 });
 
 test("live updates toggle the percentage and phase cards", () => {

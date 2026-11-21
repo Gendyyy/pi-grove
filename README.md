@@ -43,9 +43,9 @@ One card covers one prompt (`group: "prompt"`). Settings live in
 | `groupRevealErrors` | on / off | off | opt in to showing failed steps while collapsed |
 | `groupNestedTools` | on / off | on | show nested tool names and counts inline |
 | `groupToolNames` | on / off | on | show built-in tool names or icons only |
-| `groupProgress` | on / off | on | show the derived progress bar in the card rollup |
+| `groupProgress` | on / off | on | show the derived progress bar in the card rollup; the phase cards do not need it |
 | `groupPercent` | on / off | off | show the numeric share beside the progress meter |
-| `groupPhases` | on / off | off | show the linked phase plan under the progress meter |
+| `groupPhases` | on / off | off | show the linked phase plan, with or without the progress meter |
 | `groupSparkline` | on / off | on | show relative call durations in the card rollup |
 | `groupGutter` | on / off | on | show Story phase cards; off retains the compact call timeline |
 | `groupBox` | on / off | off | close each card in a box instead of leaving it on one top rule |
@@ -75,7 +75,8 @@ not requirements: a plan that ends on plain work is valid, and Grove never inven
 
 The progress meter derives its share from the phase plan: each finished phase fills one equal slice,
 and a card still in flight reads the share of the phases already closed. The numeric share and
-phase boxes are separate opt-ins, both off by default. With `groupProgress` on, the bar remains
+phase boxes are separate opt-ins, both off by default. Each switch stands alone: with `groupProgress`
+off the bar goes and `groupPhases` still paints the boxes; with `groupProgress` on the bar remains
 visible without either detail. Enable them with `groupPercent` and `groupPhases` in the settings
 panel, or `/grove group percent on` and `/grove group phases on`. The filled span keeps the ramp
 from error red at the left edge to success green
@@ -106,7 +107,7 @@ calls counts as one entry, so a phase that just finished keeps its tail on scree
 fold away entirely: a closed phase shows one header carrying its call count, never a second row
 of summarized goals. Click the phase header to reveal the phase's direct calls; click a call to
 reveal its nested steps and output. Failures remain visible when collapsed. The same tail rule covers calls
-without a visible phase. With `groupPhases` on, the meter opens the full plan; Pi's expand-all opens the entire tree. Setting `groupGutter` off
+without a visible phase. With `groupPhases` on, the meter line opens the full plan; Pi's expand-all opens the entire tree. Setting `groupGutter` off
 uses the compact timeline instead of the Story phase cards; `groupPhases` never changes these cards.
 
 ```text

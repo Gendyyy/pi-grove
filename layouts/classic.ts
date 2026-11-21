@@ -211,15 +211,16 @@ export const classicLayout: CardLayout = {
     const running = tools.some(row => row.status === "running");
     // Progress is never declared: it is the share of the plan already finished.
     const shownProgress = derivedProgress(group);
-    const meter = settings.groupProgress
-      ? phaseMeterText(group, theme, glyphs, inner, now, running, settings.groupPercent, settings.groupPhases)
+    // Either switch can own the meter row: the bar and the plan boxes are separate opt-ins.
+    const meter = settings.groupProgress || settings.groupPhases
+      ? phaseMeterText(group, theme, glyphs, inner, now, running, settings.groupPercent, settings.groupPhases, settings.groupProgress)
       : undefined;
     let headerLine = "";
     if (tools.length > 0) {
       // Keep the strip factual: progress, duration shape and failures, with no status label and
       // no counts — the rows below already say how much work there is.
       const parts: string[] = [];
-      if (!meter && settings.groupProgress && shownProgress !== undefined)
+      if (!meter?.line && settings.groupProgress && shownProgress !== undefined)
         parts.push(taskProgressText(shownProgress, theme, glyphs, settings.groupPercent));
       // Keep the duration shape ahead of the count and tool mix when space gets tight.
       if (settings.groupSparkline) {
@@ -240,7 +241,7 @@ export const classicLayout: CardLayout = {
     // One line, one gesture: the meter opens the plan it draws, the rail opens the rows.
     if (story) {
       const pieces: string[] = [];
-      if (meter) pieces.push(meter.line);
+      if (meter?.line) pieces.push(meter.line);
       else if (settings.groupProgress && shownProgress !== undefined) pieces.push(taskProgressText(shownProgress, theme, glyphs, settings.groupPercent));
       if (settings.groupSparkline) {
         const spark = durationSpark(tools, theme, glyphs);
@@ -256,8 +257,10 @@ export const classicLayout: CardLayout = {
         targets.set(lines.length - 1, PHASES_TARGET);
       }
     } else if (meter) {
-      lines.push(meter.line);
-      targets.set(lines.length - 1, settings.groupPhases ? PHASES_TARGET : GROUP_TARGET);
+      if (meter.line) {
+        lines.push(meter.line);
+        targets.set(lines.length - 1, settings.groupPhases ? PHASES_TARGET : GROUP_TARGET);
+      }
       for (const line of meter.plan ?? []) {
         lines.push(line);
         targets.set(lines.length - 1, PHASES_TARGET);

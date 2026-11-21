@@ -159,6 +159,7 @@ export function phaseMeterText(
   running: boolean,
   showPercent: boolean,
   showPhases: boolean,
+  showBar = true,
 ): MeterPaint | undefined {
   const plan = group.milestones;
   if (!plan || plan.length === 0 || plan.length > TASK_MILESTONE_MAX) return undefined;
@@ -217,7 +218,8 @@ export function phaseMeterText(
   const bar = painted.map(cell => cell ?? empty).join("");
   // A finished plan is green; a plan left open at 100 already says the estimate is wrong.
   return {
-    line: cue + bar + " " + progressRamp(theme, value / 100, share),
+    // The bar is its own switch: a card can carry the plan with no bar above it.
+    line: showBar ? cue + bar + " " + progressRamp(theme, value / 100, share) : "",
     // The plan is on screen unless the card was told to fold it or phase cards are off.
     plan: group.openPhases === false || !showPhases ? undefined : phasePlanLines(group, theme, glyphs, width, activeIndex),
   };

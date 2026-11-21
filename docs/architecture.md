@@ -108,7 +108,7 @@ Both shapes print one line of chrome, so the card paints content first and then 
 
 `grove.json` is read by `config.ts` (`readRawConfig`) and validated by `settings.ts` (`readSettings`), then passed from `index.ts` into `registerToolUi`. `tool-ui.ts` stores the values on `ToolUiOptions` and copies them into the `TreeSettings` given to the `ToolTree` constructor. A live setting needs its spec in `settings.ts`, its key in `ToolUiLiveSettings` and one line in `liveSettings` (`index.ts`); `toolUi.updateSettings` assigns the patch and `ToolTree.updateSettings` invalidates every group and redraws. `mode` is `apply: "reload"` because row labels are baked when the tools are registered, as are `enabled`, `group` and `thinking`; everything else applies on the next repaint.
 
-`groupGutter` decides whether `paintGroup` fills `plan` and `displayPhaseByCall` at all, so turning it off removes the phase forms everywhere. `groupPhases` picks whether a phase rule answers as the plan or as the phase.
+`groupGutter` decides whether `paintGroup` fills `plan` and `displayPhaseByCall` at all, so turning it off removes the phase forms everywhere. `groupPhases` picks whether a phase rule answers as the plan or as the phase. `groupProgress` owns the bar line and `groupPhases` the boxes, so `phaseMeterText` takes both flags plus a `showBar` and either can paint without the other.
 
 ## Testing
 
