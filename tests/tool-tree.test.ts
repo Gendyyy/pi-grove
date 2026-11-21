@@ -22,7 +22,8 @@ function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
     groupProgress: true,
     groupPercent: true,
     groupPhases: true,
-    groupSparkline: true,
+    // Off by default: a live chart takes a strip row, and a real clock makes that row flaky.
+    groupSparkline: false,
     groupGutter: true,
     groupToolNames: true,
     ...overrides,
@@ -352,12 +353,12 @@ test("the filled span keeps the progress ramp, and only a clean finish is green"
   assert.ok(stylesFor(complete, "100%").every(style => style === rgbAnsi(PROGRESS_THEME.colors!.success)), "a finished plan ends on the ramp green");
 });
 
-test("rollup places the call count after progress and the duration sparkline", () => {
+test("rollup places the duration sparkline after progress and counts nothing", () => {
   const realNow = Date.now;
   let now = 10_000;
   Date.now = () => now;
   try {
-    const tree = new ToolTree(settings({ mode: "prompt", window: 5, iconMode: "nerd" }));
+    const tree = new ToolTree(settings({ mode: "prompt", window: 5, iconMode: "nerd", groupSparkline: true }));
     for (let index = 0; index < 10; index++) {
       const toolCallId = "call-" + index;
       tree.start({
@@ -377,10 +378,10 @@ test("rollup places the call count after progress and the duration sparkline", (
     const header = stripAnsi(lines(tree.render(row("call-0", false, PROGRESS_THEME)))[0]!);
     const progress = header.indexOf("33%");
     const sparkline = header.search(/[▁▂▃▄▅▆▇█]/);
-    const callCount = header.indexOf("calls");
     assert.ok(progress >= 0, "progress is missing: " + header);
     assert.ok(sparkline > progress, "sparkline must follow progress: " + header);
-    assert.ok(callCount > progress, "call count must follow progress: " + header);
+    // The rows already say how much work there is, so the strip never counts it.
+    assert.doesNotMatch(header, /calls/, "the strip must not count calls: " + header);
   } finally {
     Date.now = realNow;
   }
@@ -392,7 +393,7 @@ test("progress and sparkline visibility can be disabled independently", () => {
   Date.now = () => now;
   const planned = { taskIntent: "Keep metrics independent", taskMilestones: "a=Alpha; b=Beta; c=Gamma", taskMilestone: "b" };
   try {
-    const progressOff = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupProgress: false }));
+    const progressOff = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupProgress: false, groupSparkline: true }));
     progressOff.start({ toolCallId: "progress-off", toolName: "read", args: planned });
     now += 1_200;
     progressOff.end({ toolCallId: "progress-off", toolName: "read", result: { content: [] }, isError: false });
@@ -407,7 +408,6 @@ test("progress and sparkline visibility can be disabled independently", () => {
     const sparklineOffHeader = stripAnsi(lines(sparklineOff.render(row("sparkline-off", false, PROGRESS_THEME)))[0]!);
     assert.match(sparklineOffHeader, /33%/, "hiding the chart leaves the progress meter visible");
     assert.doesNotMatch(sparklineOffHeader, /[▁▂▃▄▅▆▇█]/);
-    assert.match(sparklineOffHeader, /1 call/);
   } finally {
     Date.now = realNow;
   }
@@ -487,7 +487,7 @@ test("live presentation changes repaint existing cards", () => {
   Date.now = () => now;
   try {
     let redraws = 0;
-    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }), () => { redraws += 1; });
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupSparkline: true }), () => { redraws += 1; });
     tree.start({
       toolCallId: "live-settings",
       toolName: "read",
@@ -656,18 +656,16 @@ test("settled tool descriptions stay static", () => {
   }
 });
 
-test("a single call still leads with the group headline", () => {
+test("a single call still paints inside the card", () => {
   const tree = new ToolTree(settings());
   tree.boundary("turn");
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
   const painted = lines(tree.render(row("a")));
-  // The frame never disappears: the headline says what the turn did, the row is detail.
-  assert.equal(painted.length, 2);
-  assert.match(painted[0]!, /1 call/);
-  assert.match(painted[0]!, /read x1/);
+  // The frame never disappears, and nothing above the row restates it: no counts, no status label.
+  assert.equal(painted.length, 1);
   assert.doesNotMatch(painted[0]!, /\b(?:DONE|WORKING|FAILED)\b/);
-  assert.match(painted[1]!, /check the manifest/);
-  assert.match(painted[1]!, /running/);
+  assert.match(painted[0]!, /check the manifest/);
+  assert.match(painted[0]!, /running/);
 });
 
 test("the border title stays on the task description despite legacy phase annotations", () => {
@@ -751,7 +749,7 @@ test("the rollup ends in height bars for call durations", () => {
   let now = 10_000;
   Date.now = () => now;
   try {
-    const tree = new ToolTree(settings({ mode: "prompt" }));
+    const tree = new ToolTree(settings({ mode: "prompt" , groupSparkline: true }));
     tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
     now += 150;
     tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
@@ -816,7 +814,7 @@ test("duration bars transition from success through warning to error colors", ()
   let now = 10_000;
   Date.now = () => now;
   try {
-    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" , groupSparkline: true }));
     for (const [id, elapsedMs] of [["a", 100], ["b", 1_000], ["c", 10_000]] as const) {
       tree.start({ toolCallId: id, toolName: "read", args: { reasoning: "read the log" } });
       now += elapsedMs;
@@ -836,7 +834,7 @@ test("a running call keeps its own cell at the end of the sparkline", () => {
   let now = 10_000;
   Date.now = () => now;
   try {
-    const tree = new ToolTree(settings({ mode: "prompt" }));
+    const tree = new ToolTree(settings({ mode: "prompt" , groupSparkline: true }));
     tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the suite" } });
     now += 2_000;
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false });
@@ -859,7 +857,7 @@ test("duration bars compare across cards instead of normalising per card", () =>
   Date.now = () => now;
   // Render two calls and keep only the bar cells, so the shapes can be compared.
   const bars = (durations: readonly number[]): string => {
-    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupSparkline: true }));
     durations.forEach((elapsed, index) => {
       const id = "c" + index;
       tree.start({ toolCallId: id, toolName: "read", args: { reasoning: "read the log" } });
@@ -886,7 +884,7 @@ test("Unicode duration sparkline uses height bars", () => {
   let now = 10_000;
   Date.now = () => now;
   try {
-    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd" }));
+    const tree = new ToolTree(settings({ mode: "prompt", iconMode: "nerd", groupSparkline: true }));
     tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "read the manifest" } });
     now += 150;
     tree.end({ toolCallId: "a", toolName: "read", result: { content: [] }, isError: false });
@@ -972,31 +970,31 @@ test("replayed groups keep calls beyond the former row caps", () => {
 });
 
 test("the card stays on the first call and grows in place", () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
+  // No sparkline, so the strip stays empty and the rows keep their fixed indices.
+  const tree = new ToolTree(settings({ mode: "prompt", groupSparkline: false }));
   tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "check the manifest" } });
-  assert.equal(lines(tree.render(row("a"))).length, 2);
+  assert.equal(lines(tree.render(row("a"))).length, 1);
 
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "run the tests" } });
   // The newest call must not move the card: a moving card reflows on every call.
   assert.deepEqual(tree.render(row("b")).render(80), []);
   const card = lines(tree.render(row("a")));
-  assert.equal(card.length, 3);
-  assert.match(card[0]!, /2 calls/);
-  assert.match(card[1]!, /read/);
-  assert.match(card[2]!, /bash/);
+  assert.equal(card.length, 2);
+  assert.match(card[0]!, /read/);
+  assert.match(card[1]!, /bash/);
 });
 
 test("a streaming call joins the card instead of painting itself", async () => {
-  const tree = new ToolTree(settings({ mode: "prompt" }));
+  const tree = new ToolTree(settings({ mode: "prompt", groupSparkline: false }));
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
-  assert.equal(lines(tree.render(row("a"))).length, 2);
+  assert.equal(lines(tree.render(row("a"))).length, 1);
 
   // pi mounts the next row while its arguments are still streaming.
   tree.ensure("b", "codemode", { code: "// reasoning: build the card" });
   await flush();
   const card = lines(tree.render(row("a")));
-  assert.equal(card.length, 3);
-  assert.match(card[2]!, /build the card/);
+  assert.equal(card.length, 2);
+  assert.match(card[1]!, /build the card/);
   // Its own row stays blank, so the same call never appears as a second block.
   assert.deepEqual(tree.render(row("b")).render(80), []);
 });
@@ -1068,26 +1066,24 @@ test("clicking a codemode row reveals its nested steps", () => {
   tree.start({ toolCallId: "c2", toolName: "read", parentToolCallId: "c", args: { reasoning: "read the entry" } });
   const card = tree.render(row("c"));
   const before = lines(card);
-  assert.equal(before.length, 2);
-  assert.match(before[0]!, /1 call/);
-  assert.match(before[0]!, /codemode x1/);
+  assert.equal(before.length, 1);
+  // The codemode row names the mix of steps it holds instead of a bare count.
+  assert.match(before[0]!, /codemode/);
   assert.match(before[0]!, /bash x1/);
   assert.match(before[0]!, /read x1/);
-  // The codemode row names the mix of steps it holds instead of a bare count.
-  assert.match(before[1]!, /bash x1/);
-  assert.match(before[1]!, /read x1/);
   assert.doesNotMatch(before.join(" "), /list files/);
 
   // The headline also names codemode, so match the row by its own goal text.
   card.handleMouse?.(click(at(card, /build the card/)));
   const after = lines(tree.render(row("c")));
-  assert.equal(after.length, 4);
-  assert.match(after[2]!, /list files/);
-  assert.match(after[3]!, /read the entry/);
+  assert.equal(after.length, 3);
+  assert.match(after[1]!, /list files/);
+  assert.match(after[2]!, /read the entry/);
 });
 
 test("an open running step paints the output it has so far", () => {
-  const tree = new ToolTree(settings());
+  // No sparkline, so a live strip cannot shift the rows this test indexes.
+  const tree = new ToolTree(settings({ groupSparkline: false }));
   tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
   // Pi mounts the running call row itself, and that row is the only live output there is.
@@ -1119,10 +1115,10 @@ test("hiding nested counts preserves expandable child rows and failure markers",
 
   const card = tree.render(row("c"));
   const collapsed = lines(card);
-  assert.match(collapsed[0]!, /codemode x1/, "top-level tool counts remain in the rollup");
-  assert.doesNotMatch(collapsed[0]!, /bash x1/, "nested counts are hidden from the summary strip");
+  assert.equal(collapsed.length, 2, "the strip and the codemode row, with no nested row");
+  assert.doesNotMatch(collapsed.join(" "), /codemode x1/, "the strip counts no tools");
+  assert.match(collapsed[0]!, /1 error/, "the parent failure marker is unaffected");
   assert.doesNotMatch(collapsed[1]!, /bash x1/, "nested counts are hidden from the codemode row");
-  assert.match(collapsed[1]!, /1 error/, "the parent failure marker is unaffected");
 
   card.handleMouse?.(click(at(card, /build the card/)));
   const expanded = lines(tree.render(row("c")));
@@ -1130,7 +1126,7 @@ test("hiding nested counts preserves expandable child rows and failure markers",
 });
 
 test("clicking the card title reveals one level without Pi expand-all", () => {
-  const tree = new ToolTree(settings());
+  const tree = new ToolTree(settings({ groupSparkline: false }));
   tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
   tree.start({ toolCallId: "d", toolName: "bash", args: { reasoning: "run the tests" } });
@@ -1146,7 +1142,7 @@ test("clicking the card title reveals one level without Pi expand-all", () => {
   assert.equal(piExpanded, false);
 
   const revealed = lines(tree.render(row("c", piExpanded)));
-  assert.equal(revealed.length, 3);
+  assert.equal(revealed.length, 2);
   assert.match(revealed.join(" "), /run the tests/);
   assert.doesNotMatch(revealed.join(" "), /list files/);
 });
@@ -1219,11 +1215,12 @@ test("the header reveals every row but opens no level", () => {
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
   tree.start({ toolCallId: "d", toolName: "bash", args: { reasoning: "run the tests" } });
   const card = tree.render(row("c"));
-  card.handleMouse?.(click(at(card, /\d+ calls?\b/)));
+  // The border is the gesture that reveals every row once the strip counts nothing.
+  card.handleMouse?.(click(0));
   const revealed = lines(tree.render(row("c")));
   // Every call is listed, and each row still waits for its own click.
-  assert.equal(revealed.length, 3);
-  assert.match(revealed[2]!, /run the tests/);
+  assert.equal(revealed.length, 2);
+  assert.match(revealed[1]!, /run the tests/);
   assert.doesNotMatch(revealed.join(" "), /list files/);
 
   // The header also names codemode in its mix, so match the row by its own goal.
@@ -1246,26 +1243,26 @@ test("turn boundaries separate cards, message boundaries do not", () => {
   turns.start({ toolCallId: "a", toolName: "read", args: { reasoning: "first turn" } });
   turns.boundary("turn");
   turns.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "second turn" } });
-  assert.equal(lines(turns.render(row("a"))).length, 2);
-  assert.equal(lines(turns.render(row("b"))).length, 2);
+  assert.equal(lines(turns.render(row("a"))).length, 1);
+  assert.equal(lines(turns.render(row("b"))).length, 1);
 
   const messages = new ToolTree(settings({ mode: "message" }));
   messages.start({ toolCallId: "a", toolName: "read", args: { reasoning: "first turn" } });
   messages.boundary("turn");
   messages.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "second turn" } });
-  assert.equal(lines(messages.render(row("a"))).length, 3);
+  assert.equal(lines(messages.render(row("a"))).length, 2);
 });
 
 test("only one of the two pi rows paints a call", async () => {
   let callRepaints = 0;
-  const tree = new ToolTree(settings());
+  const tree = new ToolTree(settings({ groupSparkline: false }));
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
   const callRow = { ...row("a"), phase: "call" as const, invalidate: () => { callRepaints += 1; } };
-  assert.equal(lines(tree.render(callRow)).length, 2);
+  assert.equal(lines(tree.render(callRow)).length, 1);
 
   // The result row takes the card over and blanks the row that painted it.
   const resultRow = { ...row("a"), phase: "result" as const };
-  assert.equal(lines(tree.render(resultRow)).length, 2);
+  assert.equal(lines(tree.render(resultRow)).length, 1);
   await flush();
   assert.ok(callRepaints >= 1, "the call row is repainted so it can render nothing");
   assert.deepEqual(tree.render({ ...row("a"), phase: "call" as const }).render(80), []);
@@ -1277,29 +1274,30 @@ test("a prompt scope keeps one card across turns and splits on the next user mes
   tree.boundary("turn");
   tree.start({ toolCallId: "b", toolName: "bash", args: { reasoning: "second call" } });
   const together = lines(tree.render(row("a")));
-  assert.equal(together.length, 3);
-  assert.match(together[0]!, /2 calls/);
+  assert.equal(together.length, 2);
+  assert.match(together[0]!, /first call/);
+  assert.match(together[1]!, /second call/);
 
   tree.boundary("prompt");
   tree.start({ toolCallId: "c", toolName: "bash", args: { reasoning: "fresh prompt" } });
-  assert.equal(lines(tree.render(row("c"))).length, 2);
+  assert.equal(lines(tree.render(row("c"))).length, 1);
 });
 
 test("the collapsed card keeps only the newest calls and expands on click", () => {
-  const tree = new ToolTree(settings({ window: 2 }));
+  // No sparkline, so the strip stays empty and the window rows keep their fixed indices.
+  const tree = new ToolTree(settings({ window: 2, groupSparkline: false }));
   for (const id of ["a", "b", "c", "d"]) {
     tree.start({ toolCallId: id, toolName: "bash", args: { reasoning: "step " + id } });
   }
   const card = tree.render(row("a"));
   const rolled = lines(card);
-  assert.equal(rolled.length, 4);
-  assert.match(rolled[0]!, /2 of 4 calls/);
-  assert.match(rolled[1]!, /2 earlier calls/);
-  assert.match(rolled[2]!, /step c/);
-  assert.match(rolled[3]!, /step d/);
+  assert.equal(rolled.length, 3);
+  assert.match(rolled[0]!, /2 earlier calls/);
+  assert.match(rolled[1]!, /step c/);
+  assert.match(rolled[2]!, /step d/);
 
   card.handleMouse?.(click(at(card, /calls?\b/)));
-  assert.equal(lines(tree.render(row("a"))).length, 5);
+  assert.equal(lines(tree.render(row("a"))).length, 4);
 });
 
 test("failed nested steps stay hidden by default and can be revealed explicitly", () => {
@@ -1322,27 +1320,27 @@ test("clicking a finished call shows a bounded preview", () => {
   const body = Array.from({ length: 20 }, (_, index) => "line " + (index + 1)).join("\n");
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [{ type: "text", text: body }] }, isError: false, durationMs: 900 });
   const card = tree.render(row("a"));
-  assert.equal(lines(card).length, 2);
+  assert.equal(lines(card).length, 1);
   // Clicks take framed coordinates, so resolve the row in the rendered frame.
   card.handleMouse?.(click(at(card, /read the log/)));
   const painted = lines(tree.render(row("a")));
-  assert.equal(painted.length, 11);
-  assert.match(painted[2]!, /line 1/);
-  assert.match(painted[10]!, /…/);
+  assert.equal(painted.length, 10);
+  assert.match(painted[1]!, /line 1/);
+  assert.match(painted[9]!, /…/);
 });
 
 test("pi's expanded flag opens the whole tree without a click", () => {
   const tree = new ToolTree(settings());
   tree.start({ toolCallId: "c", toolName: "codemode", args: { code: "// reasoning: build the card" } });
   tree.start({ toolCallId: "c1", toolName: "bash", parentToolCallId: "c", args: { reasoning: "list files" } });
-  assert.equal(lines(tree.render(row("c", true))).length, 3);
+  assert.equal(lines(tree.render(row("c", true))).length, 2);
 });
 
 test("settle marks unfinished calls incomplete and off mode is a no-op", () => {
   const tree = new ToolTree(settings());
   tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
   tree.settle();
-  assert.match(lines(tree.render(row("a")))[1]!, /incomplete/);
+  assert.match(lines(tree.render(row("a")))[0]!, /incomplete/);
 
   const off = new ToolTree(settings({ mode: "off" }));
   off.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
@@ -1359,8 +1357,8 @@ test("old turns still paint after many newer ones", () => {
     tree.start({ toolCallId: "t" + index, toolName: "read", args: { reasoning: "turn " + index } });
   }
   const painted = lines(tree.render(row("a")));
-  assert.equal(painted.length, 2);
-  assert.match(painted[1]!, /first turn/);
+  assert.equal(painted.length, 1);
+  assert.match(painted[0]!, /first turn/);
 });
 
 test("paintGroup keeps the click map aligned with the painted lines", () => {
@@ -1399,13 +1397,12 @@ test("a finished codemode call keeps the steps that ran inside it", () => {
 
   // The snapshot is the only trace of the steps, so the card must adopt them on completion.
   const before = lines(tree.render(row("c")));
-  assert.equal(before.length, 2);
-  assert.match(before[0]!, /1 call/);
-  assert.match(before[1]!, /bash x1/);
+  assert.equal(before.length, 1);
+  assert.match(before[0]!, /bash x1/);
 
   tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /audit the suite/)));
   const opened = lines(tree.render(row("c")));
-  assert.match(opened[2]!, /run the tests/);
+  assert.match(opened[1]!, /run the tests/);
 
   tree.render(row("c")).handleMouse?.(click(at(tree.render(row("c")), /run the tests/)));
   const expanded = lines(tree.render(row("c")));

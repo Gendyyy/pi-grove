@@ -66,7 +66,8 @@ export class FakeHost {
       groupProgress: true,
       groupPercent: true,
       groupPhases: true,
-      groupSparkline: true,
+      // Off by default: a live chart takes a strip row, and a real clock makes that row flaky.
+      groupSparkline: false,
       groupGutter: true,
       groupToolNames: true,
       ...options.settings,

@@ -4,7 +4,7 @@ Groups every tool call of a prompt into one clickable card, so the transcript re
 narration instead of a stack of boxes.
 
 ```
-| > 4 calls · read x4 · bash x3 · codemode x1 · grep x1 · <1s
+| > 45% · <1s
 | +- * codemode audit the funnel queries · read x3 · bash x2 · <1s
 | |  +- * bash run the checks · 12 passed · 1s
 ```
@@ -109,7 +109,7 @@ uses the compact timeline instead of the Story phase cards; `groupPhases` never 
 ```text
 ╭─ Check updates ────────────────────────────────────────────╮
 │ GROVE / TASK  ● Verify 2/2                                 │
-│ ▰▰▰▰▰▰▱▱▱▱ · 2 calls                                       │
+│ ▰▰▰▰▰▰▱▱▱▱ · 1m 02s                                       │
 │ ────────────────────────────────────────────────────────── │
 │ │ ✓ 01 Inspect · 1 call · 1s ▸                             │
 │ │   ▸ Read settings                                        │
@@ -130,7 +130,7 @@ position. From the outside in:
 | --- | --- | --- |
 | Card frame | The border, including the task title and its wrapped continuation lines | Reveals every row |
 | Status line | GROVE / TASK plus the optional percentage and current phase, or the complete marker | Reveals every row |
-| Rollup | One metrics line: meter, failed count, call count, duration sparkline, tool mix, elapsed | Toggles plan when phase cards are on, else reveals rows |
+| Rollup | One metrics line: meter or progress, failed count, duration sparkline, elapsed | Toggles plan when phase cards are on, else reveals rows |
 | Progress meter | The filled bar and its phase ticks | Toggles plan when phase cards are on, else reveals rows |
 | Plan line | The expanded phase names joined by arrows, with the share each finished phase closed | Expands the plan |
 | Phase row | Numbered rail mark, phase name, call count, duration, failure count, caret | Opens that phase |
@@ -183,7 +183,7 @@ the two-cell gap a patched glyph needs so it never touches the word. Set `groupT
 to use the glyph alone for a recognized tool; an unknown name stays a word beside `~`. The selected
 icon mode supplies the icon even when `icons` is off. Outcome words become a single mark,
 and counts keep their number. With names enabled, the tool word is never dropped for its glyph;
-the rollup names tools in words (`read ×2 · bash ×1`) so the mix stays readable without the font. `auto` turns glyphs on only when the terminal can draw them;
+a codemode row names the steps it ran in words (`read ×2 · bash ×1`) so the mix stays readable without the font. `auto` turns glyphs on only when the terminal can draw them;
 force `ascii` to keep every word.
 
 A live call breathes its marker on the same 1.6 s clock as the active phase marker, while the

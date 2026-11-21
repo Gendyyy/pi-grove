@@ -92,7 +92,7 @@ The render is stateless. The only mutable thing is `ToolTree.targets`: the card 
 
 | Frame | Headline | Plan gesture | Row anatomy | Full / compact | Drops when narrow |
 | --- | --- | --- | --- | --- | --- |
-| box, title in the top border, from 24 columns | meter: share, done/total, elapsed, sparkline; then a rollup: counts, tool mix, clock | numbered rules whose mark breathes while the phase is in flight, calls, failures and a duration rail, joined by a one-cell pipe that expands the phase above | branch guide, mark, tool, goal after `·`, summary, rail, duration | no split; framed from 24 | below 24 the plain rail without the box; a phase rule gives up its right-hand numbers when fewer than 12 columns remain, and falls back to a summary line under 4 |
+| box, title in the top border, from 24 columns | meter: share, done/total, elapsed, sparkline; then a strip: progress, sparkline, failures, clock | numbered rules whose mark breathes while the phase is in flight, calls, failures and a duration rail, joined by a one-cell pipe that expands the phase above | branch guide, mark, tool, goal after `·`, summary, rail, duration | no split; framed from 24 | below 24 the plain rail without the box; a phase rule gives up its right-hand numbers when fewer than 12 columns remain, and falls back to a summary line under 4 |
 
 Motion is one clock. A live call's dot and the mark of the phase it belongs to breathe together on `PULSE_MS` (1600 ms), fading toward muted and back, so everything running in a card moves in step instead of each row spinning on its own. `PULSE_FREEZE_MS` (5 minutes) stops the breath on a call that has run too long to still be reported as motion, and a finished call holds a still mark in its own colour.
 

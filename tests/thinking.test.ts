@@ -80,16 +80,16 @@ test("a reasoning row never counts as a tool call", () => {
   tree.end({ toolCallId: "c1", toolName: "read", result: { content: [{ type: "text", text: "ok" }] }, isError: false, durationMs: 100 });
 
   const painted = lines(tree.render(row("c1")));
-  // The title rides the card's border, so the body is a summary row then one row per entry.
-  assert.equal(painted.length, 3, "a summary, the narration and the call");
+  // The title rides the card's border, so the body is one row per entry and no count above them.
+  assert.equal(painted.length, 2, "the narration and the call");
   assert.match(tree.render(row("c1")).render(100)[0]!, /GROVE/, "the card leads with its own name");
-  // The summary counts one call, not two: reasoning is narration, never a call.
-  assert.match(painted[0]!, /1 call/);
-  assert.match(painted[1]!, /thinking/);
+  // Reasoning is narration, never a call, and the card counts nothing.
+  assert.doesNotMatch(painted.join(" "), /\d+ calls?/, "the card counts no calls");
+  assert.match(painted[0]!, /thinking/);
   // Collapsed, a reasoning row is just its label: the text waits behind a click.
-  assert.doesNotMatch(painted[1]!, /schema/);
-  assert.doesNotMatch(painted[1]!, /words/);
-  assert.match(painted[2]!, /read/);
+  assert.doesNotMatch(painted[0]!, /schema/);
+  assert.doesNotMatch(painted[0]!, /words/);
+  assert.match(painted[1]!, /read/);
 });
 
 test(

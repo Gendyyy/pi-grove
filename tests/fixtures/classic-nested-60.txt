@@ -1,5 +1,5 @@
  +- Wire the meter click ---------------------------------+
- | :▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ o · 1 failed · 2 calls · +- [0m…[0m |
+ | :▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱ o · 1 failed · +- · 1s        |
  | * 01 Build                                2 calls · 1s |
  |   +- * codemode · [0m…[0m · edit x1 · read x1 · 1 error · 1s |
  |   +- * bash · Confirm the package und[0m…[0m · running · <1s |

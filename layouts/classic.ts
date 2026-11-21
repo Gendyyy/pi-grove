@@ -14,10 +14,8 @@ import {
   PREVIEW_LINES,
   countDeclaredErrors,
   countErrors,
-  counted,
   errorCell,
   milestoneTarget,
-  toolBreakdown,
 } from "../tree-model.js";
 import { elapsedFor, rowExtras, rowModels, type RowModel } from "../card-row.js";
 import {
@@ -181,8 +179,8 @@ export const classicLayout: CardLayout = {
       appendPhaseMarker(line, phaseTarget, role);
     };
 
-    // The headline always leads the card: the border names the current task, the rollup
-    // counts its calls, and the rows below show their detail.
+    // The headline always leads the card: the border names the current task, the strip carries
+    // progress and time, and the rows below say how much work there is.
     const errors = countErrors(tools);
     // The plan meter leads the card: it carries the estimate, the current phase and the shape
     // of the remaining plan in one line, so the rollup never has to repeat the percentage.
@@ -194,15 +192,8 @@ export const classicLayout: CardLayout = {
       : undefined;
     let headerLine = "";
     if (tools.length > 0) {
-      const total = tools.length;
-      const scope =
-        visible.length === total
-          ? counted(theme, total, "call", "calls")
-          : themeText(theme, "accent", String(visible.length)) +
-            themeText(theme, "dim", " of ") +
-            themeText(theme, "muted", String(total)) +
-            themeText(theme, "muted", " calls");
-      // Keep the rollup factual: progress, counts, duration shape and tool mix, with no status label.
+      // Keep the strip factual: progress, duration shape and failures, with no status label and
+      // no counts — the rows below already say how much work there is.
       const parts: string[] = [];
       if (!meter && settings.groupProgress && shownProgress !== undefined)
         parts.push(taskProgressText(shownProgress, theme, glyphs, settings.groupPercent));
@@ -214,10 +205,9 @@ export const classicLayout: CardLayout = {
           parts.push(chart + spark);
         }
       }
-      parts.push(scope);
-      parts.push(...toolBreakdown(tools, theme, glyphs, 4, settings.icons, settings.iconMode, settings.groupNestedTools, settings.groupToolNames));
       if (errors > 0) parts.push(errorCell(errors, theme, settings.icons, settings.iconMode));
-      headerLine = fitToolLine(parts.join(themeText(theme, "dim", DOT)), width);
+      // An empty strip would print a blank line above the rows, so it prints nothing at all.
+      headerLine = parts.length > 0 ? fitToolLine(parts.join(themeText(theme, "dim", DOT)), width) : "";
     }
     // The card names itself first and measures second: one headline line, then the meter, then
     // the work. The share rides the meter beside its own bar, so the headline stays a name.
@@ -229,12 +219,10 @@ export const classicLayout: CardLayout = {
       if (meter) pieces.push(meter.line);
       else if (settings.groupProgress && shownProgress !== undefined) pieces.push(taskProgressText(shownProgress, theme, glyphs, settings.groupPercent));
       if (errors) pieces.push(themeText(theme, "error", `${errors} failed`));
-      pieces.push(counted(theme, tools.length, "call", "calls"));
       if (settings.groupSparkline) {
         const spark = durationSpark(tools, theme, glyphs);
         if (spark) pieces.push(spark);
       }
-      pieces.push(...toolBreakdown(tools, theme, glyphs, 4, settings.icons, settings.iconMode, settings.groupNestedTools, settings.groupToolNames));
       const elapsed = formatElapsed(Math.max(0, now - group.started));
       pieces.push(themeText(theme, "dim", elapsed));
       lines.push(fitToolLine(pieces.join(themeText(theme, "dim", DOT)), inner));

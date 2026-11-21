@@ -509,11 +509,6 @@ export function countToolCalls(nodes: TreeNode[]): number {
   );
 }
 
-/** Pluralize a counted noun without a plural dictionary. */
-export function counted(theme: GroveTheme, value: number, singular: string, plural: string): string {
-  return metric(theme, value, value === 1 ? singular : plural);
-}
-
 /** Failures as one glyph and a number, or the plain words when glyphs are unavailable. */
 export function errorCell(count: number, theme: GroveTheme, icons = false, iconMode: IconMode = "auto"): string {
   const mark = icons ? markFor("error", iconMode) : undefined;
