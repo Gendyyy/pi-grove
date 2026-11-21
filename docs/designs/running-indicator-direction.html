@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<!-- Grove running indicator — four directions for how a live row announces itself, one axis: what moves on a running mark. 2026-11-21 -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grove — running indicator directions</title>
+<style>
+  :root[data-theme="dark"]{
+    --bg:#1e1c23; --card:#252231; --rule:#3a3646; --text:#e0e1e6;
+    --muted:#a3a6af; --dim:#878b96; --accent:#bd8fdf;
+    --warning:#e2b968; --success:#7fd4a8; --error:#e79f80;
+  }
+  :root[data-theme="light"]{
+    --bg:#f2f1ef; --card:#fbfaf9; --rule:#dcd9d4; --text:#3b3e44;
+    --muted:#666b73; --dim:#83888f; --accent:#7a3fae;
+    --warning:#9a6f00; --success:#157f52; --error:#bf3a2b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:15px; line-height:1.55; letter-spacing:.005em;
+    padding:clamp(1.25rem,4vw,3rem) clamp(1rem,4vw,3.5rem) 4rem;
+    max-width:1220px; margin:0 auto;
+  }
+  header.top{border-bottom:1px solid var(--rule); padding-bottom:1.4rem; margin-bottom:1.6rem}
+  .kicker{font-family:ui-monospace,Menlo,monospace; font-size:11px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--dim); margin:0 0 .7rem}
+  h1{font-size:clamp(1.5rem,3.4vw,2.15rem); line-height:1.15; margin:0 0 .6rem; font-weight:640; letter-spacing:-.015em}
+  .lede{margin:0; max-width:62ch; color:var(--muted)}
+  .lede b{color:var(--text); font-weight:600}
+  .bar{display:flex; gap:.6rem; align-items:center; margin-top:1.1rem; flex-wrap:wrap}
+  button{font:inherit; color:var(--muted); background:transparent;
+    border:1px solid var(--rule); border-radius:2px; padding:.3rem .7rem;
+    font-family:ui-monospace,Menlo,monospace; font-size:12px; cursor:pointer}
+  button:hover{color:var(--text); border-color:var(--dim)}
+  button[aria-pressed="true"]{color:var(--text); border-color:var(--accent)}
+  button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .tabs{display:flex; gap:.15rem; border-bottom:1px solid var(--rule); margin-bottom:1.6rem; flex-wrap:wrap}
+  .tabs button{border:0; border-bottom:2px solid transparent; border-radius:0;
+    padding:.55rem .85rem; font-size:12.5px; color:var(--dim); background:transparent}
+  .tabs button[aria-pressed="true"]{color:var(--text); border-bottom-color:var(--accent)}
+  .tabs button:hover{color:var(--text)}
+  .frame{display:none}
+  .frame.on{display:block}
+  .thesis{margin:0 0 1.4rem; max-width:66ch}
+  .thesis strong{font-weight:640}
+  .thesis span{color:var(--muted)}
+  .cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(17rem,21rem); gap:clamp(1.2rem,3vw,2.6rem)}
+  @media (max-width:880px){ .cols{grid-template-columns:minmax(0,1fr)} }
+  .mock{
+    background:var(--card); border:1px solid var(--rule); border-radius:3px;
+    padding:1rem clamp(.7rem,1.6vw,1.2rem);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:clamp(12px,2.3vw,13.5px); line-height:1.85; white-space:nowrap;
+    overflow-x:auto; font-variant-numeric:tabular-nums;
+  }
+  .ln{display:flex; gap:.55ch}
+  .gut{margin-left:auto; padding-left:1.2ch}
+  .dim{color:var(--dim)} .mut{color:var(--muted)} .acc{color:var(--accent)}
+  .ok{color:var(--success)} .err{color:var(--error)} .warnc{color:var(--warning)}
+  .mk{display:inline-block; width:1ch}
+  .cap{font-size:12px; color:var(--dim); margin:.55rem 0 0;
+    font-family:ui-monospace,Menlo,monospace}
+  .side h3{font-family:ui-monospace,Menlo,monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--dim); margin:0 0 .5rem; font-weight:500}
+  .ladder{display:flex; gap:2px; align-items:flex-end; margin:0 0 .35rem}
+  .ladder .cell{flex:1; text-align:center; font-family:ui-monospace,Menlo,monospace}
+  .ladder i{display:block; font-style:normal; font-size:15px; line-height:1.2}
+  .ladder em{display:block; font-style:normal; font-size:9.5px; color:var(--dim); letter-spacing:-.02em}
+  .sidenote{font-size:12px; color:var(--dim); margin:0 0 1.3rem; font-family:ui-monospace,Menlo,monospace}
+  .side dl{margin:0; font-size:13px}
+  .side dt{font-family:ui-monospace,Menlo,monospace; font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--dim); margin-top:1.1rem}
+  .side dd{margin:.25rem 0 0; color:var(--muted)}
+  .side code{font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--text);
+    background:var(--card); border:1px solid var(--rule); border-radius:2px;
+    padding:.05rem .28rem; white-space:normal; overflow-wrap:anywhere}
+  .states{margin-top:1.5rem; border-top:1px solid var(--rule); padding-top:.9rem;
+    font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--dim)}
+  .states span+span{margin-left:1.4ch}
+  footer.foot{margin-top:3rem; border-top:1px solid var(--rule); padding-top:1rem;
+    font-size:12.5px; color:var(--dim); max-width:78ch}
+  footer.foot p{margin:.35rem 0}
+</style>
+</head>
+<body>
+<header class="top">
+  <p class="kicker">pi-grove · running mark</p>
+  <h1>What moves on a running row</h1>
+  <p class="lede">Four directions for the mark that says “still working”. All four keep one cell of width, repaint at <b>100&nbsp;ms</b>, paint in the theme’s <b>warning</b> role, and stop the instant the call or phase ends. Only the motion changes.</p>
+  <div class="bar">
+    <button id="theme" type="button">Light theme</button>
+    <button type="button" disabled style="cursor:default">cadence 100ms · fixed</button>
+  </div>
+</header>
+
+<div class="tabs" role="tablist" aria-label="Directions">
+  <button role="tab" aria-pressed="true" data-tab="breath">Breath</button>
+  <button role="tab" aria-pressed="false" data-tab="snap">Snap</button>
+  <button role="tab" aria-pressed="false" data-tab="wave">Unison wave</button>
+  <button role="tab" aria-pressed="false" data-tab="digits">Digits only</button>
+</div>
+
+<section class="frame on" data-dir="breath">
+  <p class="thesis"><strong>Breath.</strong> <span>The dot never changes shape; its brightness rides a cosine between the warning colour and the muted colour, 1.2&nbsp;s a cycle, twelve samples. Each row breathes on its own clock, so two live calls look staggered.</span></p>
+  <div class="cols">
+    <div>
+      <div class="mock" aria-label="Classic card with a breathing running mark">
+        <div class="ln"><span class="mut">grove · running mark</span><span class="gut dim">2/3</span></div>
+        <div class="ln ok"><span class="mk">✓</span><span>01&nbsp; Registry to classic only</span><span class="gut dim">4 calls · 6.2s</span></div>
+        <div class="ln"><span class="mk live" data-start="0">●</span><span class="acc">02&nbsp; Drop the shimmer</span><span class="gut dim">2 calls · 1.4s</span></div>
+        <div class="ln"><span class="dim">├─</span><span class="mk live" data-start="420">●</span><span>Edit&nbsp; card-progress.ts</span><span class="gut dim" data-elapsed>1.4s</span></div>
+        <div class="ln"><span class="dim">└─</span><span class="mk live" data-start="810">●</span><span>Edit&nbsp; layouts/classic.ts</span><span class="gut dim">0.7s</span></div>
+        <div class="ln"><span class="mk dim">○</span><span class="dim">03&nbsp; Blink the running mark</span><span class="gut dim">0 calls</span></div>
+      </div>
+      <p class="cap">same glyph every frame · brightness only</p>
+      <div class="states"><span>✓ success</span><span>● error</span><span>○ cancelled</span> — untouched by this change</div>
+    </div>
+    <aside class="side">
+      <h3>One cycle · sampled 100 ms</h3>
+      <div class="ladder" data-ladder="breath"></div>
+      <p class="sidenote">0 – 1100 ms, depth 0.85 toward muted</p>
+      <dl>
+        <dt>In code</dt>
+        <dd><code>pulseText(glyph, theme, now, "warning")</code> reused; <code>PULSE_MS</code> set to 1200; <code>spinnerGlyph</code> deleted.</dd>
+        <dt>Buys</dt>
+        <dd>Continuous motion that never flashes; matches how the plan meter already breathes.</dd>
+        <dt>Costs</dt>
+        <dd>Needs colour depth — on a 16-colour terminal the mix collapses into Snap, so that fallback ships either way.</dd>
+      </dl>
+    </aside>
+  </div>
+</section>
+
+<section class="frame" data-dir="snap">
+  <p class="thesis"><strong>Snap.</strong> <span>Two states, 600&nbsp;ms each: a filled dot in warning, then a hollow dot in dim. No colour mixing, no intermediate frames, identical on every terminal.</span></p>
+  <div class="cols">
+    <div>
+      <div class="mock" aria-label="Classic card with a two-state blinking mark">
+        <div class="ln"><span class="mut">grove · running mark</span><span class="gut dim">2/3</span></div>
+        <div class="ln ok"><span class="mk">✓</span><span>01&nbsp; Registry to classic only</span><span class="gut dim">4 calls · 6.2s</span></div>
+        <div class="ln"><span class="mk live" data-start="0">●</span><span class="acc">02&nbsp; Drop the shimmer</span><span class="gut dim">2 calls · 1.4s</span></div>
+        <div class="ln"><span class="dim">├─</span><span class="mk live" data-start="0">●</span><span>Edit&nbsp; card-progress.ts</span><span class="gut dim" data-elapsed>1.4s</span></div>
+        <div class="ln"><span class="dim">└─</span><span class="mk live" data-start="0">●</span><span>Edit&nbsp; layouts/classic.ts</span><span class="gut dim">0.7s</span></div>
+        <div class="ln"><span class="mk dim">○</span><span class="dim">03&nbsp; Blink the running mark</span><span class="gut dim">0 calls</span></div>
+      </div>
+      <p class="cap">glyph swaps ● ↔ ○ · no interpolation</p>
+      <div class="states"><span>✓ success</span><span>● error</span><span>○ cancelled</span> — untouched by this change</div>
+    </div>
+    <aside class="side">
+      <h3>Two states · sampled 100 ms</h3>
+      <div class="ladder" data-ladder="snap"></div>
+      <p class="sidenote">600 ms on, 600 ms off, all rows in step</p>
+      <dl>
+        <dt>In code</dt>
+        <dd>One helper: <code>Math.floor(elapsed / 600) % 2</code> picks warning <code>●</code> or dim <code>○</code>.</dd>
+        <dt>Buys</dt>
+        <dd>Zero palette dependency and the smallest possible diff; this is Codex’s own low-colour fallback.</dd>
+        <dt>Costs</dt>
+        <dd>A hard on/off reads as an alert rather than progress, and it competes with the error colour for the eye.</dd>
+      </dl>
+    </aside>
+  </div>
+</section>
+
+<section class="frame" data-dir="wave">
+  <p class="thesis"><strong>Unison wave.</strong> <span>Same fade as Breath, but every live mark and phase rule on the card rides one shared clock at 1.6&nbsp;s. Three concurrent calls pulse together, so the card reads as one organism instead of three blinking rows.</span></p>
+  <div class="cols">
+    <div>
+      <div class="mock" aria-label="Classic card with all running marks pulsing in unison">
+        <div class="ln"><span class="mut">grove · running mark</span><span class="gut dim">2/3</span></div>
+        <div class="ln ok"><span class="mk">✓</span><span>01&nbsp; Registry to classic only</span><span class="gut dim">4 calls · 6.2s</span></div>
+        <div class="ln"><span class="mk live">●</span><span class="acc">02&nbsp; Drop the shimmer</span><span class="gut dim">2 calls · 1.4s</span></div>
+        <div class="ln"><span class="dim">├─</span><span class="mk live">●</span><span>Edit&nbsp; card-progress.ts</span><span class="gut dim" data-elapsed>1.4s</span></div>
+        <div class="ln"><span class="dim">└─</span><span class="mk live">●</span><span>Edit&nbsp; layouts/classic.ts</span><span class="gut dim">0.7s</span></div>
+        <div class="ln"><span class="mk dim">○</span><span class="dim">03&nbsp; Blink the running mark</span><span class="gut dim">0 calls</span></div>
+      </div>
+      <p class="cap">one clock for the whole card · 1.6s breath</p>
+      <div class="states"><span>✓ success</span><span>● error</span><span>○ cancelled</span> — untouched by this change</div>
+    </div>
+    <aside class="side">
+      <h3>One cycle · sampled 100 ms</h3>
+      <div class="ladder" data-ladder="wave"></div>
+      <p class="sidenote">0 – 1500 ms, all marks in phase</p>
+      <dl>
+        <dt>In code</dt>
+        <dd><code>pulseText</code> called with the card’s <code>now</code> instead of each node’s <code>started</code>.</dd>
+        <dt>Buys</dt>
+        <dd>Calm under load: ten visible rows produce one visual rhythm, not ten.</dd>
+        <dt>Costs</dt>
+        <dd>A row that just started looks identical to one stuck for forty seconds; the elapsed digits carry that distinction alone.</dd>
+      </dl>
+    </aside>
+  </div>
+</section>
+
+<section class="frame" data-dir="digits">
+  <p class="thesis"><strong>Digits only.</strong> <span>Nothing blinks. The running mark holds a solid warning dot and the elapsed counter is the only moving thing on the row. Motion is spent where the information actually changes.</span></p>
+  <div class="cols">
+    <div>
+      <div class="mock" aria-label="Classic card with a static running mark and a ticking elapsed counter">
+        <div class="ln"><span class="mut">grove · running mark</span><span class="gut dim">2/3</span></div>
+        <div class="ln ok"><span class="mk">✓</span><span>01&nbsp; Registry to classic only</span><span class="gut dim">4 calls · 6.2s</span></div>
+        <div class="ln"><span class="mk live">●</span><span class="acc">02&nbsp; Drop the shimmer</span><span class="gut dim">2 calls · <span data-elapsed=1.4>1.4s</span></span></div>
+        <div class="ln"><span class="dim">├─</span><span class="mk live">●</span><span>Edit&nbsp; card-progress.ts</span><span class="gut dim">1.4s</span></div>
+        <div class="ln"><span class="dim">└─</span><span class="mk live">●</span><span>Edit&nbsp; layouts/classic.ts</span><span class="gut dim">0.7s</span></div>
+        <div class="ln"><span class="mk dim">○</span><span class="dim">03&nbsp; Blink the running mark</span><span class="gut dim">0 calls</span></div>
+      </div>
+      <p class="cap">solid dot · counter ticks once a second</p>
+      <div class="states"><span>✓ success</span><span>● error</span><span>○ cancelled</span> — untouched by this change</div>
+    </div>
+    <aside class="side">
+      <h3>No cycle</h3>
+      <div class="ladder" data-ladder="digits"></div>
+      <p class="sidenote">every frame identical</p>
+      <dl>
+        <dt>In code</dt>
+        <dd><code>spinnerGlyph</code> deleted and nothing takes its place; the mark is <code>themeText(theme, "warning", glyphs.dot)</code>.</dd>
+        <dt>Buys</dt>
+        <dd>No distraction in a card full of finished rows, and the cheapest thing to reason about.</dd>
+        <dt>Costs</dt>
+        <dd>The one thing the user asked for is gone: a live row no longer announces itself without reading it.</dd>
+      </dl>
+    </aside>
+  </div>
+</section>
+
+<footer class="foot">
+  <p>Axis: <em>what moves on a running mark</em> — motion curve and clock, not palette or layout. Content is identical in all four tabs.</p>
+  <p>Assumptions: audience is the grove maintainer choosing what ships; register is terminal instrument, so the artifact wears pi’s own dark and light role colours (amber warning, violet accent, green success, muted/dim secondaries) rendered in the browser; the hard constraint is one cell of width, a fixed 100&nbsp;ms repaint, both terminal appearances, and the classic card as the only layout.</p>
+  <p>Out of scope: the removal of the shimmer sweep, the deletion of the four extra layouts, and the 5-minute freeze — all decided already, none drawn here.</p>
+</footer>
+
+<script>
+(function(){
+  var TICK = 100;
+  var dirs = {
+    breath:{mode:"fade", period:1200},
+    snap:{mode:"snap", period:1200},
+    wave:{mode:"fade", period:1600, unison:true},
+    digits:{mode:"still", period:1200}
+  };
+  function fade(b){ return "color-mix(in oklab, var(--warning) " + Math.round((1-b)*100) + "%, var(--muted))"; }
+  function colour(dir, el, now){
+    var spec = dirs[dir];
+    if (spec.mode === "still") return "var(--warning)";
+    var start = spec.unison ? 0 : Number(el.getAttribute("data-start") || 0);
+    var t = now - start;
+    if (spec.mode === "snap") return Math.floor(t / 600) % 2 === 0 ? "var(--warning)" : "var(--dim)";
+    var p = (t % spec.period) / spec.period;
+    return fade(((1 - Math.cos(p * 2 * Math.PI)) / 2) * 0.85);
+  }
+  function tick(){
+    var now = Date.now();
+    var frames = document.querySelectorAll(".frame");
+    for (var i = 0; i < frames.length; i++){
+      var frame = frames[i], dir = frame.getAttribute("data-dir");
+      var marks = frame.querySelectorAll(".mk.live");
+      for (var j = 0; j < marks.length; j++) marks[j].style.color = colour(dir, marks[j], now);
+      var stamps = frame.querySelectorAll("[data-elapsed]");
+      for (var k = 0; k < stamps.length; k++){
+        var base = Number(stamps[k].getAttribute("data-elapsed") || 1.4);
+        stamps[k].textContent = (base + (now - started) / 1000).toFixed(1) + "s";
+      }
+    }
+  }
+  var started = Date.now();
+  document.querySelectorAll("[data-ladder]").forEach(function(box){
+    var dir = box.getAttribute("data-ladder"), spec = dirs[dir], html = "";
+    for (var i = 0; i < 12; i++){
+      var c;
+      if (spec.mode === "still") c = "var(--warning)";
+      else if (spec.mode === "snap") c = i < 6 ? "var(--warning)" : "var(--dim)";
+      else c = fade(((1 - Math.cos((i / 12) * 2 * Math.PI)) / 2) * 0.85);
+      html += '<span class="cell"><i style="color:' + c + '">●</i><em>' + (i * 100) + '</em></span>';
+    }
+    box.innerHTML = html;
+  });
+  var tabs = document.querySelectorAll(".tabs button");
+  for (var t = 0; t < tabs.length; t++){
+    tabs[t].addEventListener("click", function(){
+      var id = this.getAttribute("data-tab");
+      for (var a = 0; a < tabs.length; a++) tabs[a].setAttribute("aria-pressed", String(tabs[a] === this));
+      document.querySelectorAll(".frame").forEach(function(frame){
+        frame.classList.toggle("on", frame.getAttribute("data-dir") === id);
+      });
+    });
+  }
+  document.getElementById("theme").addEventListener("click", function(){
+    var light = document.documentElement.getAttribute("data-theme") === "light";
+    document.documentElement.setAttribute("data-theme", light ? "dark" : "light");
+    this.textContent = light ? "Light theme" : "Dark theme";
+  });
+  setInterval(tick, TICK);
+  tick();
+})();
+</script>
+</body>
+</html>
