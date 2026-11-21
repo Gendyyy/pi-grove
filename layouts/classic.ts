@@ -19,10 +19,10 @@ import {
   milestoneTarget,
   toolBreakdown,
 } from "../tree-model.js";
-import { elapsedFor, rowExtras, rowModels, spinnerGlyph, type RowModel } from "../card-row.js";
+import { elapsedFor, rowExtras, rowModels, type RowModel } from "../card-row.js";
 import {
   durationSpark,
-  shimmerText,
+  pulseText,
   sideDurationRail,
   taskProgressText,
 } from "../card-progress.js";
@@ -42,7 +42,6 @@ const PHASE_LABEL_MIN = 12;
 
 /** The shipped card: a boxed headline, a meter, phase rules and branch rows. */
 export const classicLayout: CardLayout = {
-  id: "classic",
   /** Compose the classic card's lines from the shared context. */
   paint(ctx: CardContext): string[] {
     const {
@@ -125,14 +124,18 @@ export const classicLayout: CardLayout = {
         const failures = countDeclaredErrors(phaseRows, phase.id);
         const done = index < closed;
         const role = phaseRole(index);
-        // The phase in flight turns the same spinner as its calls and keeps turning until the plan moves
-        // past it or the card closes: a gap between two calls is still that phase working, so its own
-        // calls returning never stops the spinner. A failed call changes colour, never motion.
+        // The phase in flight breathes on the same clock as its calls and keeps breathing until the plan
+        // moves past it or the card closes: a gap between two calls is still that phase working, so its
+        // own calls returning never stops the breath. A failed call changes colour, never motion.
         const live = index === activeIndex && phaseInFlight(group);
         const settled = failures ? glyphs.warning : done ? glyphs.check : glyphs.hollow;
-        const mark = live ? spinnerGlyph(glyphs, now) : failures || done || index !== activeIndex ? settled : glyphs.dot;
+        const mark = failures || done || index !== activeIndex ? settled : glyphs.dot;
         const target = milestoneTarget(phase.id);
-        const prefix = themeText(theme, role, `${mark} ${String(index + 1).padStart(2, "0")} `);
+        const number = String(index + 1).padStart(2, "0") + " ";
+        // Only the dot breathes, in the running role: the number keeps the colour its siblings share.
+        const prefix = live
+          ? pulseText(glyphs.dot, theme, now, "warning") + themeText(theme, role, " " + number)
+          : themeText(theme, role, mark + " " + number);
         const dot = themeText(theme, "dim", DOT);
         // The numbers own the right edge, so phases compare at a glance instead of being read.
         let gutter = "";
@@ -159,10 +162,12 @@ export const classicLayout: CardLayout = {
       const phaseErrors = countDeclaredErrors(phaseRows, phase.id);
       const elapsed = phaseElapsedById.get(phase.id) ?? 0;
       const phaseTarget = milestoneTarget(phase.id);
-      // A live phase turns instead of holding a still diamond, from the moment it opens until it closes,
+      // A live phase breathes instead of holding a still diamond, from the moment it opens until it closes,
       // even after a call inside it failed: the error cell reports that, the marker reports motion.
       const live = index === activeIndex && phaseInFlight(group);
-      const prefix = themeText(theme, role, (live ? spinnerGlyph(glyphs, now) : glyphs.diamond) + " " + phase.label, true);
+      const prefix = live
+        ? pulseText(glyphs.diamond, theme, now, "warning") + themeText(theme, role, " " + phase.label, true)
+        : themeText(theme, role, glyphs.diamond + " " + phase.label, true);
       const detailParts = [
         calls > 0 ? themeText(theme, "dim", calls + " " + (calls === 1 ? "call" : "calls")) : "",
         phaseErrors > 0 ? errorCell(phaseErrors, theme, settings.icons, settings.iconMode) : "",
@@ -328,10 +333,7 @@ export const classicLayout: CardLayout = {
           const leadLength =
             fittedDetail.startsWith("· ") ? 2 : fittedDetail.startsWith("·") ? 1 : 0;
           const lead = themeText(theme, color, fittedDetail.slice(0, leadLength));
-          const words = fittedDetail.slice(leadLength);
-          return lead + (node.status === "running"
-            ? shimmerText(words, theme, now, node.started)
-            : themeText(theme, color, words));
+          return lead + themeText(theme, color, fittedDetail.slice(leadLength));
         },
         durationSuffix,
       );

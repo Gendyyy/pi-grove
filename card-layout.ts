@@ -1,14 +1,9 @@
 /**
  * card-layout.ts — the seam between the card's data and its line composition:
- * the context every layout receives, and the registry that resolves one.
+ * the context every layout receives.
  */
 import type { GroveTheme } from "./theme.js";
-import type { CardLayoutId, Glyphs, TaskMilestone, TreeGroup, TreeNode, TreeSettings } from "./tree-model.js";
-import { classicLayout } from "./layouts/classic.js";
-import { instrumentLayout } from "./layouts/instrument.js";
-import { ledgerLayout } from "./layouts/ledger.js";
-import { spineLayout } from "./layouts/spine.js";
-import { marginLayout } from "./layouts/margin.js";
+import type { Glyphs, TaskMilestone, TreeGroup, TreeNode, TreeSettings } from "./tree-model.js";
 
 /** Render inputs shared by the painter and by tests. */
 export interface PaintState {
@@ -30,7 +25,7 @@ export interface CardContext {
   plan: TaskMilestone[];
   piExpanded: boolean;
   targets: Map<number, string>;
-  /** One clock sample per paint, so durations, spinners and pulses agree on a frame. */
+  /** One clock sample per paint, so durations and pulses agree on a frame. */
   now: number;
   /** True when every row shows: pi's expand-all or the group's own open state. */
   reveal: boolean;
@@ -48,22 +43,7 @@ export interface CardContext {
   durationScale: number;
 }
 
-/** One card layout: an identity and the lines it paints from a context. */
+/** The one card grove paints: the lines it composes from a context. */
 export interface CardLayout {
-  id: CardLayoutId;
   paint(ctx: CardContext): string[];
-}
-
-/** Every layout id maps to its implementation. */
-const registry: Record<CardLayoutId, CardLayout> = {
-  classic: classicLayout,
-  instrument: instrumentLayout,
-  ledger: ledgerLayout,
-  spine: spineLayout,
-  margin: marginLayout,
-};
-
-/** Resolve one card layout, falling back to classic for an unknown id. */
-export function cardLayout(id: CardLayoutId): CardLayout {
-  return registry[id] ?? registry.classic;
 }

@@ -1,10 +1,11 @@
 /**
- * tree-paint.ts — the card painter's entry point: it derives the card context,
- * resolves the configured layout, and returns that layout's lines.
+ * tree-paint.ts — the card painter's entry point: it derives the card context
+ * and returns the card's lines.
  */
 import { plainTheme, type GroveTheme } from "./theme.js";
 import { treeGlyphs, type TreeGroup } from "./tree-model.js";
-import { cardLayout, type CardContext, type PaintState } from "./card-layout.js";
+import { type CardContext, type PaintState } from "./card-layout.js";
+import { classicLayout } from "./layouts/classic.js";
 import { phaseCallIds } from "./card-plan.js";
 import { longestElapsed } from "./card-progress.js";
 import { elapsedFor } from "./card-row.js";
@@ -13,7 +14,7 @@ import { elapsedFor } from "./card-row.js";
 export const TICK_MS = 100;
 
 export type { PaintState } from "./card-layout.js";
-export { PULSE_MS, progressGlyph, shimmerText } from "./card-progress.js";
+export { PULSE_MS, progressGlyph } from "./card-progress.js";
 export {
   derivedProgress,
   finishedPhases,
@@ -21,7 +22,7 @@ export {
   planFinished,
 } from "./card-plan.js";
 
-/** Draw one group as a tree of rows through the card layout its settings name. */
+/** Draw one group as a tree of rows through the card. */
 export function paintGroup(
   state: PaintState,
   group: TreeGroup,
@@ -97,5 +98,5 @@ export function paintGroup(
     phaseElapsedById,
     durationScale,
   };
-  return cardLayout(state.settings.card).paint(ctx);
+  return classicLayout.paint(ctx);
 }

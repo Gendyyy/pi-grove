@@ -1,6 +1,6 @@
 /**
  * card-progress.ts — the card's live progress primitives: duration sparks, side rails,
- * shimmer text, the progress strip and its pulse.
+ * the progress strip and the pulse that makes a running mark breathe.
  */
 import { mixColors, rgbColor } from "@earendil-works/pi-tui";
 import { themeText, type Foreground, type GroveTheme } from "./theme.js";
@@ -78,43 +78,6 @@ export function sideDurationRail(
   const fill = glyphs.spark === "ascii" ? "#" : "━";
   return themeText(theme, color, fill.repeat(filled)) +
     themeText(theme, "muted", glyphs.h.repeat(cells - filled));
-}
-
-const SHIMMER_BAND = 3;
-const SHIMMER_MIN_MS = 1_000;
-const SHIMMER_MAX_MS = 2_600;
-
-/** A soft, fixed-width color band that sweeps across visible running-call text. */
-export function shimmerText(text: string, theme: GroveTheme, now: number, started: number, bold = false): string {
-  const cells = [...text];
-  if (cells.length === 0) return "";
-
-  // Scale the sweep to the fitted text so the light band remains visible on narrow rows.
-  const travel = cells.length + SHIMMER_BAND * 2;
-  const period = Math.min(SHIMMER_MAX_MS, Math.max(SHIMMER_MIN_MS, travel * 45));
-  const elapsed = Math.max(0, now - started);
-  const progress = (elapsed % period) / period;
-  const center = progress * travel - SHIMMER_BAND;
-
-  // Group adjacent cells with the same role to keep ANSI output compact.
-  let output = "";
-  let role: Foreground | undefined;
-  let chunk = "";
-  const flush = () => {
-    if (role !== undefined && chunk) output += themeText(theme, role, chunk, bold);
-  };
-  for (const [index, cell] of cells.entries()) {
-    const distance = Math.abs(index - center);
-    const nextRole: Foreground = distance < 0.75 ? "text" : distance < 1.75 ? "accent" : "muted";
-    if (nextRole !== role) {
-      flush();
-      role = nextRole;
-      chunk = "";
-    }
-    chunk += cell;
-  }
-  flush();
-  return output;
 }
 
 const PROGRESS_CELLS = 10;

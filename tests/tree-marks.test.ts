@@ -13,7 +13,6 @@ const settings: TreeSettings = {
   revealErrors: false,
   icons: false,
   iconMode: "ascii",
-  card: "classic",
   window: 4,
   groupNestedTools: true,
   groupProgress: true,
@@ -24,7 +23,7 @@ const settings: TreeSettings = {
   groupToolNames: true,
 };
 const inner = () => ({ render: () => ["inner"], invalidate: () => {} });
-/** Any row marker: Nerd Font paints a circle for the Unicode dot, and a live row spins. */
+/** Any row marker: Nerd Font paints a circle for the Unicode dot, and a live row breathes. */
 const MARKER = /[●\uf111*|\/-\\o]/;
 const row = (id: string, rowTheme: GroveTheme = theme): TreeRow => ({ toolCallId: id, inner: inner(), theme: rowTheme, expanded: false, invalidate: () => {} });
 const click = (y: number) => ({ type: "click", button: "left", x: 0, y, screenX: 0, screenY: 0, width: 96, height: 40 });
@@ -74,8 +73,8 @@ function paletteTheme(): GroveTheme {
 const PLAN = "inspect=Inspect; build=Build; verify=Verify";
 /** This theme counts every tag as visible text, so colour assertions need a very wide card. */
 const WIDE = 400;
-/** Milliseconds each spinner frame holds the screen. */
-const SPIN_MS = 80;
+/** Half a breathe cycle: the deepest point, where a live mark sits furthest from its role. */
+const BREATH_DEEP = PULSE_MS / 2;
 
 /** The meter's bar alone: the leading run of cells, without the gutter or the percentage. */
 function meterBar(tree: ToolTree): string {
@@ -317,30 +316,29 @@ test("a settled call shows a filled dot in its status colour", () => {
   assert.doesNotMatch(ok, /error/);
 });
 
-test("a running call cycles a quarter circle and settles to a still dot", () => {
+test("a running call breathes its dot in place and settles to a still one", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     tree.start({ toolCallId: "a", toolName: "bash", args: { reasoning: "run the tests" } });
     const base = 1_000_000;
-    const frame = PULSE_MS / 4;
-    // Sample the live row marker: the spinner turns in place of the state dot.
-    const marker = (offset: number): string => {
+    // The live row keeps one glyph for its whole life: only the colour of the dot moves.
+    const dot = (offset: number): string => {
       Date.now = () => base + offset;
-      const card = painted(tree, 400, paletteTheme());
-      const row = card.find(line => /\[warning\][|/\-\\] \S*bash/.test(line));
-      assert.ok(row, "expected the live row in the painted card");
-      // The spinner keeps the running role's colour, so only the glyph itself turns.
-      assert.match(row, /\[warning\]/, "the spinner stays in the running role");
-      return /\[warning\]([|/\-\\])/.exec(row)![1]!;
+      const line = painted(tree, WIDE, paletteTheme()).find(candidate => /\* \S*bash/.test(candidate));
+      assert.ok(line, "expected the live row in the painted card");
+      const match = /(rgb\(\d+,\d+,\d+\))\*/.exec(line);
+      assert.ok(match, "the live row paints a dot in a colour: " + line);
+      return match[1]!;
     };
-
-    assert.deepEqual([marker(0), marker(frame), marker(frame * 2)], ["|", "/", "-"]);
-    assert.equal(marker(frame * 4), marker(0), "a full cycle returns to the first quarter");
+    const first = dot(0);
+    assert.equal(first, "rgb(230,180,60)", "the breathe starts on the running role");
+    assert.notEqual(dot(BREATH_DEEP), first, "it fades toward muted without changing glyph");
+    assert.equal(dot(PULSE_MS), first, "one breathe cycle returns to the running role");
 
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, durationMs: 500 } as never, undefined);
-    const settled = painted(tree, 400, paletteTheme()).find(line => /\[success\]\* \S*bash/.test(line))!;
-    assert.ok(settled, "a finished call keeps the filled dot");
+    const settled = painted(tree, WIDE, paletteTheme()).find(candidate => /\* \S*bash/.test(candidate))!;
+    assert.match(settled, /\[success\]\*/, "a finished call holds the success dot still");
   } finally {
     Date.now = real;
   }
@@ -358,62 +356,79 @@ test("a finished card keeps a quiet marker", () => {
   assert.doesNotMatch(marker, /warning/);
 });
 
-test("the phase in flight keeps turning until the plan moves on", () => {
+/** The Build phase row: the plan meter names every phase, a phase row names one. */
+const phaseRow = (lines: readonly string[]): string =>
+  lines.find(candidate => candidate.includes("Build") && !candidate.includes("Verify")) ?? "";
+/**
+ * The colour of the phase mark: the first run after the gutter, which is the mark's own paint.
+ * A breathing mark mixed toward muted arrives as an rgb triple, a still one as its role tag.
+ */
+const markTag = (line: string): string => {
+  const prefix = line.slice(line.indexOf("| ") + 2);
+  const tag = /^(?:rgb\(\d+,\d+,\d+\)|\[[a-zA-Z]+\])/.exec(prefix);
+  assert.ok(tag, "expected a phase mark in the row: " + line);
+  return tag[0];
+};
+
+test("the phase in flight breathes on the same clock as the calls below it", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     step(tree, "a", "build", 55);
     const base = 1_000_000;
-    // The phase's mark turns on the same clock as a live call while that call is in flight.
-    const mark = (offset: number): string => {
+    const lines = (offset: number): string[] => {
       Date.now = () => base + offset;
-      // The plan row also names Build, so pick the numbered phase row below it.
-      const row = painted(tree, WIDE, plainTheme).find(line => /(\S) \d\d /.test(line) && line.includes("Build"));
-      assert.ok(row, "expected the phase row in the painted card");
-      // The rail owns the first cell, so the phase mark is the glyph before its number.
-      return /(\S) \d\d /.exec(row)![1]!;
+      return painted(tree, WIDE, paletteTheme());
     };
-    const first = mark(0);
-    assert.notEqual(mark(SPIN_MS), first, "the phase mark turns while its call runs");
-    assert.notEqual(mark(SPIN_MS * 2), mark(SPIN_MS), "it keeps turning between two frames");
-    // One revolution is as long as the glyph table's frame list, whatever mode is painting.
-    assert.equal(mark(SPIN_MS * treeGlyphs(settings.iconMode).spinner.length), first, "one revolution returns to the first frame");
-    // A call returning is work, not an ending: the gap before the next call still shows motion.
+    const phaseTag = (offset: number): string => {
+      const line = phaseRow(lines(offset));
+      assert.ok(line, "expected the phase row in the painted card");
+      return markTag(line);
+    };
+    const callTag = (offset: number): string => {
+      const line = lines(offset).find(candidate => /\* \S*bash/.test(candidate));
+      assert.ok(line, "expected the live call row in the painted card");
+      return /(rgb\(\d+,\d+,\d+\))\*/.exec(line)![1]!;
+    };
+    const first = phaseTag(0);
+    assert.equal(first, callTag(0), "the phase and its call breathe in unison");
+    assert.notEqual(phaseTag(BREATH_DEEP), first, "the marker fades while the phase runs");
+    assert.equal(phaseTag(BREATH_DEEP), callTag(BREATH_DEEP), "they still agree at another offset");
+    assert.equal(phaseTag(PULSE_MS), first, "one breathe cycle returns to the running role");
+
+    // A call returning is work, not an ending: the gap before the next call still breathes.
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: false, durationMs: 4 });
-    assert.notEqual(mark(SPIN_MS), mark(0), "a returned call never stops its phase turning");
+    assert.notEqual(phaseTag(BREATH_DEEP), phaseTag(0), "a returned call never stops its phase breathing");
     // The plan moving past the phase is what closes it.
     step(tree, "b", "verify", 80);
-    const closed = mark(0);
-    assert.equal(closed, treeGlyphs(settings.iconMode).check, "a phase the plan moved past holds a check");
-    assert.equal(mark(SPIN_MS), closed, "a closed phase stops turning");
+    const closed = phaseRow(lines(0));
+    assert.equal(phaseRow(lines(BREATH_DEEP)), closed, "a closed phase stops moving");
+    assert.ok(closed.includes(treeGlyphs(settings.iconMode).check), "a phase the plan moved past holds a check");
     tree.settle();
-    assert.equal(mark(0), closed, "settling the card changes nothing once the plan is over");
+    assert.equal(phaseRow(lines(0)), closed, "settling the card changes nothing once the plan is over");
   } finally {
     Date.now = real;
   }
 });
 
-test("a failed phase keeps turning while it is in flight, then holds the failure", () => {
+test("a failed phase keeps breathing while it is in flight, then holds the failure", () => {
   const real = Date.now;
   try {
     const tree = new ToolTree(settings);
     step(tree, "a", "build", 55);
     tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 4 });
     const base = 2_000_000;
-    // Nothing runs in the phase, yet it is still the one in flight, so the mark keeps turning.
-    const frames = treeGlyphs(settings.iconMode).spinner;
-    const mark = (offset: number): string => {
+    const lines = (offset: number): string[] => {
       Date.now = () => base + offset;
-      const line = painted(tree, WIDE, plainTheme).find(candidate => /(\S) \d\d /.test(candidate) && candidate.includes("Build"));
-      assert.ok(line, "expected the phase row in the painted card");
-      return /(\S) \d\d /.exec(line)![1]!;
+      return painted(tree, WIDE, paletteTheme());
     };
-    assert.ok(frames.includes(mark(0)), "a phase still in flight keeps turning after a failure");
-    assert.notEqual(mark(SPIN_MS), mark(0), "a failure changes the colour, not the motion");
+    // Nothing runs in the phase, yet it is still the one in flight, so the mark keeps breathing.
+    assert.notEqual(markTag(phaseRow(lines(BREATH_DEEP))), markTag(phaseRow(lines(0))), "a phase still in flight keeps breathing after a failure");
     // The plan moving past it is what ends the phase, and the failure is what it then holds.
     step(tree, "b", "verify", 80);
-    assert.equal(mark(0), "!", "a failed phase the plan left behind holds the failure");
-    assert.equal(mark(SPIN_MS), "!", "and stops turning");
+    const failed = phaseRow(lines(0));
+    assert.ok(failed.includes(treeGlyphs(settings.iconMode).warning), "a failed phase the plan left behind holds the failure");
+    assert.equal(phaseRow(lines(BREATH_DEEP)), failed, "and stops moving");
   } finally {
     Date.now = real;
   }
@@ -640,7 +655,7 @@ test("phase gutter hides phase markers and leaves calls as branches", () => {
 test("a completed phase marker turns green when the plan moves on", () => {
   const tree = twoPhases();
   const phaseMarker = () => painted(tree, WIDE).find(line => line.includes("02") && line.includes("Build")) ?? "";
-  assert.match(phaseMarker(), /\[accent\]. 02/, "the active phase marker carries the accent color and turns");
+  assert.match(phaseMarker(), /\[warning\]\*\[accent\] 02/, "the live phase breathes its dot while the number keeps the accent");
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");

@@ -10,7 +10,7 @@ import { ToolTree, type TreeSettings } from "../tool-tree.js";
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 /** Set UPDATE_GOLDEN=1 to rewrite the fixtures from the current renderer. */
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
-/** A fixed epoch keeps durations, sparkline and spinner frames out of the diff. */
+/** A fixed epoch keeps durations, sparkline and pulse frames out of the diff. */
 const EPOCH = Date.UTC(2026, 10, 10, 12, 0, 0);
 const WIDTHS = [100, 80, 60];
 
@@ -20,7 +20,6 @@ const defaults: TreeSettings = {
   revealErrors: false,
   icons: true,
   iconMode: "auto",
-  card: "classic",
   window: 5,
   groupNestedTools: true,
   groupToolNames: true,

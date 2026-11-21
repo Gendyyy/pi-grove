@@ -10,12 +10,6 @@ import { metric, paintSummary, themeText, toolColor, type GroveTheme } from "./t
 /** One card per user prompt, per assistant turn, or per message; "off" leaves pi alone. */
 export type GroupMode = "prompt" | "turn" | "message" | "off";
 
-/** How one card composes its headline, phases and rows. */
-export type CardLayoutId = "classic" | "instrument" | "ledger" | "spine" | "margin";
-
-/** The card layouts the settings panel offers, classic first so it stays the default. */
-export const CARD_LAYOUTS: readonly CardLayoutId[] = ["classic", "instrument", "ledger", "spine", "margin"];
-
 /** pi mounts two rows per call: the streaming call row and the finished result row. */
 export type PaintPhase = "call" | "result";
 
@@ -29,8 +23,6 @@ export interface TreeSettings {
   revealErrors: boolean;
   icons: boolean;
   iconMode: IconMode;
-  /** Which card layout paints this tree. */
-  card: CardLayoutId;
   /** How many recent calls the collapsed card keeps visible. */
   window: number;
   /** Show nested tool names and counts in compact codemode rows. */
@@ -192,8 +184,6 @@ export interface Glyphs {
   progress: string;
   /** Five-state progress circle: empty, a quarter, half, three quarters, full. */
   pie: readonly string[];
-  /** Quarter-circle frames a running call cycles through, so motion marks what is still live. */
-  spinner: readonly string[];
   /** Completed milestone marker, with an ASCII fallback for plain consoles. */
   check: string;
   /** Warning indicator with a plain-console fallback. */
@@ -207,16 +197,13 @@ export interface Glyphs {
 const UNICODE_GLYPHS: Glyphs = {
   tee: "├", end: "└", pipe: "│", open: "▾", closed: "▸", times: "×", dot: "●", hollow: "○",
   rail: "▌", h: "─", v: "│", arrow: "→", tick: "┆", pie: ["○", "◔", "◑", "◕", "●"],
-  // Ten braille frames, one every 80 ms: the smoothest motion a single cell can hold. Nothing
-  // in this table is a private-use codepoint, so no terminal has to guess how wide it is.
-  spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
   diamond: "◆", spark: "bars", chart: "", progress: "", check: "✓", warning: "!",
   box: { tl: "╭", tr: "╮", bl: "╰", br: "╯" }, boxAhead: "╌",
 };
 
 const ASCII_GLYPHS: Glyphs = {
   tee: "+", end: "+", pipe: "|", open: "v", closed: ">", times: "x", dot: "*", hollow: "o",
-  rail: "|", h: "-", v: "|", arrow: "->", tick: ":", pie: ["o", "o", "O", "O", "#"], spinner: ["|", "/", "-", "\\"], diamond: "*", spark: "ascii", chart: "", progress: "", check: "x", warning: "!",
+  rail: "|", h: "-", v: "|", arrow: "->", tick: ":", pie: ["o", "o", "O", "O", "#"], diamond: "*", spark: "ascii", chart: "", progress: "", check: "x", warning: "!",
   box: { tl: "+", tr: "+", bl: "+", br: "+" }, boxAhead: ".",
 };
 

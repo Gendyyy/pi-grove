@@ -9,7 +9,7 @@
  | x 02 Build                                2 calls · 1s |
  |   +- * edit · Meter line owns the plan · applied  · 1s |
  |   +- * edit · Keep the click one gest[0m…[0m · applied · <1s |
- | - 03 Verify                    1 failed · 2 calls · 6s |
+ | * 03 Verify                    1 failed · 2 calls · 6s |
  |   +- * bash · Run the suite · error               · 4s |
  |   +- * bash · Confirm the package · done          · 1s |
  +--------------------------------------------------------+

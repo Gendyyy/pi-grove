@@ -15,6 +15,7 @@ import {
   type Glyphs,
   type TreeNode,
 } from "./tree-model.js";
+import { pulseText } from "./card-progress.js";
 import type { CardContext } from "./card-layout.js";
 import { toolLabel } from "./theme.js";
 
@@ -24,26 +25,17 @@ export type PulseBase = "accent" | "warning" | "error";
 /** After this long a call is infrastructure, not progress, so the pulse stops instead of blinking forever. */
 const PULSE_FREEZE_MS = 5 * 60_000;
 
-/** One frame per 80 ms, whatever the frame count: fast enough to read as motion, never a flicker. */
-const SPIN_MS = 80;
-
 /** Return the same Grove elapsed interval used by the row's time label. */
 export function elapsedFor(node: TreeNode, now: number): number {
   return node.duration ?? (node.status === "running" ? Math.max(0, now - node.started) : 0);
-}
-
-/** Frame of a running call's spinner: a quarter circle cycling, so a live row moves instead of blinking. */
-export function spinnerGlyph(glyphs: Glyphs, now: number): string {
-  const frames = glyphs.spinner;
-  return frames[Math.floor(now / SPIN_MS) % frames.length] ?? glyphs.dot;
 }
 
 /** A row marker: its glyph, the role that colours it, and the role it breathes while live. */
 interface StateMark {
   glyph: string;
   color: Foreground;
-  /** A live call cycles its spinner instead of holding one glyph. */
-  spin?: boolean;
+  /** A live call breathes its dot in this role instead of holding one glyph. */
+  spin?: PulseBase;
 }
 
 /** Colour and glyph of a row marker reflect call state and nested codemode failures. */
@@ -57,15 +49,14 @@ function stateMark(node: TreeNode, glyphs: Glyphs): StateMark {
       return {
         glyph: glyphs.dot,
         color,
-        ...(node.status === "running" ? { spin: true } : {}),
+        ...(node.status === "running" ? { spin: color } : {}),
       };
     }
   }
   switch (node.status) {
     case "running":
-      // A live call turns a quarter circle on the spot: the row says work is happening
-      // without a swinging brightness that reads as a flicker at 60 columns.
-      return { glyph: glyphs.dot, color: "warning", spin: true };
+      // A live call breathes its dot in place, on the same clock as every other live mark.
+      return { glyph: glyphs.dot, color: "warning", spin: "warning" };
     case "error":
       return { glyph: glyphs.dot, color: "error" };
     case "success":
@@ -86,7 +77,7 @@ export interface RowModel {
   ancestors: boolean[];
   /** True when this row is the last of its siblings, so the connector closes here. */
   last: boolean;
-  /** Painted marker cell, spinner frame included. */
+  /** Painted marker cell, breathe frame included. */
   mark: string;
   /** Role the marker is painted in, so the connector can follow it. */
   tone: Foreground;
@@ -144,8 +135,8 @@ export function rowModels(ctx: CardContext): RowModel[] {
       const last = index === nodes.length - 1;
       const open = expandAll || state.expanded.has(node.id);
       const mark = stateMark(node, glyphs);
-      const markText = mark.spin && now - node.started < PULSE_FREEZE_MS
-        ? themeText(theme, mark.color, spinnerGlyph(glyphs, now))
+      const markText = mark.spin !== undefined && now - node.started < PULSE_FREEZE_MS
+        ? pulseText(glyphs.dot, theme, now, mark.spin)
         : themeText(theme, mark.color, mark.glyph);
       const tool =
         node.kind === "thinking"

@@ -7,7 +7,7 @@ import { NestedToolObserver } from "./nested-tools.js";
 import { installThinkingFilter } from "./pi-patch.js";
 import { readTranscript } from "./replay.js";
 import { thinkingRuns } from "./thinking.js";
-import { goalOf, taskIntentOf, taskMilestoneOf, taskMilestonesOf, type CardLayoutId } from "./tree-model.js";
+import { goalOf, taskIntentOf, taskMilestoneOf, taskMilestonesOf } from "./tree-model.js";
 import { ToolTree, type GroupMode, type TreeRow, type TreeSettings } from "./tool-tree.js";
 
 interface ToolUiOptions {
@@ -16,8 +16,6 @@ interface ToolUiOptions {
   mode: GroveMode;
   icons: boolean;
   iconMode: IconMode;
-  /** Which card layout paints each tree. */
-  card: CardLayoutId;
   /** Transcript scope one card covers: a turn, one assistant message, or no grouping. */
   group: GroupMode;
   /** Opt in to showing failed nested steps while their parent row is collapsed. */
@@ -39,7 +37,6 @@ export type ToolUiLiveSettings = Pick<
   ToolUiOptions,
   | "icons"
   | "iconMode"
-  | "card"
   | "groupRevealErrors"
   | "groupWindow"
   | "groupNestedTools"
@@ -130,7 +127,6 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
       revealErrors: options.groupRevealErrors,
       icons: options.icons,
       iconMode: options.iconMode,
-      card: options.card,
       window: options.groupWindow,
       groupNestedTools: options.groupNestedTools,
       groupToolNames: options.groupToolNames,
@@ -147,7 +143,6 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
     const treeSettings: Partial<TreeSettings> = {
       ...(settings.icons === undefined ? {} : { icons: settings.icons }),
       ...(settings.iconMode === undefined ? {} : { iconMode: settings.iconMode }),
-      ...(settings.card === undefined ? {} : { card: settings.card }),
       ...(settings.groupRevealErrors === undefined ? {} : { revealErrors: settings.groupRevealErrors }),
       ...(settings.groupWindow === undefined ? {} : { window: settings.groupWindow }),
       ...(settings.groupNestedTools === undefined ? {} : { groupNestedTools: settings.groupNestedTools }),

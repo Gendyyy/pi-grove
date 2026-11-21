@@ -5,7 +5,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import { plainTheme } from "../theme.js";
 import { GROUP_TARGET, ToolTree, milestoneTarget, type TreeSettings } from "../tool-tree.js";
 
-const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", card: "classic", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
+const settings: TreeSettings = { mode: "prompt", revealErrors: false, icons: false, iconMode: "ascii", window: 4, groupNestedTools: true, groupProgress: true, groupPercent: true, groupPhases: true, groupSparkline: false, groupGutter: true, groupToolNames: true };
 
 /** Build a card with completed and failed phases and one nested tool call. */
 function storyCard() {
@@ -71,7 +71,7 @@ test("expand-all reveals nested steps while a phase follows its own calls", () =
   const row = { toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: roleTheme, expanded: true, invalidate: () => {} };
   const lines = tree.render(row).render(400);
   assert.ok(lines.some(line => line.includes("[success]x 01")));
-  assert.doesNotMatch(lines.find(line => line.includes(" 02")) ?? "", /\[warning\]/, "a nested failure never turns its phase orange");
+  assert.match(lines.find(line => line.includes(" 02")) ?? "", /\[warning\]\*\[accent\] 02/, "the live phase breathes a warning dot while its own failure role stays accent");
   // Only the final response closes the last phase, and its own calls then decide the mark.
   tree.settle();
   const settled = tree.render(row).render(400);

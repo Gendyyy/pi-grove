@@ -96,7 +96,6 @@ function liveSettings(settings: GroveSettings): ToolUiLiveSettings {
   return {
     icons: settings.icons,
     iconMode: resolveIconMode(settings.iconMode),
-    card: settings.card,
     groupRevealErrors: settings.groupRevealErrors,
     groupWindow: settings.groupWindow,
     groupNestedTools: settings.groupNestedTools,
@@ -320,8 +319,7 @@ export function createGroveExtension(
       mode: settings.mode,
       icons: settings.icons,
       iconMode: resolveIconMode(settings.iconMode),
-      card: settings.card,
-      group: settings.group,
+        group: settings.group,
       groupRevealErrors: settings.groupRevealErrors,
       groupWindow: settings.groupWindow,
       groupNestedTools: settings.groupNestedTools,

@@ -31,7 +31,6 @@ function settings(): TreeSettings {
     revealErrors: true,
     icons: false,
     iconMode: "ascii",
-    card: "classic",
     window: 4,
     groupNestedTools: true,
     groupProgress: true,

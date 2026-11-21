@@ -7,7 +7,6 @@ import { colorToRgb, MouseRegion, rgbColor, visibleWidth, type Color, type Compo
 import { GROUP_TARGET, ToolTree, paintGroup, type TreeGroup, type TreeRow, type TreeSettings } from "../tool-tree.js";
 import { plainTheme, type GroveTheme } from "../theme.js";
 import { summaryLine } from "../block-render.js";
-import { shimmerText } from "../tree-paint.js";
 import { adoptMilestones, taskMilestoneOf, taskMilestonesOf } from "../tree-model.js";
 import { composeSourceTool, type SourceToolDefinition } from "../tool-composition.js";
 
@@ -18,7 +17,6 @@ function settings(overrides: Partial<TreeSettings> = {}): TreeSettings {
     revealErrors: false,
     icons: false,
     iconMode: "ascii",
-    card: "classic",
     window: 4,
     groupNestedTools: true,
     groupProgress: true,
@@ -236,17 +234,6 @@ test("a source cannot reserve Grove taskIntent metadata", () => {
     }),
     /fixture source schema reserves grove-owned taskIntent/,
   );
-});
-
-test("running descriptions shimmer without changing text or visible width", () => {
-  const description = "inspect the retry path";
-  const first = shimmerText(description, ANSI_THEME, 1_000, 1_000);
-  const later = shimmerText(description, ANSI_THEME, 1_400, 1_000);
-  assert.notEqual(first, later, "the highlight should move");
-  assert.equal(stripAnsi(first), description);
-  assert.equal(stripAnsi(later), description);
-  assert.equal(visibleWidth(first), description.length);
-  assert.equal(visibleWidth(later), description.length);
 });
 
 test("no call declares its own percentage, and a card without a plan has none", () => {
@@ -557,7 +544,7 @@ test("the border title stays static while tool rows run", () => {
     Date.now = () => base + 100;
     const next = tree.render(cardRow).render(80)[0]!;
     assert.match(stripAnsi(first), /Inspect payment retry safeguards/);
-    assert.equal(next, first, "the border title has no shimmer or animated glyph");
+    assert.equal(next, first, "the border title never moves");
     assert.ok(stylesFor(first, title).every(style => style === "\u001b[35m"));
     assert.equal(visibleWidth(first), visibleWidth(next));
     assert.ok(visibleWidth(first) <= 80);
@@ -647,47 +634,6 @@ test("the shared call timer keeps turning while a phase waits for its next call"
   } finally {
     globalThis.setInterval = realSetInterval;
     globalThis.clearInterval = realClearInterval;
-  }
-});
-
-test("shimmer formatting only sees the description that fits the row", () => {
-  const fitted: string[] = [];
-  const line = summaryLine(
-    "READ",
-    "· inspect the retry path",
-    " · ",
-    "running",
-    32,
-    detail => {
-      fitted.push(detail);
-      return shimmerText(detail, ANSI_THEME, 1_400, 1_000);
-    },
-  );
-  const visibleDetail = stripAnsi(fitted[fitted.length - 1]!);
-  assert.notEqual(visibleDetail, "· inspect the retry path");
-  assert.match(visibleDetail, /…$/);
-  assert.equal(stripAnsi(line).includes("retry path"), false);
-  assert.ok(visibleWidth(line) <= 32);
-});
-
-test("a running row shimmers its fitted description without changing layout", () => {
-  const realNow = Date.now;
-  try {
-    const base = 1_000_000;
-    const tree = new ToolTree(settings({ mode: "prompt" }));
-    Date.now = () => base;
-    tree.start({ toolCallId: "a", toolName: "read", args: { reasoning: "inspect the retry path" } });
-    const cardRow = row("a", false, ANSI_THEME);
-    const first = tree.render(cardRow).render(80);
-    Date.now = () => base + 400;
-    const later = tree.render(cardRow).render(80);
-    const firstStyles = stylesFor(first.join("\n"), "inspect the retry path");
-    const laterStyles = stylesFor(later.join("\n"), "inspect the retry path");
-    assert.equal(firstStyles.length, "inspect the retry path".length);
-    assert.notDeepEqual(laterStyles, firstStyles, "the description highlight should move");
-    assert.equal(visibleWidth(later[2]!), visibleWidth(first[2]!), "the shimmer moves no cell of the row");
-  } finally {
-    Date.now = realNow;
   }
 });
 
