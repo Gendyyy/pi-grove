@@ -82,17 +82,12 @@ export const classicLayout: CardLayout = {
     };
 
     /**
-     * Branch depth stays quiet while this call's tee or end glyph carries its outcome colour.
+     * Branch lines carry no colour at all: they say where a row hangs, and the row's own mark
+     * already says how it went.
      */
-    const branchGuide = (
-      ancestors: readonly boolean[],
-      end: boolean,
-      color: Foreground,
-    ): string => {
-      const depth = ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("");
-      return themeText(theme, "dim", depth) +
-        themeText(theme, color, (end ? glyphs.end : glyphs.tee) + glyphs.h + " ");
-    };
+    const branchGuide = (ancestors: readonly boolean[], end: boolean): string =>
+      ancestors.map(ancestor => (ancestor ? "   " : glyphs.pipe + "  ")).join("") +
+      (end ? glyphs.end : glyphs.tee) + glyphs.h + " ";
 
     const phaseRoles = new Map<number, Foreground>();
     /** Keep every row in a phase on the same status-colored rail. */
@@ -314,7 +309,7 @@ export const classicLayout: CardLayout = {
       // the row is and the guide above it says how deep, so no row needs a chevron of its own.
       const end = model.depth === 0 ? branchEnd.has(node.id) : model.last;
       const connector =
-        themeText(theme, "dim", phaseIndent) + branchGuide(model.ancestors, end, connectorColor) + model.mark + " " + model.tool;
+        themeText(theme, "dim", phaseIndent) + branchGuide(model.ancestors, end) + model.mark + " " + model.tool;
       const elapsed = elapsedFor(node, now);
       const rail = story ? "" : sideDurationRail(elapsed, durationScale, inner, theme, glyphs, connectorColor);
       const separator = themeText(theme, "dim", DOT);
