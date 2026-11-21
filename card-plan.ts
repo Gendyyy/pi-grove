@@ -251,12 +251,6 @@ function phasePlanLines(
   // A box turns green when its own calls return, so the chain fills from the left as work lands.
   const closed = closedPhases(group);
   const byCall = phaseCallIds(group);
-  // A phase can finish badly: its box and the link it closed warn instead of claiming success.
-  // Only a call that failed on its own counts: a script that broke on a nested step answers through
-  // that step's row.
-  const failed = new Set(
-    group.rows.filter(node => plan.some(phase => phase.id === node.milestone) && failedOnOwn(node)).map(node => node.milestone!),
-  );
   const widths = plan.map(phase => visibleWidth(phase.label) + PLAN_PAD * 2 + 2);
   let over = widths.reduce((sum, box) => sum + box, 0) + (widths.length - 1) * PLAN_LINK - (width - 2);
   while (over > 0) {
@@ -283,14 +277,13 @@ function phasePlanLines(
     const phase = plan[index];
     if (!phase) return;
     const done = index < closed;
-    // A failure keeps warning even while the phase is still the one in flight.
-    const broke = failed.has(phase.id);
+    // A failure changes nothing here: the box reads progress only.
     const current = !done && index === activeIndex;
-    const role: Foreground = broke ? "warning" : done ? "success" : current ? "accent" : "dim";
+    const role: Foreground = done ? "success" : current ? "accent" : "dim";
     if (index > 0) {
       // The link closes only once the phase on its left does, so a finished run reads as one chain.
       const linkClosed = index - 1 < closed;
-      const linkRole: Foreground = !linkClosed ? "dim" : failed.has(plan[index - 1]!.id) ? "warning" : "success";
+      const linkRole: Foreground = !linkClosed ? "dim" : "success";
       top.push(" ".repeat(PLAN_LINK));
       bottom.push(" ".repeat(PLAN_LINK));
       middle.push(themeText(theme, linkRole, glyphs.h.repeat(PLAN_LINK)));

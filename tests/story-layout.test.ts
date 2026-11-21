@@ -158,7 +158,7 @@ test("consecutive related calls each keep their own row", () => {
 });
 
 
-test("direct failures keep a warning phase after completion in ASCII and Nerd modes", () => {
+test("a phase never wears a failure in ASCII or Nerd mode", () => {
   for (const iconMode of ["ascii", "nerd"] as const) {
     const tree = new ToolTree({ ...settings, iconMode });
     tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "Attempt checks", taskIntent: "Verify changes", taskProgress: 80, taskMilestones: "verify=Verify", taskMilestone: "verify" } });
@@ -169,7 +169,8 @@ test("direct failures keep a warning phase after completion in ASCII and Nerd mo
     const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
     const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
     const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
-    assert.ok(phase.includes("[warning]! 01"), "a closed phase with a failure wears the warning mark");
+    assert.match(phase, /[*●] 01/, "a phase with a failure still reads as progress: " + phase);
+    assert.doesNotMatch(phase, /warning/, "a failure never tints the phase");
     assert.doesNotMatch(phase, /failed/, "the phase rule spends no cell counting failures");
   }
 });
@@ -227,7 +228,7 @@ test("a nested step cut short never wears its phase's warning mark", () => {
   assert.ok(!phase.includes("failed"), "the interrupted step is not counted against the phase");
 });
 
-test("a failure after its nested steps all succeeded is still the phase's own", () => {
+test("a script that broke after its steps succeeded leaves the phase unmarked", () => {
   const tree = new ToolTree(settings);
   tree.start({ toolCallId: "a", toolName: "codemode", args: { reasoning: "Attempt checks", taskIntent: "Verify changes", taskMilestones: "verify=Verify", taskMilestone: "verify" } });
   tree.start({ toolCallId: "child", parentToolCallId: "a", toolName: "bash", args: { reasoning: "Run tests" } });
@@ -237,7 +238,8 @@ test("a failure after its nested steps all succeeded is still the phase's own", 
   const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
   const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
-  assert.ok(phase.includes("[warning]! 01"), "a script that broke on its own keeps the warning mark: " + phase);
+  assert.ok(phase.includes("* 01"), "the phase reads its progress only: " + phase);
+  assert.doesNotMatch(phase, /warning/, "a failed call never reaches the phase");
 });
 
 test("a blocked call never paints a phase it did not declare", () => {
@@ -256,5 +258,5 @@ test("a blocked call never paints a phase it did not declare", () => {
     assert.ok(!phase.includes("warning"), "a blocked call stays off phase 01: " + phase);
     assert.ok(!phase.includes("failed"), "phase 01 never blames a call that did not declare it");
   }
-  assert.ok(render("explore").includes("[warning]! 01"), "a failure that declared its phase still warns");
+  assert.ok(!render("explore").includes("!"), "a failure that declared its phase still leaves it unmarked");
 });

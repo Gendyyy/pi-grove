@@ -144,19 +144,21 @@ test("the meter keeps only the share, and the plan row names every phase", () =>
   assert.ok(narrow.length <= 35, `compact meter exceeds its viewport: ${narrow}`);
 });
 
-test("a failed phase warns instead of claiming success", () => {
+test("a failed phase never wears the failure", () => {
   const tree = new ToolTree(settings);
   step(tree, "a", "inspect", 30);
   tree.end({ toolCallId: "a", toolName: "bash", result: { content: [] }, isError: true, durationMs: 4 });
   const open = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
-  assert.match(open, /\[warning\]\| \[warning\]Inspect \[warning\]\|/, "a failure paints its own phase, in flight or not");
+  assert.match(open, /\[accent\]\| \[accent\]Inspect \[accent\]\|/, "a failure leaves the phase in flight painted as work: " + open);
+  assert.doesNotMatch(open, /warning/, "a failed call never reaches the plan box");
   assert.match(open, /\[dim\]\| \[dim\]Verify \[dim\]\|/, "the phases ahead stay dim");
   assert.doesNotMatch(open, /Inspect \[warning\]\|\[warning\]---/, "the link closes only when the plan moves on");
 
   // Moving on closes the phase, and the failure travels with it instead of turning green.
   step(tree, "b", "build", 60);
   const moved = planRow(painted(tree, WIDE), "Inspect", "Build", "Verify");
-  assert.match(moved, /Inspect \[warning\]\|\[warning\]---\[accent\]\| \[accent\]Build/, moved);
+  assert.match(moved, /Inspect \[success\]\|\[success\]---\[accent\]\| \[accent\]Build/, moved);
+  assert.doesNotMatch(moved, /warning/, "moving on never carries a failure into the phase");
 });
 
 test("a crowded plan drops whole boxes and counts the rest instead of cutting one", () => {
@@ -428,7 +430,8 @@ test("a failed phase keeps breathing while it is in flight, then holds the failu
     // The plan moving past it is what ends the phase, and the failure is what it then holds.
     step(tree, "b", "verify", 80);
     const failed = phaseRow(lines(0));
-    assert.ok(failed.includes(treeGlyphs(settings.iconMode).warning), "a failed phase the plan left behind holds the failure");
+    assert.ok(failed.includes(treeGlyphs(settings.iconMode).dot), "a phase the plan left behind holds its mark");
+    assert.ok(!failed.includes(treeGlyphs(settings.iconMode).warning), "and never the failure's mark");
     assert.equal(phaseRow(lines(BREATH_DEEP)), failed, "and stops moving");
   } finally {
     Date.now = real;
@@ -583,7 +586,8 @@ test("a collapsed phase keeps the recent window and reports phase-level failures
   const rendered = () => card(tree, "a", plainTheme).render(WIDE).map(plain);
   const initial = rendered();
   const styled = card(tree, "a", theme).render(WIDE).map(plain);
-  assert.match(styled.join(" "), /\[warning\]!/, "the collapsed phase marks its failure");
+  assert.ok(!styled.join(" ").includes(treeGlyphs(settings.iconMode).warning), "the collapsed phase marks no failure");
+  assert.doesNotMatch(styled.join(" "), /\brunning\b/, "and still never says running");
   assert.ok(!initial.some(line => line.includes("Read release notes")), "a folded call never resurfaces as a summary row");
   for (const width of [35, 60, 96, WIDE]) {
     const lines = card(tree, "a", plainTheme).render(width).map(plain);

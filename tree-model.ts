@@ -487,20 +487,6 @@ export function failedOnOwn(node: TreeNode): boolean {
     node.children.every(child => child.status === "success");
 }
 
-/** Count the failed rows of this level whose failure is their own, not a nested step's. */
-export function countDirectErrors(nodes: TreeNode[]): number {
-  return nodes.reduce((total, node) => (failedOnOwn(node) ? total + 1 : total), 0);
-}
-
-/**
- * Errors a phase may claim: only the calls that named it. A call with no phase of its own — blocked
- * before it ran, or naming a phase the plan does not hold — still shows its own row, but it never
- * paints a phase it did not work on.
- */
-export function countDeclaredErrors(nodes: TreeNode[], phaseId: string): number {
-  return nodes.reduce((total, node) => (node.milestone === phaseId && failedOnOwn(node) ? total + 1 : total), 0);
-}
-
 /** Background tone a card wears, read from the card itself rather than one borrowed row. */
 export type CardTone = "pending" | "success" | "error";
 

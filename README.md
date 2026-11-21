@@ -96,11 +96,11 @@ While a call is live, the needle's own cell breathes between the accent and mute
 instead of blinking on and off, so motion means work in flight and a still bar means nothing is running.
 
 The story form groups work into numbered, colored phase rows. Each phase header shows its
-status mark, direct call count, and elapsed time when space permits. A failure shows in the mark
-and the role colour, never as a count of its own. A phase title keeps every word: the numbers
+status mark, direct call count, and elapsed time when space permits. A failure never reaches a phase:
+not its mark, not its colour, not a count of its own. A phase title keeps every word: the numbers
 fill only the cells the title leaves and are dropped before a word is, so the title alone wraps
-when it is wider than the card. A phase answers only to its own calls: a nested step that fails
-keeps its marker and the codemode row's failure, but never turns the phase orange or gives it a `!` — not even when Pi reports the
+when it is wider than the card. A failed call answers on its own row and nowhere else: neither it nor a nested step under it turns a
+phase orange, gives it a `!`, or moves it off the progress the plan has earned — not even when Pi reports the
 whole script as failed because that step's error escaped it. The newest
 call rows always stay visible: the last `groupWindow` call-level entries, where a run of related
 calls counts as one entry, so a phase that just finished keeps its tail on screen. Older calls
@@ -173,7 +173,7 @@ The card owns its background instead of borrowing one row's result: it stays pen
 call runs, stays neutral when calls succeed or only some of them fail, and turns red only when
 every call in the card failed. A partial failure is still visible through the parent's warning
 marker and the error count, so the block never shouts about work that partly succeeded, and the
-phase holding that call keeps its own status until one of its direct calls fails.
+phase holding that call keeps its own status whatever its calls did.
 
 ## Glyphs
 

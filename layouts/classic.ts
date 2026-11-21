@@ -12,7 +12,6 @@ import {
   GROUP_TARGET,
   PHASES_TARGET,
   PREVIEW_LINES,
-  countDeclaredErrors,
   milestoneTarget,
   type Glyphs,
 } from "../tree-model.js";
@@ -133,12 +132,11 @@ export const classicLayout: CardLayout = {
       if (cached) return cached;
       const phase = plan[index];
       if (!phase) return "dim";
-      // Colour answers one question: has the plan moved past this phase? Only a failure overrides it,
-      // so a phase cannot turn green and back while the pointer still sits on it.
+      // Colour answers one question: has the plan moved past this phase? A failure changes nothing here:
+      // it stays on the row that failed, so a phase cannot turn green and back while the pointer sits on it.
       const closed = closedPhases(group);
       const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
-      const failed = countDeclaredErrors(tools, phase.id) > 0;
-      const role: Foreground = failed ? "warning" : index < closed ? "success" : index === activeIndex ? "accent" : "dim";
+      const role: Foreground = index < closed ? "success" : index === activeIndex ? "accent" : "dim";
       phaseRoles.set(index, role);
       return role;
     };
@@ -153,22 +151,21 @@ export const classicLayout: CardLayout = {
       const activeIndex = plan.findIndex(item => item.id === group.activeMilestoneId);
       if (story) {
         const phaseRows = tools.filter(node => displayPhaseByCall.get(node.id) === phase.id);
-        const failures = countDeclaredErrors(phaseRows, phase.id);
         const done = index < closed;
         const role = phaseRole(index);
         // The phase in flight breathes on the same clock as its calls and keeps breathing until the plan
         // moves past it or the card closes: a gap between two calls is still that phase working, so its
         // own calls returning never stops the breath. A failed call changes colour, never motion.
         const live = index === activeIndex && phaseInFlight(group);
-        const settled = failures ? glyphs.warning : done ? glyphs.dot : glyphs.hollow;
-        const mark = failures || done || index !== activeIndex ? settled : glyphs.dot;
+        const settled = done ? glyphs.dot : glyphs.hollow;
+        const mark = done || index !== activeIndex ? settled : glyphs.dot;
         const target = milestoneTarget(phase.id);
         const number = String(index + 1).padStart(2, "0");
         // Only the dot breathes, in the running role: the number keeps the colour its siblings share.
         const head = live
           ? pulseText(glyphs.dot, theme, now, "warning") + themeText(theme, role, " " + number)
           : themeText(theme, role, mark + " " + number);
-        // A failure shows in the mark and the role, so the rule spends no cell counting it.
+        // A failure stays on the row that failed, so the rule neither counts nor tints it.
         const cells = [
           themeText(theme, "dim", `${phaseRows.length} ${phaseRows.length === 1 ? "call" : "calls"}`),
           themeText(theme, "dim", formatElapsed(phaseElapsedById.get(phase.id) ?? 0)),
