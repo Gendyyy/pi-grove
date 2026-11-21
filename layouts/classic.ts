@@ -128,7 +128,7 @@ export const classicLayout: CardLayout = {
         // moves past it or the card closes: a gap between two calls is still that phase working, so its
         // own calls returning never stops the breath. A failed call changes colour, never motion.
         const live = index === activeIndex && phaseInFlight(group);
-        const settled = failures ? glyphs.warning : done ? glyphs.check : glyphs.hollow;
+        const settled = failures ? glyphs.warning : done ? glyphs.dot : glyphs.hollow;
         const mark = failures || done || index !== activeIndex ? settled : glyphs.dot;
         const target = milestoneTarget(phase.id);
         const number = String(index + 1).padStart(2, "0") + " ";

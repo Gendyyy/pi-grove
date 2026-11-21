@@ -659,7 +659,7 @@ test("a completed phase marker turns green when the plan moves on", () => {
 
   step(tree, "d", "verify", 80);
   settle(tree, "c");
-  assert.match(phaseMarker(), /\[success\]x 02/, "the completed phase marker reads as history");
+  assert.match(phaseMarker(), /\[success\]\* 02/, "the completed phase marker reads as history: a green dot");
 });
 
 test("phase call counts do not reveal nested totals hidden from codemode summaries", () => {

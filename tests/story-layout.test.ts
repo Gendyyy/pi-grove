@@ -28,7 +28,7 @@ test("story phases ignore a nested failure and open one level at a time", () => 
   const render = (width = 96) => tree.render(row).render(width);
   const lines = render();
   assert.ok(lines[0]!.includes("Check updates"), "the card states the task intent in its border");
-  assert.ok(lines.some(line => line.includes("x 01 Inspect")));
+  assert.ok(lines.some(line => line.includes("* 01 Inspect")));
   const phase = lines.findIndex(line => line.includes("02 Verify"));
   assert.ok(phase >= 0);
   assert.ok(!lines[phase]!.includes("failed"), "a nested step's failure never marks its phase");
@@ -70,13 +70,13 @@ test("expand-all reveals nested steps while a phase follows its own calls", () =
   const roleTheme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const row = { toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme: roleTheme, expanded: true, invalidate: () => {} };
   const lines = tree.render(row).render(400);
-  assert.ok(lines.some(line => line.includes("[success]x 01")));
+  assert.ok(lines.some(line => line.includes("[success]* 01")));
   assert.match(lines.find(line => line.includes(" 02")) ?? "", /\[warning\]\*\[accent\] 02/, "the live phase breathes a warning dot while its own failure role stays accent");
   // Only the final response closes the last phase, and its own calls then decide the mark.
   tree.settle();
   const settled = tree.render(row).render(400);
   const verifyRow = settled.find(line => line.includes(" 02")) ?? "";
-  assert.match(verifyRow, /\[success\]x 02/, "a phase whose own calls returned closes with a check");
+  assert.match(verifyRow, /\[success\]\* 02/, "a phase whose own calls returned closes with a green dot");
   assert.doesNotMatch(verifyRow, /failed/, "the nested failure stays off the phase");
   assert.ok(lines.some(line => line.includes("Request registry")));
 });
@@ -207,7 +207,7 @@ test("a script that broke on a nested step leaves its phase neutral", () => {
   const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
   const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
-  assert.ok(phase.includes("[success]x 01"), "the phase closes clean instead of warning: " + phase);
+  assert.ok(phase.includes("[success]* 01"), "the phase closes clean instead of warning: " + phase);
   assert.ok(!phase.includes("warning"), "the script's failure belongs to the failing step, not the phase");
   assert.ok(!phase.includes("failed"), "a nested-caused script failure stays off the phase");
 });
@@ -224,7 +224,7 @@ test("a nested step cut short never wears its phase's warning mark", () => {
   const theme = { style: (value: string, options: { fg?: unknown }) => `[${String(options.fg)}]${value}` };
   const card = tree.render({ toolCallId: "a", inner: { render: () => [], invalidate: () => {} }, theme, expanded: false, invalidate: () => {} });
   const phase = card.render(96).find(line => line.includes("01") && line.includes("Verify")) ?? "";
-  assert.ok(phase.includes("[success]x 01"), "an unfinished step stays off the phase: " + phase);
+  assert.ok(phase.includes("[success]* 01"), "an unfinished step stays off the phase: " + phase);
   assert.ok(!phase.includes("warning"), "warning colour never reaches a phase whose step was cut short");
   assert.ok(!phase.includes("failed"), "the interrupted step is not counted against the phase");
 });
