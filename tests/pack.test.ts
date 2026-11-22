@@ -90,7 +90,7 @@ test("the kernel never imports the pi host at runtime", async () => {
 });
 
 test("the kernel does not reach up into adapters or the ui layer", async () => {
-  const forbidden = /\/(tool-ui|nested-tools|title-status|pi-fff|imagegen)[^"]*"/;
+  const forbidden = /\/(tool-ui|nested-tools|title-status|imagegen)[^"]*"/;
   for (const file of KERNEL) {
     const source = await readFile(join(root, file), "utf8");
     assert.ok(!forbidden.test(source), file + " imports an adapter module");

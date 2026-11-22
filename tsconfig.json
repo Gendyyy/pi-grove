@@ -18,7 +18,6 @@
   },
   "include": [
     "*.ts",
-    "pi-fff/**/*.ts",
     "imagegen/**/*.ts",
     "vendor/**/*.ts",
     "tests/**/*.ts"

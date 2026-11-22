@@ -64,11 +64,6 @@ import {
 } from "./settings.js";
 import { composeSourceTool, type SourceToolDefinition } from "./tool-composition.js";
 import { createDiffingWriteTool, createNativeSource } from "./native-tools.js";
-import {
-  createPiFffIntegrationController,
-  type PiFffIntegrationController,
-} from "./pi-fff/controller.js";
-import { runSetup } from "./setup.js";
 import { buildGenerateImageTool } from "./imagegen/tool.js";
 
 export { withReasoning } from "./tool-composition.js";
@@ -85,10 +80,6 @@ export interface GroveExtensionDependencies {
   configPath?: string;
   readSettings?: typeof readSettings;
   saveSetting?: typeof saveSetting;
-  createIntegration?: (
-    pi: ExtensionAPI,
-    cwd: string
-  ) => PiFffIntegrationController;
 }
 
 /** The presentation settings a running renderer adopts without a reload. */
@@ -144,10 +135,6 @@ export function createGroveExtension(
       // One builder for the whole live surface: a new live setting is one line here, not a switch case.
       toolUi?.updateSettings(liveSettings(settings));
     };
-    const integration =
-      dependencies.createIntegration?.(pi, cwd) ??
-      createPiFffIntegrationController({ pi, cwd });
-
     /** Persist one setting and apply it live or reload according to its policy. */
     const change = async (
       ctx: ExtensionCommandContext,
@@ -203,7 +190,6 @@ export function createGroveExtension(
         source === "environment" ? "PI_GROVE override"
           : source === "file" ? configPath
             : "default; no config file";
-      const status = await integration.run("status", { enabled: settings.enabled });
       const detail = [
         "grove is " + (settings.enabled ? "on" : "off") + " (" + origin + ").",
         ...lines,
@@ -211,13 +197,12 @@ export function createGroveExtension(
         "codemode: pi-owned; " +
           (pi.getActiveTools().includes("codemode") ? "active" : "inactive") +
           " (configure defaultTools in pi).",
-        status.message,
       ].filter(line => line !== "");
       ctx.ui.notify(detail.join("\n"), "info");
     };
 
     pi.registerCommand("grove", {
-      description: "Configure grove display and manage optional FFF execution",
+      description: "Configure grove display",
       getArgumentCompletions: (prefix) =>
         completions()
           .filter((value) => value.startsWith(prefix.trim().toLowerCase()))
@@ -225,16 +210,6 @@ export function createGroveExtension(
       handler: async (args, ctx) => {
         const words = args.trim().split(/\s+/).filter((word) => word !== "");
         const verb = (words[0] ?? "").toLowerCase();
-
-        if (verb === "setup" || verb === "teardown") {
-          await runSetup(verb, integration, {
-            enabled: settings.enabled,
-            confirm: ctx.hasUI === false ? undefined : (title, preview) => ctx.ui.confirm(title, preview),
-            notify: (message, level) => ctx.ui.notify(message, level),
-            reload: () => ctx.reload(),
-          });
-          return;
-        }
 
         if (verb === "on" || verb === "off" || verb === "toggle") {
           const enabled = verb === "toggle" ? !settings.enabled : verb === "on";
@@ -277,13 +252,6 @@ export function createGroveExtension(
       },
     });
 
-    const startupPlan = await integration.initialize(settings.enabled);
-    if (startupPlan.notice) {
-      const notice = startupPlan.notice;
-      pi.on("session_start", (_event, ctx) =>
-        ctx.ui.notify(notice.message, notice.level)
-      );
-    }
     if (!settings.enabled) return;
     registerTitleStatus(pi);
     // A blank label hides the line; pi resets this value on each message, so listeners
@@ -311,10 +279,8 @@ export function createGroveExtension(
       ...(["edit", "bash", "grep", "find", "ls"] as const).map(name => createNativeSource(name, cwd)),
     ];
     for (const source of sources) {
-      if (startupPlan.skipGroveTools.has(source.name as "read" | "grep" | "find")) continue;
       pi.registerTool(compose(source));
     }
-    startupPlan.commit(compose);
     toolUi = registerToolUi(pi, {
       tools: composedNames,
       mode: settings.mode,

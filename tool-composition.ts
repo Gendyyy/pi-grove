@@ -2,7 +2,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { stripReasoning, stripTaskIntent, stripTaskProgress } from "./render.js";
 import type { GroveMode } from "./settings.js";
 
-/** Heterogeneous native/FFF schemas share Pi's actual tool contract. */
+/** Heterogeneous native tool schemas share Pi's actual tool contract. */
 export type SourceToolDefinition = ToolDefinition<any, any>;
 
 export interface SourceToolCompositionOptions {

@@ -18,8 +18,6 @@ const glyphs: Record<string, readonly [string, string]> = {
   acp_status: ["\uf0e4", "[st]"],
   acp_cache: ["\uf1c0", "[db]"],
   acp_read_original_image: ["\uf1c5", "[im]"],
-  ffgrep: ["\uf00e", "[?+]"],
-  fffind: ["\uf114", "[/+]"],
   generate_image: ["\uf0d0", "[gi]"],
   // The web toolset: the globe searches, the tray pulls a page in, the book reopens stored
   // results, the chain checks a claim against its sources, and the switch turns it all on.

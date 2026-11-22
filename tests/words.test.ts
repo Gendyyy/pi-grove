@@ -155,7 +155,7 @@ test("every bundled tool has an icon of its own", () => {
   const bundled = [
     "read", "write", "edit", "bash", "grep", "find", "ls", "codemode",
     "compress", "decompress", "search_context", "acp_status", "acp_cache",
-    "acp_read_original_image", "ffgrep", "fffind", "generate_image", "web_enable",
+    "acp_read_original_image", "generate_image", "web_enable",
     "web_search", "fetch_content", "get_search_content", "source_check", "ask_user_question",
   ];
   for (const name of bundled) assert.equal(hasToolGlyph(name), true, name + " has no icon");

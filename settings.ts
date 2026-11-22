@@ -441,7 +441,7 @@ export async function persistPanelSetting(
 
 /** Every command form /grove offers, derived so a new option cannot be forgotten. */
 export function completions(): string[] {
-  const entries: string[] = ["panel", "settings", "setup", "status", "teardown", "on", "off", "toggle"];
+  const entries: string[] = ["panel", "settings", "status", "on", "off", "toggle"];
   for (const command of COMMANDS) {
     const words = command.words.join(" ");
     entries.push(words, words + " status");
@@ -459,7 +459,7 @@ export function completions(): string[] {
 /** Usage text built from the same table, so it cannot drift from the parser. */
 export function usageText(): string {
   const commands = COMMANDS.map(command => command.words.join(" ") + " " + command.keys.map(allowedText).join(" | "));
-  return "Usage: /grove (settings panel), /grove setup|status|teardown|on|off|toggle, or " + commands.join(", ") + " (append status to read).";
+  return "Usage: /grove (settings panel), /grove status|on|off|toggle, or " + commands.join(", ") + " (append status to read).";
 }
 
 /** One row of the settings panel. */

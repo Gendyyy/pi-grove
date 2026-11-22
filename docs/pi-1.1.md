@@ -12,7 +12,6 @@
 - `generate_image` 已使用原生 ModelRuntime、结构化路径、取消传播和单次 usage 计费。
 - 图像文件已经随机命名、独占创建并采用 0600 权限。
 - 共享刷新器、组件复用、模型分类/生图记录与费用展示。
-- FFF 只支持 `@ff-labs/pi-fff@0.11.0`，不恢复 legacy 配置或版本矩阵。
 - 宿主 peer 仍为 `"*"`，遵循上游选定的 Pi 包规范，不误改为另一个依赖策略。
 
 ## 本轮新增
@@ -22,7 +21,7 @@
 | 1.1.0 `durationMs` | 基础/codemode 父卡片使用渲染上下文，子调用使用执行结束事件；不再写入自算的 `piGroveElapsedMs`，不从 codemode 文字解析时长 |
 | 1.1.0 `outputPad` | 两类卡片使用宿主双侧边距；组件复用时更新边距并失效缓存，覆盖零边距、窄屏和零宽 |
 | 1.1.0 `agent_settled.aborted` | 标题直接使用权威取消字段，修复重试等待期取消；删除旧信号缓存 |
-| 当前开发基线 | coding-agent/tui 开发依赖与验收脚本固定到 1.1.0；FFF 宿主门槛同步，FFF 自身仍是 0.11.0 |
+| 当前开发基线 | coding-agent/tui 开发依赖与验收脚本固定到 1.1.0 |
 
 模型调用不是普通工具执行事件，继续使用 Pi 原生 codemode records 中的
 `durationMs` 和 `cost`；最终模型记录在保存快照前同步，避免丢失费用或状态。
@@ -41,8 +40,6 @@
 异步工具指南、输出边界、时长与边距、回放/HTML 导出、取消与标题。
 模型服务使用替身，禁用网络，不产生模型费用。
 
-另通过固定 Pi 1.1.0 + FFF 0.11.0 的临时安装测试，覆盖 user/project/combined
-scope、真实搜索、commands/flags、补全和 shutdown。
 本轮未重跑真实 PTY 测试；安装与逻辑测试不等于人工终端视觉验收。
 
 已升级到 v0.0.9 的用户不需要额外的 codemode ownership 迁移。
