@@ -24,7 +24,7 @@ export interface ThinkingFilterOptions {
 }
 
 const PI_PACKAGE = "@earendil-works/pi-coding-agent";
-/** Paths worth trying first: the bundled build, then the modular one. */
+/** Paths worth trying first: pi's bin runs dist/bundle/cli.js, so the bundle is the live copy. */
 const KNOWN_MODULES = [
   "dist/bundle/index.js",
   "dist/modes/interactive/components/assistant-message.js",
@@ -40,6 +40,8 @@ const MARK = Symbol.for("grove.thinkingFilter");
 const CLIMB = 6;
 
 let last: ThinkingFilterStatus | undefined;
+/** The install this verdict came from, so a retry does not rescan. */
+let lastRoot: string | undefined;
 
 /** Last install attempt, so /grove status can report what happened. */
 export function thinkingFilterStatus(): ThinkingFilterStatus | undefined {
@@ -95,8 +97,17 @@ async function findPiRoot(): Promise<string | undefined> {
  * capability, so a pi release that moves the class does not silently disable the patch.
  */
 export function candidateModules(root: string): string[] {
+  return [...knownModules(root), ...chunkCandidates(root)];
+}
+
+/** The layouts pi ships by name: cheap to check, and one of them is the live renderer. */
+function knownModules(root: string): string[] {
+  return KNOWN_MODULES.filter(relative => existsSync(join(root, relative)));
+}
+
+/** The chunk sweep, only worth its 8 MB of reads when neither known layout holds the class. */
+function chunkCandidates(root: string): string[] {
   const found: string[] = [];
-  for (const relative of KNOWN_MODULES) if (existsSync(join(root, relative))) found.push(relative);
   const chunks = join(root, CHUNK_DIRECTORY);
   if (!existsSync(chunks)) return found;
   let entries: string[];
@@ -169,11 +180,24 @@ export async function installThinkingFilter(options: ThinkingFilterOptions = {})
     return status;
   };
   const root = options.root ?? (await findPiRoot());
+  // A failed install is retried on every session_start: reuse the verdict for the same root
+  // instead of sweeping the install again.
+  if (last && root !== undefined && lastRoot === root) return last;
+  lastRoot = root;
   if (!root) return record({ installed: false, detail: "pi install not found", modules: [] });
+  // Narrowed for the candidate generator, which cannot see the guard above.
+  const installRoot = root;
 
   const patched: string[] = [];
   const missed: string[] = [];
-  for (const relative of candidateModules(root)) {
+  // The known layouts are tried first, and the chunk sweep only runs when none of them holds
+  // the class: scanning every bundle chunk is ~30 ms of reads a normal install never needs.
+  function* candidates(): Generator<string> {
+    yield* knownModules(installRoot);
+    if (patched.length > 0) return;
+    yield* chunkCandidates(installRoot);
+  }
+  for (const relative of candidates()) {
     // Stop importing once the renderer is patched: the remaining chunks cannot add more.
     if (patched.length > 0) break;
     try {
