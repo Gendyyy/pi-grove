@@ -73,6 +73,9 @@ one to seven phases and may close on a `verify` phase when the work needs checki
 when the work leaves temp files, scratch scripts, or other throwaway artifacts behind. Both are preferences,
 not requirements: a plan that ends on plain work is valid, and Grove never invents filler phases.
 
+Inside one codemode script every nested call needs its own description. Two nested calls carrying the
+same reasoning label are blocked before they run, since the card would otherwise paint one row twice.
+
 The progress meter derives its share from the phase plan: each finished phase fills one equal slice,
 and a card still in flight reads the share of the phases already closed. The numeric share and
 phase boxes are separate opt-ins, both off by default. Each switch stands alone: with `groupProgress`

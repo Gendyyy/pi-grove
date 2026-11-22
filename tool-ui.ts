@@ -65,9 +65,22 @@ export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
 When Grove grouping is enabled, every top-level codemode script must include a model-written // reasoning: <goal> line naming the action, and a model-written // task-intent: line naming the task. Both lines hold at most 6 words, so write the shortest phrase that still names the work. Keep task-intent unchanged across calls advancing the same task; change it only when starting a distinct task. This is the card's stable border title, not a phase update. Grove derives the completion percentage from the phases below, so never send a percentage: the card reads one equal slice per finished phase, and reaches 100% as soon as the last phase ends without a failure — so put the call that finishes the work in the final phase.
 Every top-level call also carries a phase plan, for example // task-milestones: explore=Explore; refine=Refine. A plan holds one to seven short labeled phases. Choose the smallest meaningful sequence for the actual request: consider its outcome, uncertainty, risk, and scale. Use one phase for simple work; clarify first when needed, investigate uncertainty before committing to a solution, and include verification appropriate to the risk. Examples are inspiration, not mandatory templates: a discussion might explore then refine, research might frame then investigate then synthesize, and a bug fix might reproduce then diagnose then fix then verify. Adapt the sequence and labels to the task instead of defaulting to a coding workflow or inventing filler. Add a clean phase before verification only when the work can leave temp files, scratch scripts, or throwaway artifacts behind.
 Use unique lowercase IDs of at most 24 characters, starting with a letter and followed only by lowercase letters, digits, or hyphens; labels are shown in full and wrap only when they cannot fit one line. Include // task-milestone: <id> on every top-level call, naming a phase from that plan. Advance the current id only after finishing that phase; Grove marks earlier phases complete and later ones pending. Re-state the plan on every call; when discoveries change the work, adapt the remaining phases while preserving the IDs and order of completed phases. Grove ignores a restated plan that drops, reorders, or replaces completed phases. A different task needs a new // task-intent: rather than a rewritten plan.
+Inside one script, every nested call needs its own description: two nested calls carrying the same reasoning label are blocked, because the card would paint the same row twice.
 Closing the card is part of the task. A turn that finishes the task must end with a top-level call naming the plan's final // task-milestone:. If your answer itself needs no tool call, still make one last top-level codemode call on the final phase before you answer. Leave the plan open only when the task is genuinely unfinished or the user asked a question mid-task.
 With // @options:, put that header first, then // reasoning:, // task-intent:, then the // task-milestones: plan and // task-milestone: id.
 `;
+
+/** Nested rows are named by their own reasoning argument, so two equal labels paint one row twice. */
+function repeatedLabel(code: string): string | undefined {
+  const seen = new Set<string>();
+  for (const match of code.matchAll(/reasoning:\s*"((?:[^"\\]|\\.)*)"/g)) {
+    const label = match[1].replace(/\s+/g, " ").trim().toLowerCase();
+    if (!label) continue;
+    if (seen.has(label)) return match[1].replace(/\s+/g, " ").trim();
+    seen.add(label);
+  }
+  return undefined;
+}
 
 /** Require a stable model-authored task title for grouped top-level codemode calls. */
 export function codemodeGroupMetadataViolation(
@@ -89,6 +102,9 @@ export function codemodeGroupMetadataViolation(
   const index = milestones.findIndex(milestone => milestone.id === milestoneId);
   if (index < 0)
     return "Grove blocked this codemode call: // task-milestone: must name a phase from the declared // task-milestones: plan. Fix the id, then retry.";
+  const repeated = typeof event.input.code === "string" ? repeatedLabel(event.input.code) : undefined;
+  if (repeated)
+    return `Grove blocked this codemode call: nested calls inside one script each need their own description, and two of them both say "${repeated}", so the card would paint the same row twice. Say what makes each call different, then retry.`;
   return undefined;
 }
 

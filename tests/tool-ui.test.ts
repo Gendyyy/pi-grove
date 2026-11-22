@@ -273,3 +273,24 @@ test("a turn that touches files ends with the ledger line", () => {
   assert.match(ledger, /card-files\.ts/);
   assert.doesNotMatch(ledger, /npm/, "a shell command is not a touched file");
 });
+
+test("two nested calls inside one script need distinct descriptions", () => {
+  const call = (...body: string[]) => ({
+    toolName: "codemode",
+    input: { code: script("// reasoning: read the settings", intent, plan, phase, ...body) },
+  });
+  const repeated = call(
+    'await tools.bash({ reasoning: "Run the tests", command: "bun test" });',
+    'await tools.bash({ reasoning: "run  the TESTS", command: "bun run typecheck" });',
+  );
+  assert.match(codemodeGroupMetadataViolation(repeated, "prompt") ?? "", /own description.*run the TESTS/i);
+  // Same call twice is a duplicate; different work is not.
+  assert.equal(codemodeGroupMetadataViolation(call(
+    'await tools.bash({ reasoning: "Run the tests", command: "bun test" });',
+    'await tools.bash({ reasoning: "Typecheck the sources", command: "bun run typecheck" });',
+  ), "prompt"), undefined);
+  // A repeat written without quotes is a computed label, not a literal, and stays unchecked.
+  assert.equal(codemodeGroupMetadataViolation(call(
+    'for (const p of ["a", "b"]) await tools.read({ reasoning: `Read ${p}`, path: p });',
+  ), "prompt"), undefined);
+});
