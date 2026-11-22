@@ -59,6 +59,25 @@ export interface ToolUiController {
 const CARD_BACKGROUND = "toolPendingBg" as const;
 /** Upper bound on repaint hooks kept for rows drawn before the transcript was restored. */
 const MAX_STALE_ROWS = 4096;
+/** How long one slice of restored rows may repaint before the next tick takes over. */
+const REPAINT_SLICE_MS = 8;
+
+/**
+ * Run repaint hooks off the render pass in short slices. Each hook rebuilds one pi row, so a
+ * long transcript drains over several ticks instead of blocking a single frame.
+ */
+export function flushInSlices(hooks: Array<() => void>, budgetMs = REPAINT_SLICE_MS): void {
+  let index = 0;
+  const drain = (): void => {
+    const deadline = performance.now() + budgetMs;
+    while (index < hooks.length) {
+      hooks[index++]!();
+      if (performance.now() >= deadline) break;
+    }
+    if (index < hooks.length) setImmediate(drain);
+  };
+  setImmediate(drain);
+}
 
 const CODEMODE_GUIDANCE = "Every codemode script opens with a short English goal comment: // reasoning: <goal>. If using // @options:, keep it first and put the reasoning comment on the next line.";
 export const CODEMODE_GROUP_GUIDANCE = `${CODEMODE_GUIDANCE}
@@ -135,9 +154,7 @@ export function registerToolUi(pi: ExtensionAPI, options: ToolUiOptions): ToolUi
     const hooks = [...staleRows.values()];
     staleRows.clear();
     // Never repaint from inside a render pass: pi re-enters its own updateDisplay().
-    setImmediate(() => {
-      for (const hook of hooks) hook();
-    });
+    flushInSlices(hooks);
   };
   const tree = new ToolTree(
     {

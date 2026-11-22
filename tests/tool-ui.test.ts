@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI, ToolRenderers } from "@earendil-works/pi-coding-agent";
-import { CODEMODE_GROUP_GUIDANCE, codemodeGroupMetadataViolation, registerToolUi } from "../tool-ui.js";
+import { CODEMODE_GROUP_GUIDANCE, codemodeGroupMetadataViolation, flushInSlices, registerToolUi } from "../tool-ui.js";
 
 const script = (...lines: string[]) => lines.join("\n");
 const intent = "// task-intent: Make payment retries safe from duplicate charges";
@@ -293,4 +293,24 @@ test("two nested calls inside one script need distinct descriptions", () => {
   assert.equal(codemodeGroupMetadataViolation(call(
     'for (const p of ["a", "b"]) await tools.read({ reasoning: `Read ${p}`, path: p });',
   ), "prompt"), undefined);
+});
+
+test("restored rows repaint in slices instead of one blocking pass", async () => {
+  const seen: number[] = [];
+  const hooks = Array.from({ length: 5 }, (_, index) => () => {
+    seen.push(index);
+  });
+  // A zero budget forces one hook per slice, which is what a long restore looks like.
+  flushInSlices(hooks, 0);
+  // Nothing repaints inside the render pass that asked for it.
+  assert.deepEqual(seen, []);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.deepEqual(seen, [0, 1, 2, 3, 4]);
+});
+
+test("a slice that fits the budget still finishes every hook", async () => {
+  const seen: string[] = [];
+  flushInSlices([() => seen.push("a"), () => seen.push("b"), () => seen.push("c")], 50);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(seen, ["a", "b", "c"]);
 });
