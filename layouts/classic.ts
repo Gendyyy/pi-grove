@@ -12,10 +12,11 @@ import {
   GROUP_TARGET,
   PHASES_TARGET,
   PREVIEW_LINES,
+  elapsedFor,
   milestoneTarget,
   type Glyphs,
 } from "../tree-model.js";
-import { elapsedFor, rowExtras, rowModels, type RowModel } from "../card-row.js";
+import { rowExtras, rowModels, type RowModel } from "../card-row.js";
 import {
   durationSpark,
   pulseText,

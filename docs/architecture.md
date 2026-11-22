@@ -88,7 +88,7 @@ The render is stateless. The only mutable thing is `ToolTree.targets`: the card 
 
 ## The card
 
-`layouts/classic.ts` is the only card: a `CardLayout` — `paint(ctx: CardContext): string[]` — that `paintGroup` calls directly. There is no registry and no layout setting; the card is the extension's whole visual surface.
+`layouts/classic.ts` is the only card: a `CardLayout` — `paint(ctx: CardContext): string[]`. `paintGroup` takes the layout as its last parameter and defaults it to `classicLayout`, so a second card is a layout object plus one argument rather than a change to the painter. There is no registry and no layout setting.
 
 | Frame | Headline | Plan gesture | Row anatomy | Full / compact | Drops when narrow |
 | --- | --- | --- | --- | --- | --- |

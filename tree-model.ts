@@ -541,3 +541,11 @@ export function rowTail(
   };
 }
 
+
+/** Roles a row marker can breathe in: the hue stays put, only its brightness moves. */
+export type PulseBase = "accent" | "warning" | "error";
+
+/** Return the same Grove elapsed interval used by the row's time label. */
+export function elapsedFor(node: TreeNode, now: number): number {
+  return node.duration ?? (node.status === "running" ? Math.max(0, now - node.started) : 0);
+}

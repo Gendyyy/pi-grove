@@ -3,12 +3,11 @@
  * and returns the card's lines.
  */
 import { plainTheme, type GroveTheme } from "./theme.js";
-import { treeGlyphs, type TreeGroup } from "./tree-model.js";
-import { type CardContext, type PaintState } from "./card-layout.js";
+import { elapsedFor, treeGlyphs, type TreeGroup } from "./tree-model.js";
+import { type CardContext, type CardLayout, type PaintState } from "./card-layout.js";
 import { classicLayout } from "./layouts/classic.js";
 import { phaseCallIds } from "./card-plan.js";
 import { longestElapsed } from "./card-progress.js";
-import { elapsedFor } from "./card-row.js";
 
 /** Repaint cadence while a card is live: one breathe step and one honest duration refresh per tick. */
 export const TICK_MS = 100;
@@ -30,6 +29,7 @@ export function paintGroup(
   theme: GroveTheme = plainTheme,
   piExpanded = false,
   targets: Map<number, string> = new Map(),
+  layout: CardLayout = classicLayout,
 ): string[] {
   targets.clear();
   const lines: string[] = [];
@@ -98,5 +98,5 @@ export function paintGroup(
     phaseElapsedById,
     durationScale,
   };
-  return classicLayout.paint(ctx);
+  return layout.paint(ctx);
 }

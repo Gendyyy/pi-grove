@@ -4,8 +4,7 @@
  */
 import { mixColors, rgbColor } from "@earendil-works/pi-tui";
 import { themeText, type Foreground, type GroveTheme } from "./theme.js";
-import { type Glyphs, type TreeNode } from "./tree-model.js";
-import { elapsedFor, type PulseBase } from "./card-row.js";
+import { elapsedFor, type Glyphs, type PulseBase, type TreeNode } from "./tree-model.js";
 
 /** Maximum duration bars shown in the rollup, oldest call first. */
 const SPARK_CELLS = 8;

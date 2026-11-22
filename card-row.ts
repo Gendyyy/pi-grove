@@ -11,24 +11,18 @@ import {
   countErrors,
   countToolCalls,
   detailOf,
+  elapsedFor,
   rowTail,
   type Glyphs,
+  type PulseBase,
   type TreeNode,
 } from "./tree-model.js";
 import { pulseText } from "./card-progress.js";
 import type { CardContext } from "./card-layout.js";
 import { toolLabel } from "./theme.js";
 
-/** Roles a row marker can breathe in: the hue stays put, only its brightness moves. */
-export type PulseBase = "accent" | "warning" | "error";
-
 /** After this long a call is infrastructure, not progress, so the pulse stops instead of blinking forever. */
 const PULSE_FREEZE_MS = 5 * 60_000;
-
-/** Return the same Grove elapsed interval used by the row's time label. */
-export function elapsedFor(node: TreeNode, now: number): number {
-  return node.duration ?? (node.status === "running" ? Math.max(0, now - node.started) : 0);
-}
 
 /** A row marker: its glyph, the role that colours it, and the role it breathes while live. */
 interface StateMark {
